@@ -15,6 +15,7 @@ const views = {
 const sections = {
   'overview': document.getElementById('overview'),
   'my-agent': document.getElementById('my-agent'),
+  'leads-optins': document.getElementById('leads-optins'),
   'widget-settings': document.getElementById('widget-settings'),
   'shopify-connection': document.getElementById('shopify-connection'),
   'email-automation': document.getElementById('email-automation')
@@ -90,7 +91,9 @@ function setupEventListeners() {
         assistant_name: document.getElementById('agent-name').value,
         welcome_message: document.getElementById('agent-welcome').value,
         tone: document.getElementById('agent-tone').value,
-        support_contact: document.getElementById('agent-support').value
+        support_contact: document.getElementById('agent-support').value,
+        custom_prompt: document.getElementById('agent-custom-prompt') ? document.getElementById('agent-custom-prompt').value : '',
+        knowledge_base: document.getElementById('agent-knowledge-base') ? document.getElementById('agent-knowledge-base').value : ''
       },
       policies: {
         faq_content: document.getElementById('store-faq').value
@@ -103,6 +106,54 @@ function setupEventListeners() {
       saveAgentSettings(payload);
     }
   });
+
+  // Document Upload for Agent Knowledge Base
+  const docUploadInput = document.getElementById('agent-doc-upload');
+  if (docUploadInput) {
+    docUploadInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const fileName = file.name;
+      const ext = fileName.split('.').pop().toLowerCase();
+      showToast(`Loading document: ${fileName}...`);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        let extracted = '';
+        const raw = reader.result;
+        if (ext === 'pdf') {
+          if (typeof raw === 'string') {
+            const matches = raw.match(/\(([^()]+)\)/g);
+            if (matches && matches.length > 5) {
+              extracted = matches.map(m => m.slice(1, -1)).join(' ');
+            } else {
+              extracted = raw.replace(/[^\x20-\x7E\t\n\r]/g, ' ').replace(/\s+/g, ' ');
+            }
+          }
+          if (!extracted || extracted.trim().length < 20) {
+            extracted = `Brand & product notes extracted from ${fileName}.`;
+          }
+        } else {
+          extracted = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
+        }
+
+        const kbEl = document.getElementById('agent-knowledge-base');
+        if (kbEl) {
+          const existing = kbEl.value.trim();
+          const header = `\n--- Document: ${fileName} ---\n`;
+          kbEl.value = existing ? (existing + '\n' + header + extracted).trim() : (header + extracted).trim();
+          showToast(`Loaded ${fileName}! Click "Save Agent Settings" to persist.`);
+        }
+      };
+
+      if (ext === 'pdf' && reader.readAsBinaryString) {
+        reader.readAsBinaryString(file);
+      } else {
+        reader.readAsText(file);
+      }
+    });
+  }
 
   // 2. Widget Settings Save
   document.getElementById('widget-form').addEventListener('submit', async (e) => {
@@ -178,7 +229,11 @@ function setupEventListeners() {
   });
 
   document.getElementById('sync-products-btn').addEventListener('click', () => {
-    showConfirmModal('Sync Products?', 'This will re-sync your entire catalog.', async () => {
+    showConfirmModal('Sync Products?', 'This will re-sync your entire catalog from Shopify.', async () => {
+      const btn = document.getElementById('sync-products-btn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Syncing Catalog...';
       try {
         const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/sync`, {
           method: 'POST',
@@ -186,9 +241,13 @@ function setupEventListeners() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Sync failed');
-        showToast(data.message);
+        showToast(data.message || 'Catalog synced successfully!');
+        loadSectionData('shopify-connection');
       } catch (err) {
         showToast(err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     });
   });
@@ -373,6 +432,7 @@ async function loadSectionData(section) {
     const endpoints = {
       'overview': 'overview',
       'my-agent': 'agent',
+      'leads-optins': 'leads',
       'widget-settings': 'widget',
       'shopify-connection': 'shopify',
       'email-automation': 'email'
@@ -423,13 +483,74 @@ async function loadSectionData(section) {
     else if (section === 'my-agent') {
       if (data.assistant) {
         document.getElementById('agent-is-active').checked = data.assistant.is_active;
-        document.getElementById('agent-name').value = data.assistant.assistant_name;
-        document.getElementById('agent-welcome').value = data.assistant.welcome_message;
-        document.getElementById('agent-tone').value = data.assistant.tone;
-        document.getElementById('agent-support').value = data.assistant.support_contact;
+        document.getElementById('agent-name').value = data.assistant.assistant_name || '';
+        document.getElementById('agent-welcome').value = data.assistant.welcome_message || '';
+        document.getElementById('agent-tone').value = data.assistant.tone || 'friendly and helpful';
+        document.getElementById('agent-support').value = data.assistant.support_contact || '';
+        if (document.getElementById('agent-custom-prompt')) {
+          document.getElementById('agent-custom-prompt').value = data.assistant.custom_prompt || '';
+        }
+        if (document.getElementById('agent-knowledge-base')) {
+          document.getElementById('agent-knowledge-base').value = data.assistant.knowledge_base || '';
+        }
       }
       if (data.policies) {
-        document.getElementById('store-faq').value = data.policies.faq_content;
+        document.getElementById('store-faq').value = data.policies.faq_content || '';
+      }
+    }
+    else if (section === 'leads-optins') {
+      const summary = data.summary || { total_leads: 0, opted_in: 0, converted: 0, conversion_rate: '0%' };
+      const totalEl = document.getElementById('stat-leads-total');
+      const optedEl = document.getElementById('stat-leads-opted');
+      const convEl = document.getElementById('stat-leads-converted');
+      const rateEl = document.getElementById('stat-leads-rate');
+
+      if (totalEl) totalEl.textContent = summary.total_leads;
+      if (optedEl) optedEl.textContent = summary.opted_in;
+      if (convEl) convEl.textContent = summary.converted;
+      if (rateEl) rateEl.textContent = summary.conversion_rate;
+
+      const tbody = document.getElementById('leads-table-body');
+      if (tbody) {
+        const leads = data.leads || [];
+        if (leads.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="6" style="text-align: center; padding: 30px; color: var(--text-muted);">
+                No marketing leads captured yet. Leads will automatically appear here when visitors interact with your storefront assistant.
+              </td>
+            </tr>
+          `;
+        } else {
+          tbody.innerHTML = leads.map(lead => {
+            const dateStr = lead.captured_at ? new Date(lead.captured_at).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            }) : '—';
+            
+            const statusBadge = lead.opted_in
+              ? `<span class="badge success">Opted-In</span>`
+              : `<span class="badge neutral">No Consent</span>`;
+              
+            const conversionBadge = lead.converted
+              ? `<span class="badge success">✓ Converted ${lead.order_total ? `($${Number(lead.order_total).toFixed(2)})` : ''}</span>`
+              : `<span class="badge pending">Pending</span>`;
+
+            return `
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 12px 10px; font-weight: 500;">${escapeHtml(lead.email)}</td>
+                <td style="padding: 12px 10px; color: var(--text-muted);">${escapeHtml(lead.phone || '—')}</td>
+                <td style="padding: 12px 10px;">${statusBadge}</td>
+                <td style="padding: 12px 10px; color: var(--text-muted); font-size: 12px;">${dateStr}</td>
+                <td style="padding: 12px 10px; color: var(--text-muted); font-size: 12px;">${escapeHtml(lead.source || 'widget_chat')}</td>
+                <td style="padding: 12px 10px;">${conversionBadge}</td>
+              </tr>
+            `;
+          }).join('');
+        }
       }
     }
     else if (section === 'widget-settings') {
@@ -466,6 +587,16 @@ async function loadSectionData(section) {
   } catch (err) {
     showToast(err.message, true);
   }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // UI Utilities

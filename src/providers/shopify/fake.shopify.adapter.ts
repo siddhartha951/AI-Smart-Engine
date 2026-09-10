@@ -85,11 +85,21 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
   }
 
   async getProductDetails(storeId: string, productId: string): Promise<ShopifyProduct | null> {
-    if (!this.products[storeId]) {
-      throw new TenantIsolationError(`FakeShopifyAdapter: Store ${storeId} not found`);
+    const storeProducts = this.products[storeId];
+    if (!storeProducts) {
+      throw new TenantIsolationError(`Store ${storeId} not found in adapter`);
     }
-    
-    return this.products[storeId].find(p => p.id === productId) || null;
+
+    const product = storeProducts.find(p => p.id === productId);
+    return product || null;
+  }
+
+  async syncAllProducts(storeId: string): Promise<{ count: number; products: ShopifyProduct[] }> {
+    const storeProducts = this.products[storeId] || [];
+    return {
+      count: storeProducts.length,
+      products: [...storeProducts],
+    };
   }
 
   async validateConnection(storeId: string): Promise<boolean> {

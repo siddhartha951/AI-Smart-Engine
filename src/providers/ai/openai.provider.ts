@@ -18,10 +18,19 @@ export class OpenAiProvider implements IAiProvider {
   ): Promise<AiResponse> {
     const env = getEnvConfig();
 
+    const customPromptSection = context.assistantSettings.custom_prompt?.trim()
+      ? `\nMerchant Persona & Custom Instructions:\n${context.assistantSettings.custom_prompt.trim()}\n`
+      : '';
+
+    const knowledgeBaseSection = context.assistantSettings.knowledge_base?.trim()
+      ? `\nStore Knowledge Base & Training Material:\n${context.assistantSettings.knowledge_base.trim()}\n`
+      : '';
+
     const systemPrompt = `
 You are "${context.assistantSettings.assistant_name}", an AI shopping assistant for a Shopify store.
 Your goal is to help customers find products, answer questions about the store, and provide a great shopping experience.
-
+${customPromptSection}
+${knowledgeBaseSection}
 Strict Rules:
 1. ONLY recommend products from the "Available Catalog Subset" below.
 2. NEVER invent or hallucinate products, prices, or stock.
@@ -44,66 +53,86 @@ ${JSON.stringify(context.catalogSubset, null, 2)}
       })),
     ];
 
-    const response = await this.openai.chat.completions.create({
-      model: env.OPENAI_MODEL || 'gpt-4o-mini',
-      messages,
-      temperature: 0.7,
-      tools: [
-        {
-          type: 'function',
-          function: {
-            name: 'recommend_products',
-            description: 'Recommend specific products to the user based on their request. Use this whenever you mention products.',
-            parameters: {
-              type: 'object',
-              properties: {
-                message: {
-                  type: 'string',
-                  description: 'The conversational response to the user',
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages,
+        temperature: 0.7,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'recommend_products',
+              description: 'Recommend specific products to the user based on their request. Use this whenever you mention products.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  message: {
+                    type: 'string',
+                    description: 'The conversational response to the user',
+                  },
+                  product_ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'List of product IDs from the catalog subset to show to the user as cards',
+                  },
                 },
-                product_ids: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'List of product IDs from the catalog subset to show to the user as cards',
-                },
+                required: ['message', 'product_ids'],
               },
-              required: ['message', 'product_ids'],
             },
           },
-        },
-      ],
-      tool_choice: 'auto',
-    });
+        ],
+        tool_choice: 'auto',
+      });
 
-    const choice = response.choices[0];
-    const usage = response.usage;
+      const choice = response.choices[0];
+      const usage = response.usage;
 
-    let finalContent = choice.message.content || '';
-    let recommendedIds: string[] = [];
+      let finalContent = choice.message.content || '';
+      let recommendedIds: string[] = [];
 
-    if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-      const toolCall = choice.message.tool_calls[0];
-      if (toolCall.type === 'function' && toolCall.function.name === 'recommend_products') {
-        const args = JSON.parse(toolCall.function.arguments);
-        finalContent = args.message;
-        
-        // Ensure recommended IDs actually exist in the subset
-        const validIds = context.catalogSubset.map(p => p.id);
-        recommendedIds = (args.product_ids || []).filter((id: string) => validIds.includes(id));
+      if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+        const toolCall = choice.message.tool_calls[0];
+        if (toolCall.type === 'function' && toolCall.function.name === 'recommend_products') {
+          const args = JSON.parse(toolCall.function.arguments);
+          finalContent = args.message;
+          
+          // Ensure recommended IDs actually exist in the subset
+          const validIds = context.catalogSubset.map(p => p.id);
+          recommendedIds = (args.product_ids || []).filter((id: string) => validIds.includes(id));
+        }
       }
+
+      // Rough estimated cost calculation for tracking (e.g., gpt-4o-mini is ~$0.15/1M input, $0.60/1M output)
+      const inputTokens = usage?.prompt_tokens || 0;
+      const outputTokens = usage?.completion_tokens || 0;
+      const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
+
+      return {
+        content: finalContent,
+        recommended_product_ids: recommendedIds,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        estimated_cost_usd: costUsd,
+      };
+    } catch (err: any) {
+      if (
+        err?.status === 429 ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('credits') ||
+        err?.message?.includes('quota')
+      ) {
+        const contact = context.assistantSettings.support_contact || 'our store support';
+        const fallbackIds = context.catalogSubset.slice(0, 2).map((p) => p.id);
+        return {
+          content: `Hi! I am currently experiencing high demand. Please feel free to browse our store collections, check our delivery and returns policies, or reach out to our team at ${contact}!`,
+          recommended_product_ids: fallbackIds,
+          input_tokens: 0,
+          output_tokens: 0,
+          estimated_cost_usd: 0,
+        };
+      }
+      throw err;
     }
-
-    // Rough estimated cost calculation for tracking (e.g., gpt-4o-mini is ~$0.15/1M input, $0.60/1M output)
-    const inputTokens = usage?.prompt_tokens || 0;
-    const outputTokens = usage?.completion_tokens || 0;
-    const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
-
-    return {
-      content: finalContent,
-      recommended_product_ids: recommendedIds,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      estimated_cost_usd: costUsd,
-    };
   }
 }

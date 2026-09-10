@@ -46,7 +46,9 @@ export function createStoreAuthMiddleware(merchantRepo?: MerchantRepository) {
 
       const assistant = await repo.getAssistantSettings(store.id);
       if (assistant && assistant.is_active === false) {
-        throw new ValidationError('Unauthorized store or disabled assistant');
+        if (!req.path.includes('/config')) {
+          throw new ValidationError('Unauthorized store or disabled assistant');
+        }
       }
 
       req.store = store;

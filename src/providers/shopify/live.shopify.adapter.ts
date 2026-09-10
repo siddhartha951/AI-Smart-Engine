@@ -49,9 +49,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
     // Create admin alert
     await db.query(`
-      INSERT INTO admin_alerts (store_id, type, severity, message)
-      VALUES ($1, 'shopify_auth_failed', 'high', 'Shopify credentials revoked or invalid. Agent automatically paused.')
-    `, [storeId]);
+      INSERT INTO admin_alerts (type, severity, message, metadata)
+      VALUES ('shopify_auth_failed', 'high', 'Shopify credentials revoked or invalid. Agent automatically paused.', $1::jsonb)
+    `, [JSON.stringify({ store_id: storeId })]);
   }
 
   async validateConnection(storeId: string): Promise<boolean> {
@@ -160,8 +160,8 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       });
 
       if (response.status === 401 || response.status === 403) {
-        await this.handleInvalidCredentials(storeId);
-        throw new Error('Unauthorized storefront access.');
+        logger.warn(`Shopify storefront access unauthorized for store ${storeId} during product search`);
+        return [];
       }
 
       const data = (await response.json()) as any;
@@ -178,11 +178,11 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           variant_id: variant?.id || '',
           title: node.title,
           price: parseFloat(variant?.price?.amount || '0'),
-          currency: variant?.price?.currencyCode || 'GBP',
-          in_stock: variant?.availableForSale || false,
+          currency: variant?.price?.currencyCode || 'INR',
+          in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',
-          image_url: node.images.edges[0]?.node?.url || '',
-          product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id}`
+          image_url: node.images?.edges[0]?.node?.url || '',
+          product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`
         };
       });
 
@@ -200,6 +200,103 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     } catch (err) {
       logger.error(`Error searching Shopify products for ${storeId}:`, err);
       return [];
+    }
+  }
+
+  async syncAllProducts(storeId: string): Promise<{ count: number; products: ShopifyProduct[] }> {
+    try {
+      const { storefrontToken, shopDomain } = await this.getCredentials(storeId);
+      const allProducts: ShopifyProduct[] = [];
+      let hasNextPage = true;
+      let cursor: string | null = null;
+      let iterations = 0;
+      const maxIterations = 20; // Up to 1,000 products
+
+      while (hasNextPage && iterations < maxIterations) {
+        iterations++;
+        const afterArg = cursor ? `, after: "${cursor}"` : '';
+        const graphqlQuery = `
+          {
+            products(first: 50${afterArg}) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              edges {
+                node {
+                  id
+                  title
+                  productType
+                  variants(first: 1) {
+                    edges {
+                      node {
+                        id
+                        price { amount currencyCode }
+                        availableForSale
+                      }
+                    }
+                  }
+                  images(first: 1) {
+                    edges {
+                      node {
+                        url
+                      }
+                    }
+                  }
+                  onlineStoreUrl
+                }
+              }
+            }
+          }
+        `;
+
+        const response = await fetch(`https://${shopDomain}/api/2024-01/graphql.json`, {
+          method: 'POST',
+          headers: {
+            'X-Shopify-Storefront-Access-Token': storefrontToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: graphqlQuery })
+        });
+
+        if (!response.ok) {
+          logger.warn(`Shopify GraphQL sync request returned status ${response.status}`);
+          break;
+        }
+
+        const data = (await response.json()) as any;
+        const productsData = data.data?.products;
+        if (!productsData?.edges || productsData.edges.length === 0) {
+          break;
+        }
+
+        for (const edge of productsData.edges) {
+          const node = edge.node;
+          const variant = node.variants?.edges[0]?.node;
+          allProducts.push({
+            id: node.id,
+            variant_id: variant?.id || '',
+            title: node.title,
+            price: parseFloat(variant?.price?.amount || '0'),
+            currency: variant?.price?.currencyCode || 'INR',
+            in_stock: variant?.availableForSale ?? true,
+            category: node.productType || '',
+            image_url: node.images?.edges[0]?.node?.url || '',
+            product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`
+          });
+        }
+
+        hasNextPage = productsData.pageInfo?.hasNextPage || false;
+        cursor = productsData.pageInfo?.endCursor || null;
+      }
+
+      return {
+        count: allProducts.length,
+        products: allProducts,
+      };
+    } catch (err) {
+      logger.error(`Error syncing Shopify products for ${storeId}:`, err);
+      return { count: 0, products: [] };
     }
   }
 

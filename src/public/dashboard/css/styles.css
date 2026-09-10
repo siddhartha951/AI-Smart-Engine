@@ -534,13 +534,24 @@ input:checked + .slider:before {
   color: var(--text-muted);
 }
 
-.action-buttons {
-  display: flex;
-  gap: 1rem;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
 }
 
-.badge.success { background: rgba(16, 185, 129, 0.2); color: var(--secondary); }
-.badge.danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+.badge.success { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge.danger { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+.badge.pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+.badge.neutral { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); }
+
+.data-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
 
 /* Test Email */
 .test-email-section {

@@ -68,9 +68,22 @@
       
       this.renderInit();
       await this.loadConfig();
-      if (this.state.config) {
-        this.render();
+      if (!this.state.config) {
+        this.state.config = {
+          widget: {
+            button_text: 'Shopping Assistant',
+            position: 'bottom-right',
+            primary_colour: '#1a1a1a',
+            secondary_colour: '#ffffff',
+            greeting: 'Hi there! Looking for recommendations today?'
+          },
+          assistant: {
+            assistant_name: 'Shopping Assistant',
+            is_active: false
+          }
+        };
       }
+      this.render();
     }
 
     async trackEvent(type, payload = {}) {

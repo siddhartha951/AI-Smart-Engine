@@ -45,6 +45,10 @@ export interface AssistantSettings {
   store_id: string;
   assistant_name: string;
   is_active?: boolean;
+  tone?: string;
+  welcome_message?: string;
+  custom_prompt?: string;
+  knowledge_base?: string;
   allowed_topics: string[];
   support_contact: string;
   privacy_policy_url: string;

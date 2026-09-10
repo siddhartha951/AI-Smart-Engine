@@ -109,14 +109,19 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
           assistant_name = $2, 
           welcome_message = $3,
           tone = $4,
-          support_contact = $5
-         WHERE store_id = $6`,
+          support_contact = $5,
+          custom_prompt = $6,
+          knowledge_base = $7,
+          updated_at = NOW()
+         WHERE store_id = $8`,
         [
           assistant.is_active !== undefined ? assistant.is_active : (old.is_active ?? true),
           assistant.assistant_name !== undefined ? assistant.assistant_name : (old.assistant_name ?? 'Assistant'),
           assistant.welcome_message !== undefined ? assistant.welcome_message : (old.welcome_message ?? 'Hi there!'),
           assistant.tone !== undefined ? assistant.tone : (old.tone ?? 'friendly and helpful'),
           assistant.support_contact !== undefined ? assistant.support_contact : (old.support_contact ?? 'support@store.com'),
+          assistant.custom_prompt !== undefined ? assistant.custom_prompt : (old.custom_prompt ?? ''),
+          assistant.knowledge_base !== undefined ? assistant.knowledge_base : (old.knowledge_base ?? ''),
           storeId
         ]
       );
@@ -136,6 +141,32 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
     }
 
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:storeId/agent/upload-knowledge', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { text_content, title } = req.body;
+    if (!text_content || typeof text_content !== 'string') {
+      return res.status(400).json({ success: false, message: 'Missing text_content string' });
+    }
+
+    const db = getDatabaseClient();
+    const old = await db.query('SELECT knowledge_base FROM assistant_settings WHERE store_id = $1', [storeId]);
+    const currentKb = old.rows[0]?.knowledge_base || '';
+    const header = title ? `\n--- Document: ${title} ---\n` : '\n--- Document ---\n';
+    const updatedKb = (currentKb + '\n' + header + text_content).trim();
+
+    await db.query('UPDATE assistant_settings SET knowledge_base = $1, updated_at = NOW() WHERE store_id = $2', [updatedKb, storeId]);
+
+    res.json({
+      success: true,
+      message: 'Knowledge base updated successfully',
+      knowledge_base: updatedKb,
+    });
   } catch (err) {
     next(err);
   }
@@ -243,7 +274,119 @@ router.post('/:storeId/shopify/test', enforceStoreAccess, async (req: Request, r
 });
 
 router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, res: Response, next) => {
-  res.status(501).json({ success: false, message: 'Available after Phase 10' });
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const { getShopifyAdapter } = await import('../../providers/shopify');
+    const adapter = getShopifyAdapter();
+
+    let result = { count: 0, products: [] as any[] };
+    if (adapter.syncAllProducts) {
+      result = await adapter.syncAllProducts(storeId);
+    } else {
+      const list = await adapter.searchProducts(storeId, {});
+      result = { count: list.length, products: list };
+    }
+
+    // Update stores updated_at so dashboard displays fresh sync timestamp
+    await db.query('UPDATE stores SET updated_at = NOW() WHERE id = $1', [storeId]);
+
+    res.json({
+      success: true,
+      message: `Successfully synced ${result.count} products from Shopify.`,
+      count: result.count,
+      total_synced: result.count,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Product sync failed' });
+  }
+});
+
+// 4.1 Leads & Opt-ins Reporting with Conversion Tracking
+router.get('/:storeId/leads', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+
+    const leadsQuery = `
+      SELECT 
+        mc.id,
+        mc.store_id,
+        mc.visitor_id,
+        mc.opted_in,
+        mc.captured_at,
+        mc.source,
+        v.email,
+        v.phone,
+        v.anonymous_id
+      FROM marketing_consents mc
+      JOIN visitors v ON v.id = mc.visitor_id
+      WHERE mc.store_id = $1
+      ORDER BY mc.captured_at DESC
+      LIMIT 100
+    `;
+
+    const leadsRes = await db.query(leadsQuery, [storeId]);
+    const visitorIds = leadsRes.rows.map((r: any) => r.visitor_id);
+
+    const purchasesByVisitor: Record<string, any> = {};
+    if (visitorIds.length > 0) {
+      const placeholders = visitorIds.map((_, idx) => `$${idx + 2}`).join(', ');
+      const purchasesRes = await db.query(
+        `SELECT visitor_id, payload, created_at FROM events 
+         WHERE store_id = $1 AND type = 'purchase_completed' AND visitor_id IN (${placeholders})
+         ORDER BY created_at DESC`,
+        [storeId, ...visitorIds]
+      );
+      for (const p of purchasesRes.rows) {
+        if (!purchasesByVisitor[p.visitor_id]) {
+          purchasesByVisitor[p.visitor_id] = p;
+        }
+      }
+    }
+
+    const leads = leadsRes.rows.map((r: any) => {
+      const purchase = purchasesByVisitor[r.visitor_id];
+      let payload = purchase?.payload;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch {}
+      }
+      payload = payload || {};
+      const converted = Boolean(purchase);
+
+      return {
+        id: r.id,
+        email: r.email || 'Anonymous Visitor',
+        phone: r.phone || '',
+        opted_in: r.opted_in,
+        captured_at: r.captured_at,
+        source: r.source || 'widget_chat_v1',
+        converted,
+        order_id: payload.order_id || null,
+        order_total: payload.total_price || null,
+      };
+    });
+
+    const totalLeads = leads.length;
+    const optedInCount = leads.filter((r: any) => r.opted_in).length;
+    const convertedCount = leads.filter((r: any) => r.converted).length;
+    const conversionRate = totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : '0';
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          total_leads: totalLeads,
+          opted_in: optedInCount,
+          converted: convertedCount,
+          conversion_rate: conversionRate + '%',
+        },
+        leads,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // 5. Email Automation

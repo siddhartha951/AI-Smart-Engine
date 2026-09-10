@@ -25,6 +25,9 @@ export interface AiRequestContext {
   assistantSettings: {
     assistant_name: string;
     allowed_topics: string[];
+    custom_prompt?: string;
+    knowledge_base?: string;
+    support_contact?: string;
   };
 }
 

@@ -48,6 +48,7 @@
         <ul class="nav-links">
           <li><a href="#" data-target="overview" class="active">Overview</a></li>
           <li><a href="#" data-target="my-agent">My Agent</a></li>
+          <li><a href="#" data-target="leads-optins">Leads & Opt-ins</a></li>
           <li><a href="#" data-target="widget-settings">Widget Settings</a></li>
           <li><a href="#" data-target="shopify-connection">Shopify Connection</a></li>
           <li><a href="#" data-target="email-automation">Email Automation</a></li>
@@ -99,7 +100,10 @@
 
         <!-- 2. My Agent Section -->
         <section id="my-agent" class="content-section hidden">
-          <header><h2>My Agent</h2></header>
+          <header>
+            <h2>My Agent</h2>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">Customize how your AI sales assistant interacts with shoppers and train it with custom prompts or product catalogs.</p>
+          </header>
           <form id="agent-form">
             <div class="form-group toggle-group">
               <label for="agent-is-active">Enable Assistant</label>
@@ -128,13 +132,71 @@
               <label for="agent-support">Support Email/WhatsApp</label>
               <input type="text" id="agent-support">
             </div>
+
+            <div class="form-group">
+              <label for="agent-custom-prompt">Custom Persona & Instructions (Prompt Training)</label>
+              <textarea id="agent-custom-prompt" rows="4" placeholder="Give your AI assistant specific behavioral rules, phrases to use, discounts to pitch, or brand voice guidelines..."></textarea>
+              <small>Explain exactly how the agent should speak, rules for recommending items, or special sales promotions.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="agent-doc-upload">Train with Documents / Catalog (Upload PDF or Text File)</label>
+              <input type="file" id="agent-doc-upload" accept=".pdf,.txt,.md,.json">
+              <small>Upload product catalog sheets, brand story, or FAQs to train your agent automatically.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="agent-knowledge-base">Knowledge Base & Reference Data</label>
+              <textarea id="agent-knowledge-base" rows="6" placeholder="Document guidelines, product details, or catalog text extracted for the AI to reference..."></textarea>
+              <small>The AI assistant directly references this knowledge when conversing with customers.</small>
+            </div>
+
             <div class="form-group">
               <label for="store-faq">Store Policies & FAQ</label>
-              <textarea id="store-faq" rows="5"></textarea>
+              <textarea id="store-faq" rows="4"></textarea>
               <small>Provide your delivery rules, returns policy, and common FAQs so the agent won't hallucinate.</small>
             </div>
             <button type="submit" class="btn-primary">Save Agent Settings</button>
           </form>
+        </section>
+
+        <!-- 2.5 Leads & Opt-ins Section -->
+        <section id="leads-optins" class="content-section hidden">
+          <header>
+            <h2>Marketing Opt-ins & Leads</h2>
+            <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">
+              Track visitors who opted in for marketing messages and monitor real-time purchase conversions.
+            </p>
+          </header>
+
+          <div class="metrics-grid" style="margin-bottom: 24px;">
+            <div class="stat-card"><h3>Total Captured Leads</h3><p id="stat-leads-total">--</p></div>
+            <div class="stat-card"><h3>Opted-In</h3><p id="stat-leads-opted">--</p></div>
+            <div class="stat-card"><h3>Converted Purchases</h3><p id="stat-leads-converted">--</p></div>
+            <div class="stat-card"><h3>Conversion Rate</h3><p id="stat-leads-rate">--%</p></div>
+          </div>
+
+          <div class="table-container glass-panel" style="padding: 20px; overflow-x: auto; border-radius: 12px;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 13px;">
+                  <th style="padding: 12px 10px;">Contact / Email</th>
+                  <th style="padding: 12px 10px;">Phone</th>
+                  <th style="padding: 12px 10px;">Status</th>
+                  <th style="padding: 12px 10px;">Captured Date</th>
+                  <th style="padding: 12px 10px;">Source</th>
+                  <th style="padding: 12px 10px;">Conversion</th>
+                </tr>
+              </thead>
+              <tbody id="leads-table-body">
+                <tr>
+                  <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    Loading leads data...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <!-- 3. Widget Settings Section -->

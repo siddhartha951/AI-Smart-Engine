@@ -118,6 +118,7 @@ export function createApp(deps: AppDependencies = {}): Express {
                   assistant_name: assistantSettings.assistant_name,
                   privacy_policy_url: assistantSettings.privacy_policy_url,
                   support_contact: assistantSettings.support_contact,
+                  is_active: assistantSettings.is_active,
                 }
               : null,
           },
@@ -255,6 +256,20 @@ export function createApp(deps: AppDependencies = {}): Express {
           merchantRepo.getAssistantSettings(storeId)
         ]);
 
+        // If assistant is paused or inactive, respond gracefully instead of failing
+        if (settings && settings.is_active === false) {
+          const contact = settings.support_contact || 'our store support';
+          const offlineContent = `Our shopping assistant is currently undergoing maintenance. Please feel free to explore our catalog or reach out to us at ${contact}!`;
+          await chatRepo.addMessage(storeId, session_id, 'assistant', offlineContent, 0, 0, 0);
+          return res.json({
+            success: true,
+            data: {
+              content: offlineContent,
+              recommended_products: [],
+            },
+          });
+        }
+
         // Simple intent extraction (mock implementation) for budget filtering
         const maxBudgetMatch = message.match(/under\s*\$?(\d+)/i);
         const budgetMax = maxBudgetMatch ? parseInt(maxBudgetMatch[1], 10) : undefined;
@@ -273,7 +288,13 @@ export function createApp(deps: AppDependencies = {}): Express {
           sessionId: session_id,
           catalogSubset,
           storePolicies: policies || { delivery_policy: '', returns_policy: '', faq_content: '' },
-          assistantSettings: settings || { assistant_name: 'Assistant', allowed_topics: [] }
+          assistantSettings: {
+            assistant_name: settings?.assistant_name || 'Assistant',
+            allowed_topics: settings?.allowed_topics || [],
+            custom_prompt: (settings as any)?.custom_prompt || '',
+            knowledge_base: (settings as any)?.knowledge_base || '',
+            support_contact: settings?.support_contact || '',
+          }
         });
 
         // Save AI message and record usage
