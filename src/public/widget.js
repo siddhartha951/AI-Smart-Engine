@@ -17,6 +17,85 @@
   }
   const API_BASE_URL = detectBaseUrl();
 
+  function buildUtmProductUrl(productUrl, sessionId, visitorId, storeId) {
+    if (!productUrl || productUrl === '#') return '#';
+    try {
+      const url = new URL(productUrl, window.location.origin);
+      url.searchParams.set('utm_source', 'ai_smart_engine');
+      url.searchParams.set('utm_medium', 'shopping_assistant');
+      url.searchParams.set('utm_campaign', 'ai_recommendation');
+      if (sessionId) url.searchParams.set('ai_sid', sessionId);
+      if (visitorId) url.searchParams.set('ai_vid', visitorId);
+      if (storeId) url.searchParams.set('ai_store', storeId);
+      return url.toString();
+    } catch (_) {
+      const sep = productUrl.includes('?') ? '&' : '?';
+      return `${productUrl}${sep}utm_source=ai_smart_engine&utm_medium=shopping_assistant&utm_campaign=ai_recommendation&ai_sid=${sessionId || ''}&ai_vid=${visitorId || ''}`;
+    }
+  }
+
+  async function syncShopifyCartAttributes(sessionId, visitorId) {
+    try {
+      if (!window.location.hostname.includes('myshopify.com') && !window.Shopify) {
+        return;
+      }
+      await fetch('/cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          attributes: {
+            '_ai_session_id': sessionId || '',
+            '_ai_visitor_id': visitorId || '',
+            'utm_source': 'ai_smart_engine',
+            'utm_medium': 'shopping_assistant',
+            'utm_campaign': 'ai_recommendation'
+          }
+        })
+      });
+    } catch (_) {}
+  }
+
+  function extractProductsFromMarkdown(content) {
+    if (!content) return { cleanText: '', cards: [] };
+    const cards = [];
+    const imgRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s\)]+)\)/g;
+    const linkRegex = /\[(?:View Product|Check out|Buy now|Product)[^\]]*\]\((https?:\/\/[^\s\)]+)\)/gi;
+    const priceRegex = /Price:\s*(?:₹|INR|Rs\.?|\$|£|€)?\s*(\d+(?:\.\d+)?)/i;
+
+    let imgMatch;
+    while ((imgMatch = imgRegex.exec(content)) !== null) {
+      const title = imgMatch[1] || 'Product';
+      const imgUrl = imgMatch[2];
+      let prodUrl = '#';
+      const linkMatch = linkRegex.exec(content);
+      if (linkMatch) {
+        prodUrl = linkMatch[1];
+      }
+      const priceMatch = content.match(priceRegex);
+      const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+      const currency = content.includes('₹') ? '₹' : (content.includes('£') ? '£' : (content.includes('$') ? '$' : 'INR'));
+
+      cards.push({
+        title,
+        image_url: imgUrl,
+        product_url: prodUrl,
+        price,
+        currency,
+        in_stock: true
+      });
+    }
+
+    const cleanText = content
+      .replace(/!\[.*?\]\(.*?\)/g, '')
+      .replace(/\[(?:View Product|Check out|Buy now|Product).*?\]\(.*?\)/gi, '')
+      .replace(/-\s*Price:\s*[^-\n]+/gi, '')
+      .replace(/\n\s*-\s*\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return { cleanText, cards };
+  }
+
   class ShoppingAssistantWidget extends HTMLElement {
     constructor() {
       super();
@@ -65,6 +144,17 @@
         console.error('AI Shopping Assistant: Missing data-widget-key or data-store-id attribute');
         return;
       }
+
+      // Restore previously saved session if active
+      try {
+        const savedSid = sessionStorage.getItem('ai_session_id') || localStorage.getItem('ai_session_id');
+        const savedVid = sessionStorage.getItem('ai_visitor_id') || localStorage.getItem('ai_visitor_id');
+        if (savedSid) this.sessionId = savedSid;
+        if (savedVid) this.visitorId = savedVid;
+        if (savedSid && savedVid) {
+          syncShopifyCartAttributes(savedSid, savedVid);
+        }
+      } catch (_) {}
       
       this.renderInit();
       await this.loadConfig();
@@ -130,6 +220,13 @@
         if (json.success) {
           this.sessionId = json.data.session_id;
           this.visitorId = json.data.visitor_id;
+          try {
+            sessionStorage.setItem('ai_session_id', this.sessionId);
+            sessionStorage.setItem('ai_visitor_id', this.visitorId);
+            localStorage.setItem('ai_session_id', this.sessionId);
+            localStorage.setItem('ai_visitor_id', this.visitorId);
+            syncShopifyCartAttributes(this.sessionId, this.visitorId);
+          } catch (_) {}
         }
       } catch (err) {
         console.error('Failed to start session', err);
@@ -458,51 +555,164 @@
           margin-top: 10px;
         }
 
-        .product-card {
-          background: #fff;
-          border: 1px solid #eaeaea;
-          border-radius: 8px;
-          padding: 10px;
+        .product-cards-list {
           display: flex;
+          flex-direction: column;
           gap: 10px;
-          align-items: flex-start;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+          margin-top: 10px;
+          width: 100%;
         }
 
-        .product-card img {
-          width: 60px;
-          height: 60px;
+        .product-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .product-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+          border-color: #cbd5e1;
+        }
+
+        .product-card-thumb-wrap {
+          position: relative;
+          width: 100%;
+          height: 140px;
+          background: #f1f5f9;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .product-card-thumb {
+          width: 100%;
+          height: 100%;
           object-fit: cover;
-          border-radius: 4px;
-          background: #f9f9f9;
+          transition: transform 0.3s ease;
         }
 
-        .product-card-details {
-          flex: 1;
+        .product-card:hover .product-card-thumb {
+          transform: scale(1.04);
+        }
+
+        .product-badge-stock {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: #10b981;
+          color: #ffffff;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+
+        .product-badge-out {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: #ef4444;
+          color: #ffffff;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 12px;
+          text-transform: uppercase;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+
+        .product-card-info {
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
         }
 
         .product-card-title {
-          font-size: 14px;
-          font-weight: bold;
-          margin-bottom: 4px;
-          color: #333;
+          font-size: 13px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0;
+          line-height: 1.35;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .product-card-price-row {
+          display: flex;
+          align-items: baseline;
+          gap: 4px;
         }
 
         .product-card-price {
-          font-size: 13px;
-          color: #666;
-          margin-bottom: 8px;
+          font-size: 15px;
+          font-weight: 800;
+          color: #047857;
         }
 
-        .product-card a {
-          display: inline-block;
+        .product-card-btn-group {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-top: 4px;
+        }
+
+        .btn-view-product {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 7px 10px;
+          background: #f8fafc;
+          color: #334155;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: all 0.15s;
+          cursor: pointer;
+        }
+
+        .btn-view-product:hover {
+          background: #e2e8f0;
+          color: #0f172a;
+          text-decoration: none;
+        }
+
+        .btn-add-to-cart {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 7px 10px;
           background: ${primaryColor};
           color: ${secondaryColor};
-          text-decoration: none;
-          padding: 6px 12px;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: bold;
+          border: none;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+
+        .btn-add-to-cart:hover {
+          opacity: 0.9;
+        }
+
+        .btn-add-to-cart.added {
+          background: #10b981 !important;
+          color: #ffffff !important;
         }
         
         /* Mobile behavior */
@@ -604,21 +814,66 @@
       
       if (this.state.view === 'chat') {
         const messagesHtml = this.state.messages.map(m => {
-          let recsHtml = '';
-          if (m.recommendations && m.recommendations.length > 0) {
-            recsHtml = '<div class="product-list">' + m.recommendations.map(r => `
-              <div class="product-card">
-                <div class="product-card-details">
-                  <div class="product-card-title">${r.title}</div>
-                  <div class="product-card-price">${r.currency} ${r.price}</div>
-                  <a href="#" target="_blank">Add to Cart</a>
-                </div>
-              </div>
-            `).join('') + '</div>';
+          let recs = Array.isArray(m.recommendations) ? [...m.recommendations] : [];
+          let displayText = m.content || '';
+
+          // If recommendations are empty, parse potential markdown from legacy/streaming messages
+          if (recs.length === 0 && displayText.includes('http')) {
+            const extracted = extractProductsFromMarkdown(displayText);
+            if (extracted.cards.length > 0) {
+              recs = extracted.cards;
+              displayText = extracted.cleanText;
+            }
           }
+
+          let recsHtml = '';
+          if (recs.length > 0) {
+            recsHtml = '<div class="product-cards-list">' + recs.map(r => {
+              const rawPrice = r.price !== undefined ? r.price : '';
+              const currency = r.currency || '₹';
+              const priceDisplay = currency.length === 1 ? `${currency}${rawPrice}` : `${currency} ${rawPrice}`;
+              const trackingUrl = buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId);
+              const inStock = r.in_stock !== false;
+              const imgUrl = r.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
+
+              return `
+                <div class="product-card">
+                  <div class="product-card-thumb-wrap">
+                    <img src="${imgUrl}" alt="${r.title || 'Product'}" class="product-card-thumb" loading="lazy" />
+                    <span class="${inStock ? 'product-badge-stock' : 'product-badge-out'}">
+                      ${inStock ? 'In Stock' : 'Out of Stock'}
+                    </span>
+                  </div>
+                  <div class="product-card-info">
+                    <h4 class="product-card-title" title="${r.title || ''}">${r.title || 'Product'}</h4>
+                    <div class="product-card-price-row">
+                      <span class="product-card-price">${priceDisplay}</span>
+                    </div>
+                    <div class="product-card-btn-group">
+                      <a href="${trackingUrl}" target="_blank" class="btn-view-product" 
+                         data-product-id="${r.product_id || r.productId || ''}" 
+                         data-title="${encodeURIComponent(r.title || '')}"
+                         data-url="${encodeURIComponent(trackingUrl)}">
+                        View Product ↗
+                      </a>
+                      <button type="button" class="btn-add-to-cart" 
+                              data-variant-id="${r.variant_id || r.variantId || ''}" 
+                              data-product-id="${r.product_id || r.productId || ''}" 
+                              data-title="${encodeURIComponent(r.title || '')}" 
+                              data-price="${rawPrice}" 
+                              data-currency="${r.currency || 'INR'}">
+                        Add to Cart 🛒
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('') + '</div>';
+          }
+
           return `
             <div class="msg ${m.role}">
-              ${m.content}
+              <div class="msg-text">${displayText}</div>
               ${recsHtml}
             </div>
           `;
@@ -705,6 +960,83 @@
           }
         }, 100);
       }
+
+      // Attach click events for product card "View Product" buttons
+      this.shadowRoot.querySelectorAll('.btn-view-product').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const prodId = btn.getAttribute('data-product-id');
+          const title = decodeURIComponent(btn.getAttribute('data-title') || '');
+          const url = decodeURIComponent(btn.getAttribute('data-url') || '');
+          this.trackEvent('product_click', {
+            product_id: prodId,
+            title,
+            url,
+            utm_source: 'ai_smart_engine',
+            utm_medium: 'shopping_assistant',
+            utm_campaign: 'ai_recommendation'
+          });
+          syncShopifyCartAttributes(this.sessionId, this.visitorId);
+        });
+      });
+
+      // Attach click events for product card "Add to Cart" buttons
+      this.shadowRoot.querySelectorAll('.btn-add-to-cart').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          const variantId = btn.getAttribute('data-variant-id');
+          const prodId = btn.getAttribute('data-product-id');
+          const title = decodeURIComponent(btn.getAttribute('data-title') || '');
+          const price = btn.getAttribute('data-price');
+          const currency = btn.getAttribute('data-currency');
+
+          btn.disabled = true;
+          btn.textContent = 'Adding...';
+
+          // 1. Sync cart note attributes to Shopify cart
+          await syncShopifyCartAttributes(this.sessionId, this.visitorId);
+
+          // 2. Add item to Shopify cart if on storefront
+          if (variantId && (window.Shopify || window.location.hostname.includes('myshopify.com'))) {
+            try {
+              await fetch('/cart/add.js', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                  id: variantId,
+                  quantity: 1,
+                  properties: {
+                    '_ai_recommended': 'true',
+                    '_ai_session_id': this.sessionId || ''
+                  }
+                })
+              });
+              document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+              document.dispatchEvent(new CustomEvent('cart:updated', { bubbles: true }));
+            } catch (_) {}
+          }
+
+          // 3. Track event in backend
+          await this.trackEvent('add_to_cart', {
+            product_id: prodId,
+            variant_id: variantId,
+            title,
+            price: parseFloat(price) || 0,
+            currency: currency || 'INR',
+            utm_source: 'ai_smart_engine',
+            utm_medium: 'shopping_assistant',
+            utm_campaign: 'ai_recommendation'
+          });
+
+          // 4. Update button UI
+          btn.classList.add('added');
+          btn.textContent = 'Added ✓';
+          setTimeout(() => {
+            btn.classList.remove('added');
+            btn.disabled = false;
+            btn.textContent = 'Add to Cart 🛒';
+          }, 2000);
+        });
+      });
     }
   }
 
@@ -727,6 +1059,54 @@
       document.body.appendChild(el);
     }
   }
+
+  // Storefront attribution listener & cart attributes sync
+  function hookStorefrontCartEvents() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const aiSid = params.get('ai_sid');
+      const aiVid = params.get('ai_vid');
+      const utmSource = params.get('utm_source');
+      if (aiSid) {
+        sessionStorage.setItem('ai_session_id', aiSid);
+        localStorage.setItem('ai_session_id', aiSid);
+      }
+      if (aiVid) {
+        sessionStorage.setItem('ai_visitor_id', aiVid);
+        localStorage.setItem('ai_visitor_id', aiVid);
+      }
+      if (utmSource) {
+        sessionStorage.setItem('ai_utm_source', utmSource);
+      }
+
+      const activeSid = aiSid || sessionStorage.getItem('ai_session_id') || localStorage.getItem('ai_session_id');
+      const activeVid = aiVid || sessionStorage.getItem('ai_visitor_id') || localStorage.getItem('ai_visitor_id');
+      if (activeSid && activeVid) {
+        syncShopifyCartAttributes(activeSid, activeVid);
+      }
+
+      // Intercept storefront fetch calls to /cart/add or /cart/add.js
+      const origFetch = window.fetch;
+      if (origFetch) {
+        window.fetch = async function (...args) {
+          const res = await origFetch.apply(this, args);
+          try {
+            const url = args[0] ? (typeof args[0] === 'string' ? args[0] : args[0].url) : '';
+            if (url && (url.includes('/cart/add') || url.includes('/cart/add.js'))) {
+              const sid = sessionStorage.getItem('ai_session_id') || localStorage.getItem('ai_session_id');
+              const vid = sessionStorage.getItem('ai_visitor_id') || localStorage.getItem('ai_visitor_id');
+              if (sid && vid) {
+                syncShopifyCartAttributes(sid, vid);
+              }
+            }
+          } catch (_) {}
+          return res;
+        };
+      }
+    } catch (_) {}
+  }
+
+  hookStorefrontCartEvents();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', autoMountWidget);

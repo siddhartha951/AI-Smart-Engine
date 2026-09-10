@@ -122,6 +122,8 @@ export interface Recommendation {
   price: number;
   currency: string;
   reason: string;
+  image_url?: string;
+  product_url?: string;
   created_at: Date;
 }
 

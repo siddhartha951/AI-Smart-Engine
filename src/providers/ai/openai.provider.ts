@@ -41,6 +41,12 @@ Strict Rules:
    - Returns: ${context.storePolicies.returns_policy}
    - FAQ: ${context.storePolicies.faq_content}
 
+CRITICAL DISPLAY & FORMATTING RULES:
+- DO NOT write raw markdown image tags like \`![alt](image_url)\` or links like \`[View Product](product_url)\` in your response text.
+- DO NOT output bulleted lists of URLs or images.
+- Write a short, warm, natural conversational introduction (1-2 sentences) about the recommended product(s).
+- ALWAYS call the \`recommend_products\` function with the corresponding product ID(s) from the subset. The system will automatically render interactive Product Cards with image, price, and direct checkout buttons below your message!
+
 Available Catalog Subset (JSON):
 ${JSON.stringify(context.catalogSubset, null, 2)}
 `;
@@ -100,6 +106,31 @@ ${JSON.stringify(context.catalogSubset, null, 2)}
           // Ensure recommended IDs actually exist in the subset
           const validIds = context.catalogSubset.map(p => p.id);
           recommendedIds = (args.product_ids || []).filter((id: string) => validIds.includes(id));
+        }
+      }
+
+      // Sanitize any accidental markdown images or links that the model might generate
+      finalContent = finalContent
+        .replace(/!\[.*?\]\(.*?\)/g, '')
+        .replace(/\[(?:View Product|Check out|Buy now|Product).*?\]\(.*?\)/gi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+      // If function was not called or recommendedIds is empty, check if finalContent or user query matches catalog items
+      if (recommendedIds.length === 0 && context.catalogSubset.length > 0) {
+        const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user')?.content.toLowerCase() || '';
+        const found = context.catalogSubset.filter(p => {
+          const title = p.title.toLowerCase();
+          const handle = (p.handle || '').toLowerCase();
+          const cat = (p.category || '').toLowerCase();
+          return (
+            (title && finalContent.toLowerCase().includes(title)) ||
+            (handle && finalContent.toLowerCase().includes(handle)) ||
+            (cat && lastUserMsg.includes(cat))
+          );
+        });
+        if (found.length > 0) {
+          recommendedIds = found.slice(0, 4).map(p => p.id);
         }
       }
 

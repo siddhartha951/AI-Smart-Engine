@@ -93,6 +93,8 @@ export class ChatRepository {
       price: number;
       currency?: string;
       reason: string;
+      imageUrl?: string;
+      productUrl?: string;
     }
   ): Promise<Recommendation> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
@@ -103,8 +105,8 @@ export class ChatRepository {
     }
 
     const res = await this.db.query<Recommendation>(
-      `INSERT INTO recommendations (store_id, session_id, product_id, variant_id, title, price, currency, reason, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      `INSERT INTO recommendations (store_id, session_id, product_id, variant_id, title, price, currency, reason, image_url, product_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        RETURNING *`,
       [
         storeId,
@@ -115,6 +117,8 @@ export class ChatRepository {
         rec.price,
         rec.currency || 'GBP',
         rec.reason,
+        rec.imageUrl || null,
+        rec.productUrl || null,
       ]
     );
     return res.rows[0];

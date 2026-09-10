@@ -318,26 +318,62 @@ export function createApp(deps: AppDependencies = {}): Express {
         );
 
         // Save recommendations if any
+        let targetProductIds = aiRes.recommended_product_ids || [];
+        if (targetProductIds.length === 0 && catalogSubset.length > 0) {
+          const lowerContent = aiRes.content.toLowerCase();
+          const lowerMsg = message.toLowerCase();
+          const matched = catalogSubset.filter(p => 
+            lowerContent.includes(p.title.toLowerCase()) || 
+            (p.handle && lowerContent.includes(p.handle.toLowerCase())) ||
+            lowerMsg.includes(p.title.toLowerCase()) ||
+            (p.category && lowerMsg.includes(p.category.toLowerCase()))
+          );
+          if (matched.length > 0) {
+            targetProductIds = matched.slice(0, 4).map(p => p.id);
+          }
+        }
+
         const recommendations = [];
-        if (aiRes.recommended_product_ids.length > 0) {
-          const validProducts = catalogSubset.filter(p => aiRes.recommended_product_ids.includes(p.id));
+        if (targetProductIds.length > 0) {
+          const validProducts = catalogSubset.filter(p => targetProductIds.includes(p.id));
           for (const p of validProducts) {
             const rec = await chatRepo.addRecommendation(storeId, session_id, {
               productId: p.id,
-              variantId: p.variant_id,
+              variantId: p.variant_id || '',
               title: p.title,
               price: p.price,
-              currency: p.currency,
-              reason: 'Recommended by AI'
+              currency: p.currency || 'INR',
+              reason: 'Recommended by AI',
+              imageUrl: p.image_url,
+              productUrl: p.product_url,
             });
-            recommendations.push(rec);
+            recommendations.push({
+              ...rec,
+              id: rec.id,
+              product_id: p.id,
+              variant_id: p.variant_id || '',
+              title: p.title,
+              price: p.price,
+              currency: p.currency || 'INR',
+              in_stock: p.in_stock ?? true,
+              image_url: p.image_url || '',
+              product_url: p.product_url || '',
+              handle: p.handle || '',
+            });
           }
         }
+
+        // Clean conversational text so no raw markdown images/links leak into the chat bubble
+        const cleanMessage = aiRes.content
+          .replace(/!\[.*?\]\(.*?\)/g, '')
+          .replace(/\[(?:View Product|Check out|Buy now|Product).*?\]\(.*?\)/gi, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
 
         res.json({
           success: true,
           data: {
-            message: aiRes.content,
+            message: cleanMessage,
             recommendations
           }
         });
