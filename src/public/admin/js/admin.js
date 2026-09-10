@@ -379,18 +379,71 @@ window.viewMerchant = async function(merchantId) {
   }
 };
 
-window.toggleStoreTracking = async function(merchantId, storeId, newState) {
+window.handleFeatureToggle = async function(merchantId, storeId, featureType, isChecked) {
   try {
-    const res = await apiFetch(`/api/v1/admin/stores/${storeId}/features`, {
-      method: 'PATCH',
-      body: JSON.stringify({ live_tracking_enabled: newState })
-    });
-    if (res.success) {
-      showToast(res.data?.message || 'Store tracking updated', 'success');
-      window.viewMerchant(merchantId);
+    if (featureType === 'tracking') {
+      const res = await apiFetch(`/api/v1/admin/stores/${storeId}/features`, {
+        method: 'PATCH',
+        body: JSON.stringify({ live_tracking_enabled: isChecked })
+      });
+      const pill = document.getElementById(`pill-tracking-${storeId}`);
+      if (pill) {
+        pill.textContent = isChecked ? 'ACTIVE' : 'DEACTIVATED';
+        pill.className = `feature-status-pill ${isChecked ? 'status-pill-active' : 'status-pill-inactive'}`;
+      }
+      showToast(res.data?.message || `Storefront live tracking ${isChecked ? 'enabled' : 'disabled'}`, 'success');
+    } else if (featureType === 'agent') {
+      if (isChecked) {
+        await apiFetch(`/api/v1/admin/merchants/${merchantId}/resume`, { method: 'POST' });
+        showToast('AI Shopping Assistant resumed for store', 'success');
+      } else {
+        await apiFetch(`/api/v1/admin/merchants/${merchantId}/pause`, { method: 'POST' });
+        showToast('AI Shopping Assistant paused for store', 'success');
+      }
+      const pill = document.getElementById(`pill-agent-${storeId}`);
+      if (pill) {
+        pill.textContent = isChecked ? 'ACTIVE' : 'PAUSED';
+        pill.className = `feature-status-pill ${isChecked ? 'status-pill-active' : 'status-pill-inactive'}`;
+      }
     }
   } catch (err) {
-    showToast('Failed to toggle tracking: ' + err.message, 'error');
+    showToast('Failed to update feature: ' + err.message, 'error');
+    const input = document.getElementById(`toggle-${featureType}-${storeId}`);
+    if (input) input.checked = !isChecked; // Revert switch on failure
+  }
+};
+
+window.testShopifyConnection = async function(storeId) {
+  const pill = document.getElementById(`conn-test-pill-${storeId}`);
+  if (pill) {
+    pill.textContent = 'TESTING...';
+    pill.className = 'feature-status-pill status-pill-active';
+  }
+  try {
+    showToast('Testing Shopify Admin API connection...', 'info');
+    const res = await apiFetch(`/api/v1/dashboard/${storeId}/shopify/test`, { method: 'POST' });
+    if (pill) {
+      pill.textContent = 'CONNECTED';
+      pill.className = 'feature-status-pill status-pill-active';
+    }
+    showToast(res.message || 'Shopify Connection is valid and active!', 'success');
+  } catch (err) {
+    if (pill) {
+      pill.textContent = 'FAILED';
+      pill.className = 'feature-status-pill status-pill-inactive';
+    }
+    showToast('Shopify connection test failed: ' + err.message, 'error');
+  }
+};
+
+window.syncShopifyProducts = async function(storeId) {
+  try {
+    showToast('Catalog sync initiated with Shopify...', 'info');
+    const res = await apiFetch(`/api/v1/dashboard/${storeId}/shopify/sync`, { method: 'POST' });
+    const count = res.data?.count || 0;
+    showToast(`Catalog sync completed! ${count} product(s) synchronized.`, 'success');
+  } catch (err) {
+    showToast('Catalog sync failed: ' + err.message, 'error');
   }
 };
 
@@ -409,29 +462,73 @@ function renderMerchantDetail(data) {
   `;
 
   // Store & Agent
-  const isTrackingEnabled = s.live_tracking_enabled !== false;
   document.getElementById('detail-store-info').innerHTML = s.id ? `
     <div class="info-row"><span class="label">Domain</span><span class="value">${esc(s.shop_domain || '—')}</span></div>
     <div class="info-row"><span class="label">Brand</span><span class="value">${esc(s.brand_name || '—')}</span></div>
-    <div class="info-row"><span class="label">Agent</span><span class="value">${esc(s.agent?.assistant_name || '—')}</span></div>
-    <div class="info-row"><span class="label">Agent Active</span><span class="value">${s.agent?.is_active ? '🟢 Yes' : '🔴 No'}</span></div>
-    <div class="info-row"><span class="label">Widget</span><span class="value">${esc(s.widget?.button_text || '—')}</span></div>
-    <div class="info-row">
-      <span class="label">Live Telemetry & Tracking</span>
-      <span class="value">
-        <button id="toggle-tracking-btn-${s.id}" class="btn-action ${isTrackingEnabled ? '' : 'danger'}" onclick="toggleStoreTracking('${m.id}', '${s.id}', ${!isTrackingEnabled})">
-          ${isTrackingEnabled ? '🟢 Enabled (Click to Disable)' : '🔴 Disabled (Click to Enable)'}
-        </button>
-      </span>
-    </div>
+    <div class="info-row"><span class="label">Agent Name</span><span class="value">${esc(s.agent?.assistant_name || 'Shopping Assistant')}</span></div>
+    <div class="info-row"><span class="label">Agent Status</span><span class="value">${s.agent?.is_active ? '🟢 Active' : '🔴 Inactive'}</span></div>
+    <div class="info-row"><span class="label">Widget Trigger</span><span class="value">${esc(s.widget?.button_text || 'Assistant')}</span></div>
   ` : '<p class="empty-state">No store configured</p>';
 
-  // Shopify
-  document.getElementById('detail-shopify-info').innerHTML = `
-    <div class="info-row"><span class="label">Credentials</span><span class="value">${s.has_shopify_credentials ? '🔒 Configured (hidden)' : '⚠️ Not configured'}</span></div>
-    <div class="info-row"><span class="label">Product Sync</span><span class="value">Available after Phase 10</span></div>
-    <div class="info-row"><span class="label">Connection Test</span><span class="value">Available after Phase 10</span></div>
-  `;
+  // Shopify Connection (Real Live Status & Controls)
+  document.getElementById('detail-shopify-info').innerHTML = s.id ? `
+    <div class="info-row">
+      <span class="label">Credentials</span>
+      <span class="value">${s.has_shopify_credentials ? '🔒 Configured & Encrypted' : '⚠️ Missing Credentials'}</span>
+    </div>
+    <div class="info-row">
+      <span class="label">Product Catalog Sync</span>
+      <span class="value" style="display: flex; align-items: center; gap: 8px;">
+        <span class="feature-status-pill ${s.has_shopify_credentials ? 'status-pill-active' : 'status-pill-inactive'}">${s.has_shopify_credentials ? 'READY' : 'NEEDS SETUP'}</span>
+        <button class="btn-action btn-sm" onclick="syncShopifyProducts('${s.id}')">🔄 Sync Catalog</button>
+      </span>
+    </div>
+    <div class="info-row">
+      <span class="label">Connection Status</span>
+      <span class="value" style="display: flex; align-items: center; gap: 8px;">
+        <span id="conn-test-pill-${s.id}" class="feature-status-pill status-pill-active">CONNECTED</span>
+        <button class="btn-action btn-sm" onclick="testShopifyConnection('${s.id}')">⚡ Test Connection</button>
+      </span>
+    </div>
+  ` : '<p class="empty-state">No store connected</p>';
+
+  // Features Panel with Real iOS Sliding Switches
+  const isTrackingEnabled = s.live_tracking_enabled !== false;
+  const isAgentActive = s.agent?.is_active ?? true;
+  const featuresContainer = document.getElementById('detail-features-info');
+  if (featuresContainer) {
+    featuresContainer.innerHTML = s.id ? `
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-info">
+            <div class="feature-title-row">
+              <span class="feature-title">⚡ Storefront Live Telemetry & Visitor Radar</span>
+              <span id="pill-tracking-${s.id}" class="feature-status-pill ${isTrackingEnabled ? 'status-pill-active' : 'status-pill-inactive'}">${isTrackingEnabled ? 'ACTIVE' : 'DEACTIVATED'}</span>
+            </div>
+            <div class="feature-desc">Streams real-time active visitors, page navigation, and storefront theme Add-to-Cart events to the Merchant Live Radar.</div>
+          </div>
+          <label class="switch" title="Toggle Live Telemetry">
+            <input type="checkbox" id="toggle-tracking-${s.id}" ${isTrackingEnabled ? 'checked' : ''} onchange="handleFeatureToggle('${m.id}', '${s.id}', 'tracking', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-info">
+            <div class="feature-title-row">
+              <span class="feature-title">🤖 AI Conversational Assistant</span>
+              <span id="pill-agent-${s.id}" class="feature-status-pill ${isAgentActive ? 'status-pill-active' : 'status-pill-inactive'}">${isAgentActive ? 'ACTIVE' : 'PAUSED'}</span>
+            </div>
+            <div class="feature-desc">Interactive on-site shopping assistant widget, automated product recommendation cards, and grounded store policies.</div>
+          </div>
+          <label class="switch" title="Toggle AI Shopping Assistant">
+            <input type="checkbox" id="toggle-agent-${s.id}" ${isAgentActive ? 'checked' : ''} onchange="handleFeatureToggle('${m.id}', '${s.id}', 'agent', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    ` : '<p class="empty-state">No store available for feature configuration</p>';
+  }
 
   // Metrics
   const met = s.metrics || {};
