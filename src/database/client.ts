@@ -19,24 +19,41 @@ export class PostgresClient implements IDatabaseClient {
 
   constructor(connectionStringOrConfig?: string | PoolConfig) {
     if (typeof connectionStringOrConfig === 'string') {
-      this.pool = new Pool({ connectionString: connectionStringOrConfig });
+      const isLocalOrInternal =
+        connectionStringOrConfig.includes('localhost') ||
+        connectionStringOrConfig.includes('railway.internal') ||
+        connectionStringOrConfig.includes('127.0.0.1');
+
+      this.pool = new Pool({
+        connectionString: connectionStringOrConfig,
+        ssl: isLocalOrInternal ? undefined : { rejectUnauthorized: false },
+      });
     } else {
       this.pool = new Pool(connectionStringOrConfig);
     }
   }
 
   async query<T extends QueryResultRow = any>(sqlText: string, params?: any[]): Promise<QueryResult<T>> {
-    const result = await this.pool.query<T>(sqlText, params);
+    const rawResult: any = await this.pool.query<T>(sqlText, params);
+    if (Array.isArray(rawResult)) {
+      const last = rawResult[rawResult.length - 1];
+      const rows = (last?.rows || []) as T[];
+      return {
+        rows,
+        rowCount: last?.rowCount ?? rows.length,
+      };
+    }
+    const rows = (rawResult?.rows || []) as T[];
     return {
-      rows: result.rows,
-      rowCount: result.rowCount ?? result.rows.length,
+      rows,
+      rowCount: rawResult?.rowCount ?? rows.length,
     };
   }
 
   async isHealthy(): Promise<boolean> {
     try {
       const res = await this.query('SELECT 1 as alive');
-      return res.rows.length > 0;
+      return (res.rows?.length || 0) > 0;
     } catch (err) {
       logger.error('Database health check failed', err);
       return false;
@@ -88,17 +105,26 @@ export class InMemoryPostgresClient implements IDatabaseClient {
   }
 
   async query<T extends QueryResultRow = any>(sqlText: string, params?: any[]): Promise<QueryResult<T>> {
-    const result = await this.adapter.query(sqlText, params);
+    const rawResult: any = await this.adapter.query(sqlText, params);
+    if (Array.isArray(rawResult)) {
+      const last = rawResult[rawResult.length - 1];
+      const rows = (last?.rows || []) as T[];
+      return {
+        rows,
+        rowCount: last?.rowCount ?? rows.length,
+      };
+    }
+    const rows = (rawResult?.rows || []) as T[];
     return {
-      rows: result.rows as T[],
-      rowCount: result.rowCount ?? result.rows.length,
+      rows,
+      rowCount: rawResult?.rowCount ?? rows.length,
     };
   }
 
   async isHealthy(): Promise<boolean> {
     try {
       const res = await this.query('SELECT 1 as alive');
-      return res.rows.length > 0;
+      return (res.rows?.length || 0) > 0;
     } catch {
       return false;
     }

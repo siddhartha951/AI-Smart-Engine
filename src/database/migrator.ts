@@ -14,7 +14,9 @@ export class Migrator {
 
   constructor(db?: IDatabaseClient, migrationsDir?: string) {
     this.db = db || getDatabaseClient();
-    this.migrationsDir = migrationsDir || path.resolve(process.cwd(), 'migrations');
+    const defaultDir = path.resolve(process.cwd(), 'migrations');
+    const fallbackDir = path.resolve(__dirname, '../../migrations');
+    this.migrationsDir = migrationsDir || (fs.existsSync(defaultDir) ? defaultDir : fallbackDir);
   }
 
   private async ensureMigrationTable(): Promise<void> {
