@@ -379,6 +379,21 @@ window.viewMerchant = async function(merchantId) {
   }
 };
 
+window.toggleStoreTracking = async function(merchantId, storeId, newState) {
+  try {
+    const res = await apiFetch(`/api/v1/admin/stores/${storeId}/features`, {
+      method: 'PATCH',
+      body: JSON.stringify({ live_tracking_enabled: newState })
+    });
+    if (res.success) {
+      showToast(res.data?.message || 'Store tracking updated', 'success');
+      window.viewMerchant(merchantId);
+    }
+  } catch (err) {
+    showToast('Failed to toggle tracking: ' + err.message, 'error');
+  }
+};
+
 function renderMerchantDetail(data) {
   const m = data.merchant;
   const s = data.stores[0] || {};
@@ -394,12 +409,21 @@ function renderMerchantDetail(data) {
   `;
 
   // Store & Agent
+  const isTrackingEnabled = s.live_tracking_enabled !== false;
   document.getElementById('detail-store-info').innerHTML = s.id ? `
     <div class="info-row"><span class="label">Domain</span><span class="value">${esc(s.shop_domain || '—')}</span></div>
     <div class="info-row"><span class="label">Brand</span><span class="value">${esc(s.brand_name || '—')}</span></div>
     <div class="info-row"><span class="label">Agent</span><span class="value">${esc(s.agent?.assistant_name || '—')}</span></div>
     <div class="info-row"><span class="label">Agent Active</span><span class="value">${s.agent?.is_active ? '🟢 Yes' : '🔴 No'}</span></div>
     <div class="info-row"><span class="label">Widget</span><span class="value">${esc(s.widget?.button_text || '—')}</span></div>
+    <div class="info-row">
+      <span class="label">Live Telemetry & Tracking</span>
+      <span class="value">
+        <button id="toggle-tracking-btn-${s.id}" class="btn-action ${isTrackingEnabled ? '' : 'danger'}" onclick="toggleStoreTracking('${m.id}', '${s.id}', ${!isTrackingEnabled})">
+          ${isTrackingEnabled ? '🟢 Enabled (Click to Disable)' : '🔴 Disabled (Click to Enable)'}
+        </button>
+      </span>
+    </div>
   ` : '<p class="empty-state">No store configured</p>';
 
   // Shopify

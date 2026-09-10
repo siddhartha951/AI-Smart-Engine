@@ -41,18 +41,21 @@ router.get('/bootstrap', (req, res, next) => createStoreAuthMiddleware()(req, re
 });
 
 const EventSchema = z.object({
-  widget_key: z.string().uuid(),
+  widget_key: z.string().min(1),
   session_id: z.string().optional(),
   visitor_id: z.string().uuid(),
   type: z.enum([
+    'page_view',
     'widget_opened',
     'product_click',
     'add_to_cart',
+    'purchase_completed',
     'purchase_signal',
     'unsubscribe',
     'email_submitted',
     'marketing_opted_in',
-    'recommendation_shown'
+    'recommendation_shown',
+    'heartbeat'
   ]),
   payload: z.record(z.string(), z.any()).optional()
 });

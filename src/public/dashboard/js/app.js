@@ -48,12 +48,15 @@ const views = {
 
 const sections = {
   'overview': document.getElementById('overview'),
+  'live-analytics': document.getElementById('live-analytics'),
   'my-agent': document.getElementById('my-agent'),
   'leads-optins': document.getElementById('leads-optins'),
   'widget-settings': document.getElementById('widget-settings'),
   'shopify-connection': document.getElementById('shopify-connection'),
   'email-automation': document.getElementById('email-automation')
 };
+
+let liveAnalyticsTimer = null;
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
@@ -67,6 +70,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+  // Mobile drawer navigation controls
+  const menuToggle = document.getElementById('mobile-menu-toggle');
+  const sidebarClose = document.getElementById('mobile-sidebar-close');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (menuToggle) menuToggle.addEventListener('click', openMobileSidebar);
+  if (sidebarClose) sidebarClose.addEventListener('click', closeMobileSidebar);
+  if (backdrop) backdrop.addEventListener('click', closeMobileSidebar);
+
+  // Live Analytics controls
+  const btnRefreshLive = document.getElementById('btn-refresh-live');
+  if (btnRefreshLive) {
+    btnRefreshLive.addEventListener('click', () => {
+      loadLiveAnalytics();
+      const timeframe = parseInt(document.getElementById('funnel-timeframe')?.value || '7', 10);
+      loadConversionFunnel(timeframe);
+      loadProductPerformance();
+      showToast('Live telemetry refreshed');
+    });
+  }
+
+  const funnelSelect = document.getElementById('funnel-timeframe');
+  if (funnelSelect) {
+    funnelSelect.addEventListener('change', (e) => {
+      loadConversionFunnel(parseInt(e.target.value, 10));
+    });
+  }
+
   // Login
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -99,6 +129,7 @@ function setupEventListeners() {
   document.getElementById('logout-btn').addEventListener('click', () => {
     state = { token: null, user: null, activeStoreId: null, stores: [] };
     localStorage.removeItem('auth_token');
+    stopLiveAnalyticsPolling();
     showView('login');
   });
 
@@ -106,12 +137,15 @@ function setupEventListeners() {
   document.querySelectorAll('.nav-links a').forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
+      const a = e.target.closest('a');
+      if (!a) return;
       document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
-      e.target.classList.add('active');
+      a.classList.add('active');
       
-      const target = e.target.getAttribute('data-target');
+      const target = a.getAttribute('data-target');
       showSection(target);
       loadSectionData(target);
+      closeMobileSidebar();
     });
   });
 
@@ -617,14 +651,42 @@ function showView(viewName) {
 }
 
 function showSection(sectionName) {
-  Object.values(sections).forEach(s => s.classList.add('hidden'));
-  if(sections[sectionName]) sections[sectionName].classList.remove('hidden');
+  Object.values(sections).forEach(s => { if (s) s.classList.add('hidden'); });
+  const targetSection = sections[sectionName];
+  if (targetSection) {
+    targetSection.classList.remove('hidden');
+    if (window.gsap) {
+      const animTargets = targetSection.querySelectorAll('.stat-card, .mini-stat-card, .glass-card, .live-pulse-hero-card, .table-container, form');
+      if (animTargets.length > 0) {
+        window.gsap.fromTo(animTargets, 
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.4, stagger: 0.04, ease: 'power2.out' }
+        );
+      }
+    }
+  }
+
+  // Manage live telemetry polling
+  if (sectionName === 'live-analytics') {
+    startLiveAnalyticsPolling();
+  } else {
+    stopLiveAnalyticsPolling();
+  }
 }
 
 async function loadSectionData(section) {
   if (!state.activeStoreId) return;
 
   try {
+    if (section === 'live-analytics') {
+      await Promise.all([
+        loadLiveAnalytics(),
+        loadConversionFunnel(parseInt(document.getElementById('funnel-timeframe')?.value || '7', 10)),
+        loadProductPerformance(),
+      ]);
+      return;
+    }
+
     const endpoints = {
       'overview': 'overview',
       'my-agent': 'agent',
@@ -645,6 +707,7 @@ async function loadSectionData(section) {
     const { data } = await res.json();
 
     if (section === 'overview') {
+      loadLiveShoppersPill();
       animateValue('stat-chats', data.chats);
       animateValue('stat-leads', data.leads);
       animateValue('stat-optins', data.opt_ins);
@@ -875,28 +938,389 @@ async function loadProductsTable(search = '') {
 }
 
 // UI Utilities
-function animateValue(id, target, duration = 1000) {
+function animateValue(id, target, duration = 0.8) {
   const obj = document.getElementById(id);
   if (!obj) return;
-  const start = parseInt(obj.textContent) || 0;
-  target = parseInt(target) || 0;
-  const range = target - start;
-  let current = start;
-  const increment = target > start ? 1 : -1;
-  const stepTime = Math.abs(Math.floor(duration / Math.max(range, 1)));
-  
-  if (range === 0) {
-    obj.textContent = target;
+  const rawText = obj.textContent || '';
+  const start = parseFloat(rawText.replace(/[^0-9.-]/g, '')) || 0;
+  const end = parseFloat(target) || 0;
+
+  if (window.gsap && typeof window.gsap.to === 'function') {
+    const tracker = { val: start };
+    window.gsap.to(tracker, {
+      val: end,
+      duration: Math.min(duration, 1.2),
+      ease: 'power2.out',
+      onUpdate: () => {
+        obj.textContent = Math.round(tracker.val).toLocaleString();
+      }
+    });
+  } else {
+    obj.textContent = end.toLocaleString();
+  }
+}
+
+// Mobile Sidebar Drawer
+function openMobileSidebar() {
+  const sidebar = document.getElementById('dashboard-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (sidebar) sidebar.classList.add('mobile-open');
+  if (backdrop) backdrop.classList.add('active');
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.getElementById('dashboard-sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (backdrop) backdrop.classList.remove('active');
+}
+
+// Live Analytics Telemetry & Real-Time Polling (Phase 2)
+function startLiveAnalyticsPolling() {
+  stopLiveAnalyticsPolling();
+  liveAnalyticsTimer = setInterval(() => {
+    if (!document.hidden && state.activeStoreId) {
+      loadLiveAnalytics(true);
+    }
+  }, 6000);
+}
+
+function stopLiveAnalyticsPolling() {
+  if (liveAnalyticsTimer) {
+    clearInterval(liveAnalyticsTimer);
+    liveAnalyticsTimer = null;
+  }
+}
+
+async function loadLiveShoppersPill() {
+  if (!state.activeStoreId) return;
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/analytics/live`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const { success, data } = await res.json();
+    if (success && data) {
+      const shoppers = data.active_shoppers || 0;
+      const pill = document.getElementById('sidebar-live-count');
+      const mobPill = document.getElementById('mobile-live-count');
+      if (pill) pill.textContent = shoppers;
+      if (mobPill) mobPill.textContent = shoppers;
+    }
+  } catch (_) {}
+}
+
+async function loadLiveAnalytics(isBackground = false) {
+  if (!state.activeStoreId) return;
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/analytics/live`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const { success, data } = await res.json();
+    if (!success || !data) return;
+
+    const shoppers = data.active_shoppers || 0;
+    animateValue('live-active-shoppers-count', shoppers);
+    const pill = document.getElementById('sidebar-live-count');
+    const mobPill = document.getElementById('mobile-live-count');
+    if (pill) pill.textContent = shoppers;
+    if (mobPill) mobPill.textContent = shoppers;
+
+    // Admin Deactivation Banner check
+    const deactBanner = document.getElementById('live-tracking-deactivated-banner');
+    if (deactBanner) {
+      if (data.live_tracking_enabled === false) {
+        deactBanner.classList.remove('hidden');
+      } else {
+        deactBanner.classList.add('hidden');
+      }
+    }
+
+    renderLiveActivityFeed(data.feed || []);
+  } catch (err) {
+    if (!isBackground) console.error('Failed to load live analytics:', err);
+  }
+}
+
+function renderLiveActivityFeed(feed) {
+  const container = document.getElementById('live-activity-feed');
+  if (!container) return;
+
+  if (!feed || feed.length === 0) {
+    container.innerHTML = `<div class="feed-empty-state">No customer activity recorded yet. Explore your storefront or open the widget to see live events.</div>`;
     return;
   }
-  
-  const timer = setInterval(() => {
-    current += increment;
-    obj.textContent = current;
-    if (current === target) {
-      clearInterval(timer);
+
+  container.innerHTML = feed.map(item => {
+    const timeStr = formatRelativeTime(new Date(item.created_at));
+    const badgeColor = item.badge_color || '#64748b';
+
+    let channelTag = 'Storefront';
+    let channelClass = 'source-storefront';
+    if (item.type === 'purchase_completed') {
+      channelTag = 'Shopify Order';
+      channelClass = 'source-shopify';
+    } else if (item.type === 'add_to_cart') {
+      channelTag = 'Cart Add';
+      channelClass = 'source-cart';
+    } else if (item.type === 'email_submitted' || item.type === 'marketing_opted_in') {
+      channelTag = 'Lead Capture';
+      channelClass = 'source-lead';
+    } else if (item.type === 'widget_opened' || item.type === 'product_click') {
+      channelTag = 'AI Assistant';
+      channelClass = 'source-assistant';
+    } else if (item.type === 'heartbeat') {
+      channelTag = 'Live Pulse';
+      channelClass = 'source-pulse';
     }
-  }, stepTime);
+
+    return `
+      <div class="feed-item" data-id="${item.id}">
+        <div class="feed-icon-box" style="border-left: 3px solid ${badgeColor};">
+          <span>${item.icon || '👀'}</span>
+        </div>
+        <div class="feed-body">
+          <div class="feed-top-row">
+            <div class="feed-label-wrap">
+              <span class="feed-label" style="color: ${badgeColor};">${escapeHtml(item.label)}</span>
+              <span class="source-tag ${channelClass}">${channelTag}</span>
+            </div>
+            <span class="feed-time">${timeStr}</span>
+          </div>
+          <div class="feed-detail" title="${escapeHtml(item.detail)}">${escapeHtml(item.detail)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadConversionFunnel(days = 7) {
+  if (!state.activeStoreId) return;
+  const container = document.getElementById('funnel-stages-list');
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/analytics/funnel?days=${days}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const { success, data } = await res.json();
+    if (!success || !data) throw new Error('Funnel data unavailable');
+
+    const totalVisitors = data.total_visitors || 0;
+    const visitorsEl = document.getElementById('funnel-visitors-count');
+    if (visitorsEl) visitorsEl.textContent = `${totalVisitors.toLocaleString()} Visitors`;
+
+    const convEl = document.getElementById('live-overall-conversion');
+    if (convEl) convEl.textContent = `${data.overall_conversion_rate}%`;
+
+    const stages = data.stages || [];
+    if (!container) return;
+
+    if (stages.length === 0) {
+      container.innerHTML = `<div class="funnel-loading">No funnel data available for the selected timeframe.</div>`;
+      renderFunnelInsights([], 0);
+      return;
+    }
+
+    container.innerHTML = stages.map((stage, idx) => {
+      const dropoffHtml = (idx > 0 && stage.dropoff_rate > 0)
+        ? `<span class="dropoff-tag">-${stage.dropoff_rate}% drop-off</span>`
+        : '';
+
+      return `
+        <div class="funnel-stage-item">
+          <div class="funnel-stage-header">
+            <div class="funnel-stage-title-wrap">
+              <span class="funnel-stage-step">${idx + 1}</span>
+              <span class="funnel-stage-name">${escapeHtml(stage.stage)}</span>
+              ${dropoffHtml}
+            </div>
+            <div class="funnel-stage-metrics">
+              <span class="funnel-stage-count">${stage.count.toLocaleString()}</span>
+              <span class="funnel-stage-pct">${stage.percentage}%</span>
+            </div>
+          </div>
+          <div class="funnel-progress-track">
+            <div class="funnel-progress-fill" style="width: 0%;" data-target-width="${stage.percentage}%"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Render actionable funnel diagnostics & insights
+    renderFunnelInsights(stages, data.overall_conversion_rate || 0);
+
+    // Update chats today and carts today in top mini stats
+    const chatStage = stages.find(s => s.stage.includes('Chats'));
+    const cartStage = stages.find(s => s.stage.includes('Cart'));
+    if (chatStage) animateValue('live-chats-today', chatStage.count);
+    if (cartStage) animateValue('live-carts-today', cartStage.count);
+
+    // Animate progress bars using GSAP or CSS
+    setTimeout(() => {
+      container.querySelectorAll('.funnel-progress-fill').forEach(fill => {
+        const targetWidth = fill.getAttribute('data-target-width') || '0%';
+        if (window.gsap && typeof window.gsap.to === 'function') {
+          window.gsap.to(fill, { width: targetWidth, duration: 0.85, ease: 'power2.out' });
+        } else {
+          fill.style.width = targetWidth;
+        }
+      });
+    }, 50);
+  } catch (err) {
+    if (container) container.innerHTML = `<div class="funnel-loading">Failed to load funnel data.</div>`;
+  }
+}
+
+function renderFunnelInsights(stages, overallConvRate) {
+  const container = document.getElementById('funnel-insights-content');
+  if (!container) return;
+
+  if (!stages || stages.length === 0) {
+    container.innerHTML = '<div class="insight-placeholder">Complete at least 1 storefront action to generate real-time diagnostics.</div>';
+    return;
+  }
+
+  const visitors = stages[0]?.count || 0;
+  const assistantOpened = stages.find(s => s.stage.toLowerCase().includes('assistant'))?.count || 0;
+  const cartAdds = stages.find(s => s.stage.toLowerCase().includes('cart'))?.count || 0;
+  const purchases = stages.find(s => s.stage.toLowerCase().includes('purchase'))?.count || 0;
+
+  const insights = [];
+
+  // 1. Cart to Purchase Drop-Off Diagnosis
+  if (cartAdds > 0) {
+    const cartToPurchaseConv = ((purchases / cartAdds) * 100).toFixed(1);
+    const cartDropoff = (100 - parseFloat(cartToPurchaseConv)).toFixed(1);
+    if (parseFloat(cartDropoff) > 50) {
+      insights.push({
+        type: 'warning',
+        icon: '🛒',
+        title: `High Cart Abandonment: ${cartDropoff}% Drop-off`,
+        detail: `${cartAdds} shopper(s) added products to cart, but only ${purchases} completed purchase.`,
+        action: `👉 Action: Go to Email Automation to confirm your Abandoned Cart Recovery Sequence is enabled with high-converting reminders.`
+      });
+    } else {
+      insights.push({
+        type: 'success',
+        icon: '🎉',
+        title: `High Checkout Velocity: ${cartToPurchaseConv}% Completion`,
+        detail: `Excellent transition from Cart to Purchase. Your checkout funnel has low friction.`,
+        action: `👉 Status: Keep cart recovery thresholds active for edge cases.`
+      });
+    }
+  }
+
+  // 2. Visitors to Assistant Engagement Diagnosis
+  if (visitors > 0) {
+    const engRate = ((assistantOpened / visitors) * 100).toFixed(1);
+    if (parseFloat(engRate) < 15 && visitors >= 5) {
+      insights.push({
+        type: 'info',
+        icon: '💡',
+        title: `Engagement Growth: ${engRate}% Assistant Open Rate`,
+        detail: `Most visitors browse without clicking your AI assistant bubble.`,
+        action: `👉 Action: Go to Widget Settings and update Greeting to an irresistible offer (e.g. "Ask for your 10% Welcome Discount!").`
+      });
+    } else if (parseFloat(engRate) >= 15) {
+      insights.push({
+        type: 'success',
+        icon: '💬',
+        title: `Strong Assistant Engagement: ${engRate}% Open Rate`,
+        detail: `Shoppers actively use the shopping assistant for product recommendations and assistance.`,
+        action: `👉 Status: Grounding policies and quick responses are driving shopper curiosity.`
+      });
+    }
+  }
+
+  // 3. Overall Conversion Health
+  if (overallConvRate >= 2.5) {
+    insights.push({
+      type: 'success',
+      icon: '🚀',
+      title: `Top-Tier Conversion: ${overallConvRate}% Overall Rate`,
+      detail: `Your store conversion rate outperforms standard e-commerce benchmarks (~2.2%).`,
+      action: `👉 Result: AI-assisted shoppers are completing checkouts at high velocity.`
+    });
+  } else if (visitors > 0 && purchases === 0) {
+    insights.push({
+      type: 'neutral',
+      icon: '📈',
+      title: `Live Funnel Calibrating (${visitors} Shoppers)`,
+      detail: `Telemetry is streaming live from your storefront.`,
+      action: `👉 Tip: Browse your store or test an Add-to-Cart action in another tab to observe real-time funnel progression.`
+    });
+  }
+
+  container.innerHTML = insights.map(i => `
+    <div class="insight-row ${i.type}">
+      <div class="insight-icon-col">${i.icon}</div>
+      <div class="insight-content-col">
+        <div class="insight-title">${escapeHtml(i.title)}</div>
+        <div class="insight-detail">${escapeHtml(i.detail)}</div>
+        <div class="insight-action">${escapeHtml(i.action)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadProductPerformance() {
+  if (!state.activeStoreId) return;
+  const tbody = document.getElementById('rec-performance-table-body');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/analytics/products?limit=10`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const { success, data } = await res.json();
+    if (!success || !data || data.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No recommended product interactions yet. When your assistant suggests products in chat, real-time conversion metrics appear here.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = data.map(p => {
+      const imgHtml = p.image_url
+        ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" style="width: 38px; height: 38px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #1e293b;">`
+        : `<div style="width: 38px; height: 38px; border-radius: 6px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 14px;">📦</div>`;
+
+      const currencySymbol = p.currency === 'GBP' ? '£' : (p.currency === 'USD' ? '$' : '₹');
+      const convBadgeColor = p.conversion_rate > 10 ? '#10b981' : (p.conversion_rate > 0 ? '#3b82f6' : '#94a3b8');
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 10px;">${imgHtml}</td>
+          <td style="padding: 10px; font-weight: 500; color: var(--text-main); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${escapeHtml(p.title)}
+          </td>
+          <td style="padding: 10px; font-weight: 600;">${currencySymbol}${parseFloat(p.price || 0).toFixed(2)}</td>
+          <td style="padding: 10px; text-align: center; font-weight: 600;">${p.recommendations_count}</td>
+          <td style="padding: 10px; text-align: center;">${p.clicks_count}</td>
+          <td style="padding: 10px; text-align: center; color: #10b981; font-weight: 600;">${p.cart_adds_count}</td>
+          <td style="padding: 10px; text-align: center; color: #22c55e; font-weight: 700;">${p.purchases_count}</td>
+          <td style="padding: 10px; text-align: right;">
+            <span style="font-weight: 700; color: ${convBadgeColor}; font-size: 12.5px;">${p.conversion_rate}%</span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--danger);">Failed to load product performance metrics.</td></tr>`;
+  }
+}
+
+function formatRelativeTime(date) {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 10) return 'Just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return date.toLocaleDateString();
 }
 
 function showToast(message, isError = false) {
@@ -938,3 +1362,4 @@ function showConfirmModal(title, message, onConfirm) {
     btnCancel.removeEventListener('click', handleCancel);
   }
 }
+

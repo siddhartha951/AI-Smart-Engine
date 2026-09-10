@@ -124,6 +124,9 @@ export function createApp(deps: AppDependencies = {}): Express {
                   is_active: assistantSettings.is_active,
                 }
               : null,
+            features: {
+              live_tracking_enabled: store.live_tracking_enabled !== false,
+            },
           },
         });
       } catch (err) {

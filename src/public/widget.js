@@ -219,10 +219,60 @@
         };
       }
       this.render();
+
+      // Full-Store Auto-Tracking & Telemetry
+      const isTrackingEnabled = this.state.config?.features?.live_tracking_enabled !== false;
+      if (isTrackingEnabled) {
+        // Auto-create anonymous session if none exists
+        if (!this.sessionId || !this.visitorId) {
+          const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
+          await this.startSession(anonymousId);
+        }
+
+        // Fire instant page_view on landing
+        if (this.visitorId) {
+          const lastPv = sessionStorage.getItem('ai_last_pv');
+          if (lastPv !== window.location.pathname) {
+            this.trackEvent('page_view', {
+              path: window.location.pathname,
+              title: document.title,
+              referrer: document.referrer || '',
+              source: 'storefront'
+            });
+            try { sessionStorage.setItem('ai_last_pv', window.location.pathname); } catch (_) {}
+          }
+          this.initHeartbeat();
+        }
+      } else {
+        console.log('AI Smart Engine: Storefront live tracking is deactivated by administrator.');
+      }
+    }
+
+    initHeartbeat() {
+      if (this._heartbeatTimer) clearInterval(this._heartbeatTimer);
+      if (this.state.config?.features?.live_tracking_enabled === false) return;
+      this._heartbeatTimer = setInterval(() => {
+        if (!document.hidden && this.visitorId) {
+          this.trackEvent('heartbeat', {
+            path: window.location.pathname,
+            title: document.title
+          });
+        }
+      }, 90000);
+    }
+
+    disconnectedCallback() {
+      if (this._heartbeatTimer) {
+        clearInterval(this._heartbeatTimer);
+        this._heartbeatTimer = null;
+      }
     }
 
     async trackEvent(type, payload = {}) {
       if (!this.visitorId) return;
+      if (this.state.config?.features?.live_tracking_enabled === false && (type === 'page_view' || type === 'heartbeat')) {
+        return;
+      }
       try {
         await fetch(`${API_BASE_URL}/api/v1/widget/events`, {
           method: 'POST',
@@ -272,6 +322,7 @@
             localStorage.setItem('ai_visitor_id', this.visitorId);
             syncShopifyCartAttributes(this.sessionId, this.visitorId);
           } catch (_) {}
+          this.initHeartbeat();
         }
       } catch (err) {
         console.error('Failed to start session', err);
@@ -1235,6 +1286,27 @@
               if (sid && vid) {
                 syncShopifyCartAttributes(sid, vid);
               }
+
+              // Emit add_to_cart event for live activity ticker
+              try {
+                const widgetEl = document.querySelector('ai-shopping-assistant');
+                if (widgetEl && typeof widgetEl.trackEvent === 'function') {
+                  const clone = res.clone();
+                  clone.json().then(item => {
+                    widgetEl.trackEvent('add_to_cart', {
+                      title: item.title || item.product_title || 'Storefront Item',
+                      price: item.price ? (item.price / 100).toFixed(2) : undefined,
+                      currency: item.currency || 'INR',
+                      source: 'storefront_theme'
+                    });
+                  }).catch(() => {
+                    widgetEl.trackEvent('add_to_cart', {
+                      title: 'Storefront Item',
+                      source: 'storefront_theme'
+                    });
+                  });
+                }
+              } catch (_) {}
             }
           } catch (_) {}
           return res;

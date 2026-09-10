@@ -6,6 +6,9 @@
   <title>Merchant Dashboard | AI Smart Engine</title>
   <link rel="stylesheet" href="css/styles.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- GSAP & ScrollTrigger Animation Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 </head>
 <body>
   <!-- Three.js Interactive Background -->
@@ -34,10 +37,39 @@
 
     <!-- Dashboard View -->
     <div id="dashboard-view" class="view hidden">
-      <nav class="sidebar glass-panel">
+      <!-- Mobile Top Navbar -->
+      <div class="mobile-top-bar glass-panel">
+        <button id="mobile-menu-toggle" class="mobile-hamburger-btn" aria-label="Open Navigation Menu">
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </button>
+        <div class="mobile-brand">
+          <span class="mobile-brand-title">AI Smart Engine</span>
+        </div>
+        <div class="mobile-live-badge" id="mobile-live-badge">
+          <span class="pulse-dot-mini"></span>
+          <span id="mobile-live-count">0</span> live
+        </div>
+      </div>
+
+      <!-- Backdrop overlay for mobile drawer -->
+      <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+      <nav class="sidebar glass-panel" id="dashboard-sidebar">
         <div class="brand">
-          <h2>AI Smart Engine</h2>
-          <p id="user-role-badge" class="badge">Merchant</p>
+          <div class="brand-header-row">
+            <h2>AI Smart Engine</h2>
+            <button id="mobile-sidebar-close" class="mobile-close-btn" aria-label="Close Menu">&times;</button>
+          </div>
+          <div class="brand-meta-row">
+            <p id="user-role-badge" class="badge">Merchant</p>
+            <span class="live-pulse-badge" id="sidebar-live-pill">
+              <span class="pulse-dot-ping"></span>
+              <span class="pulse-dot-center"></span>
+              <span id="sidebar-live-count">0</span> Shoppers
+            </span>
+          </div>
         </div>
         
         <div id="store-selector-container" class="store-selector hidden">
@@ -46,12 +78,13 @@
         </div>
 
         <ul class="nav-links">
-          <li><a href="#" data-target="overview" class="active">Overview</a></li>
-          <li><a href="#" data-target="my-agent">My Agent</a></li>
-          <li><a href="#" data-target="leads-optins">Leads & Opt-ins</a></li>
-          <li><a href="#" data-target="widget-settings">Widget Settings</a></li>
-          <li><a href="#" data-target="shopify-connection">Shopify Connection</a></li>
-          <li><a href="#" data-target="email-automation">Email Automation</a></li>
+          <li><a href="#" data-target="overview" class="active"><span class="nav-icon">📊</span> Overview</a></li>
+          <li><a href="#" data-target="live-analytics"><span class="nav-icon">⚡</span> Live Pulse & Funnel</a></li>
+          <li><a href="#" data-target="my-agent"><span class="nav-icon">🤖</span> My Agent</a></li>
+          <li><a href="#" data-target="leads-optins"><span class="nav-icon">👥</span> Leads & Opt-ins</a></li>
+          <li><a href="#" data-target="widget-settings"><span class="nav-icon">🎨</span> Widget Settings</a></li>
+          <li><a href="#" data-target="shopify-connection"><span class="nav-icon">🛍️</span> Shopify Catalog</a></li>
+          <li><a href="#" data-target="email-automation"><span class="nav-icon">✉️</span> Email Automation</a></li>
         </ul>
         <div class="sidebar-footer">
           <button id="logout-btn" class="btn-secondary outline">Log Out</button>
@@ -94,6 +127,169 @@
               <div class="progress-bar-container">
                 <div class="progress-bar" id="ai-budget-progress" style="width: 0%"></div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 1.5 Live Pulse & Funnel Section (Phase 2) -->
+        <section id="live-analytics" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <div class="live-badge-wrapper">
+                <span class="pulse-radar-dot"></span>
+                <span class="live-title-tag">REAL-TIME TELEMETRY</span>
+              </div>
+              <h2>Live Shopper Pulse & Conversion Funnel</h2>
+              <p class="section-subtitle">Monitor real-time shoppers browsing your store, live engagement events, and step-by-step funnel drop-offs.</p>
+            </div>
+            <div class="analytics-controls">
+              <div class="timeframe-select-wrap">
+                <label for="funnel-timeframe">Funnel Window:</label>
+                <select id="funnel-timeframe" class="custom-select-sm">
+                  <option value="1">Last 24 Hours</option>
+                  <option value="7" selected>Last 7 Days</option>
+                  <option value="30">Last 30 Days</option>
+                  <option value="0">All Time</option>
+                </select>
+              </div>
+              <button id="btn-refresh-live" class="btn-refresh-live" title="Refresh Live Data">
+                <span class="refresh-icon">🔄</span> Refresh
+              </button>
+            </div>
+          </header>
+
+          <!-- Deactivation Banner (Shown when admin toggles feature off) -->
+          <div id="live-tracking-deactivated-banner" class="deactivated-banner glass-card hidden">
+            <div class="deactivated-banner-content">
+              <span class="deactivated-icon">⚠️</span>
+              <div>
+                <h4>Real-Time Telemetry Paused by Platform Admin</h4>
+                <p>Storefront live tracking has been deactivated for this store by your administrator. Contact support to re-enable live visitor radar and telemetry.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Hero: Active Shopper Radar & High-Impact Metrics -->
+          <div class="live-pulse-hero-grid">
+            <div class="live-pulse-hero-card">
+              <div class="hero-radar-indicator">
+                <div class="radar-ping"></div>
+                <div class="radar-center"></div>
+              </div>
+              <div class="hero-pulse-content">
+                <span class="hero-pulse-label">ACTIVE SHOPPERS RIGHT NOW</span>
+                <div class="hero-pulse-value-row">
+                  <h1 class="hero-pulse-number" id="live-active-shoppers-count">0</h1>
+                  <span class="hero-pulse-tag">5m inactivity window</span>
+                </div>
+                <p class="hero-pulse-subtext">Visitors actively exploring products, conversing with your assistant, or updating carts within the last 5 minutes.</p>
+              </div>
+            </div>
+
+            <div class="live-mini-stats-grid">
+              <div class="mini-stat-card">
+                <span class="mini-stat-icon">💬</span>
+                <div>
+                  <span class="mini-stat-label">AI Chats Today</span>
+                  <strong class="mini-stat-val" id="live-chats-today">0</strong>
+                </div>
+              </div>
+              <div class="mini-stat-card">
+                <span class="mini-stat-icon">🛒</span>
+                <div>
+                  <span class="mini-stat-label">Cart Additions</span>
+                  <strong class="mini-stat-val" id="live-carts-today">0</strong>
+                </div>
+              </div>
+              <div class="mini-stat-card">
+                <span class="mini-stat-icon">🎯</span>
+                <div>
+                  <span class="mini-stat-label">Funnel Conversion</span>
+                  <strong class="mini-stat-val" id="live-overall-conversion">0%</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dual Column: Visual Conversion Funnel & Real-Time Event Feed -->
+          <div class="analytics-dual-layout">
+            <!-- Left: Conversion Funnel -->
+            <div class="funnel-container glass-card">
+              <div class="card-header-clean">
+                <div>
+                  <h3>Storefront Conversion Funnel</h3>
+                  <p class="card-subtext">How shoppers flow through AI engagement to checkout.</p>
+                </div>
+                <span class="card-badge" id="funnel-visitors-count">0 Visitors</span>
+              </div>
+              
+              <div id="funnel-stages-list" class="funnel-stages-list">
+                <!-- Dynamically populated with GSAP animated bars -->
+                <div class="funnel-loading">Loading conversion funnel telemetry...</div>
+              </div>
+
+              <!-- Actionable Funnel Diagnostics & Optimization Insights -->
+              <div class="funnel-insights-card" id="funnel-action-insights">
+                <div class="insights-header">
+                  <span class="insights-icon">💡</span>
+                  <h4>Funnel Diagnostics & Recommended Actions</h4>
+                </div>
+                <div class="insights-body" id="funnel-insights-content">
+                  <div class="insight-placeholder">Analyzing store visitor patterns...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Real-Time Shopper Activity Feed -->
+            <div class="activity-feed-container glass-card">
+              <div class="card-header-clean">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="pulse-dot-green"></span>
+                  <h3>Live Activity Ticker</h3>
+                </div>
+                <span class="live-stream-badge">LIVE STREAM</span>
+              </div>
+              <p class="card-subtext">Real-time actions streaming from active shoppers on your storefront.</p>
+
+              <div id="live-activity-feed" class="live-activity-feed">
+                <!-- Dynamically populated -->
+                <div class="feed-empty-state">Waiting for real-time shopper activity...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recommendation Performance Section -->
+          <div class="rec-performance-container glass-card" style="margin-top: 24px;">
+            <div class="card-header-clean">
+              <div>
+                <h3>AI Recommendation Performance</h3>
+                <p class="card-subtext" style="margin-top: 2px;">Direct attribution analytics for items suggested by your AI shopping assistant.</p>
+              </div>
+              <span class="card-badge">Top Suggested Products</span>
+            </div>
+
+            <div class="table-container" style="overflow-x: auto; padding: 12px 0;">
+              <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 12px;">
+                    <th style="padding: 12px 10px; width: 60px;">Product</th>
+                    <th style="padding: 12px 10px;">Title</th>
+                    <th style="padding: 12px 10px;">Price</th>
+                    <th style="padding: 12px 10px; text-align: center;">Times Recommended</th>
+                    <th style="padding: 12px 10px; text-align: center;">Clicks</th>
+                    <th style="padding: 12px 10px; text-align: center;">Cart Adds</th>
+                    <th style="padding: 12px 10px; text-align: center;">Purchases</th>
+                    <th style="padding: 12px 10px; text-align: right;">Conversion Rate</th>
+                  </tr>
+                </thead>
+                <tbody id="rec-performance-table-body">
+                  <tr>
+                    <td colspan="8" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      Loading AI product performance...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </section>

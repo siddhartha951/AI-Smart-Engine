@@ -1,6 +1,38 @@
 # Development Log (DEVLOG)
 
-## Entry 2026-09-04 - Phase 1: Application Foundation & Multi-Tenant Database
+## Entry 2026-09-10 - Phase 2: Live Visitor Pulse & Analytics & Merchant Dashboard Overhaul
+- **Status**: Completed Phase 2 implementation and verification.
+- **Components Built**:
+  - PostgreSQL compound index migration `migrations/014_live_analytics_indexes.sql` on `events(store_id, created_at DESC)` and `events(store_id, type, created_at DESC)`.
+  - Repository `src/modules/analytics/analytics.repository.ts`:
+    - `getActiveShoppersCount(storeId, windowMinutes = 5)`: Distinct shoppers with activity inside 5-minute inactivity window.
+    - `getLiveActivityFeed(storeId, limit = 30)`: Real-time event ticker with human-readable labels, icons, and badges.
+    - `getConversionFunnel(storeId, days = 7)`: 5-stage conversion funnel (Store Visitors -> AI Chats Initiated -> Products Explored -> Added to Cart -> Completed Purchases) with step drop-off computation.
+    - `getRecommendationPerformance(storeId, limit = 10)`: Direct attribution tracking of products suggested by the AI agent.
+  - Endpoints in `src/server/routes/dashboard.routes.ts`:
+    - `GET /api/v1/dashboard/:storeId/analytics/live`
+    - `GET /api/v1/dashboard/:storeId/analytics/funnel`
+    - `GET /api/v1/dashboard/:storeId/analytics/products`
+    - Strictly protected with `enforceStoreAccess` (multi-tenant isolation).
+  - Storefront Heartbeat in `src/public/widget.js`:
+    - Silent 90-second heartbeat beacon keeping active visitor telemetry up-to-date while the tab is active.
+  - Pixel-Perfect Merchant Dashboard UI Overhaul:
+    - Integrated GSAP 3.12 + ScrollTrigger CDN for high-performance micro-animations and counter interpolations.
+    - Responsive mobile drawer navigation (< 768px) with animated hamburger toggle, backdrop blur, and live shopper badge.
+    - Hero Live Pulse Card featuring a pulsating radar wave indicator, live active shopper counter, and inactivity window pill.
+    - Interactive 5-stage conversion funnel with animated gradient progress fills and drop-off pills.
+    - Real-time live activity ticker with colored badges and relative timestamps.
+    - Top recommended product attribution table.
+- **Verification Evidence**:
+  - Full automated integration test suite `tests/integration/phase2_analytics.test.ts` passing 3/3 tests (5-min pulse window, funnel drop-off math, strict cross-tenant isolation).
+  - Complete repository test suite: 16 test suites, 91 tests passing (0 failures).
+  - Live local server testing on port 3000: Verified end-to-end event submission (`page_view`, `product_click`, `add_to_cart`) instantly reflects in Store A's live feed and does not leak to Store B.
+  - TypeScript compilation `npm run build` passing with 0 errors.
+- **Rules Adherence**:
+  - Non-breaking, purely additive changes. Storefront chat, Shopify cart injection, and existing dashboard sections continue without disruption.
+  - Zero fabricated metrics.
+  - Stopping upon Phase 2 completion as mandated by `ANTIGRAVITY_MEMORY.md`.
+
 - **Status**: Completed Phase 1 build and verification.
 - **Components Built**:
   - PostgreSQL schema migrations: `migrations/001_initial_schema.sql` and `migrations/002_seed_two_stores.sql`.
@@ -39,3 +71,16 @@
   - Created sanitized `.env.example` containing variable names only, without secrets.
   - Verified no external calls or paid services were invoked.
   - Prepared repository structure for Phase 1 (Application Foundation and Multi-Tenant Database).
+
+---
+
+### [2026-09-10] Full-Store Auto-Tracking & Admin Feature Control
+- **Changes**:
+  - Added Migration 015 (`live_tracking_enabled` on `stores` table, `default_live_tracking_enabled` on `platform_config`).
+  - Implemented `PATCH /api/v1/admin/stores/:storeId/features` with audit logging.
+  - Updated `widget.js` to auto-initialize anonymous sessions, fire instant `page_view`, start 90s heartbeat beacons, and intercept theme cart additions (`/cart/add.js`) to emit live `add_to_cart` events.
+  - Added Actionable Funnel Diagnostics & Optimization Insights card in Merchant Dashboard with tailored advice for cart abandonment, engagement, and conversion velocity.
+  - Added channel source badges (`[Storefront]`, `[Shopify Order]`, `[Cart Add]`, `[Lead Capture]`, `[AI Assistant]`, `[Live Pulse]`).
+  - Added one-click live tracking toggle in the Admin Portal merchant detail card.
+- **Verification**: 17 of 17 test suites passing (96 tests total, 0 failures). Live HTTP verification confirmed toggle state switching and real-time activity ingestion.
+

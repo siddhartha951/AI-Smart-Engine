@@ -190,7 +190,7 @@ router.get('/merchants/:merchantId', async (req: Request, res: Response, next) =
     }
     const merchant = merchantRes.rows[0];
 
-    const storesRes = await db.query('SELECT id, merchant_id, shop_domain, brand_name, status, widget_key, created_at FROM stores WHERE merchant_id = $1', [merchantId]);
+    const storesRes = await db.query('SELECT id, merchant_id, shop_domain, brand_name, status, widget_key, live_tracking_enabled, created_at FROM stores WHERE merchant_id = $1', [merchantId]);
     
     // Get store details without raw credentials
     const storeDetails = [];
@@ -360,6 +360,52 @@ router.post('/merchants/:merchantId/enable', async (req: Request, res: Response,
     await auditRepo.logAction(req.user!.id, null, 'ENABLE_MERCHANT', 'merchants', { merchantId }, { status: 'active' });
 
     res.json({ success: true, message: 'Merchant enabled' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Toggle store features (e.g. live_tracking_enabled)
+router.patch('/stores/:storeId/features', async (req: Request, res: Response, next) => {
+  try {
+    const db = getDatabaseClient();
+    const storeId = req.params.storeId as string;
+    const { live_tracking_enabled } = req.body;
+
+    const storeRes = await db.query('SELECT id, merchant_id, brand_name, live_tracking_enabled FROM stores WHERE id = $1', [storeId]);
+    if (storeRes.rows.length === 0) {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+
+    const currentStore = storeRes.rows[0];
+    const newTrackingState = typeof live_tracking_enabled === 'boolean'
+      ? live_tracking_enabled
+      : (currentStore.live_tracking_enabled === false ? true : false);
+
+    await db.query(
+      'UPDATE stores SET live_tracking_enabled = $1, updated_at = NOW() WHERE id = $2',
+      [newTrackingState, storeId]
+    );
+
+    const auditRepo = new AuditRepository(db);
+    await auditRepo.logAction(
+      req.user!.id,
+      storeId,
+      'TOGGLE_STORE_LIVE_TRACKING',
+      'stores',
+      { live_tracking_enabled: currentStore.live_tracking_enabled },
+      { live_tracking_enabled: newTrackingState }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        store_id: storeId,
+        live_tracking_enabled: newTrackingState,
+        message: `Live tracking ${newTrackingState ? 'enabled' : 'disabled'} for store ${currentStore.brand_name}`
+      }
+    });
   } catch (err) {
     next(err);
   }

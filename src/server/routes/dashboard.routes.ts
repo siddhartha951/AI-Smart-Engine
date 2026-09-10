@@ -4,6 +4,7 @@ import { verifyJwt, requireRole, enforceStoreAccess } from '../middlewares/auth.
 import { AuditRepository } from '../../modules/merchant/audit.repository';
 import { getEmailProvider, getTestEmailProvider } from '../../providers/email';
 import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
+import { AnalyticsRepository } from '../../modules/analytics/analytics.repository';
 
 const router = Router();
 
@@ -716,4 +717,69 @@ router.delete('/:storeId/email/domains/:domainId', enforceStoreAccess, async (re
   }
 });
 
+// 6. Live Analytics & Funnel Tracking (Phase 2)
+router.get('/:storeId/analytics/live', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const analyticsRepo = new AnalyticsRepository(db);
+
+    const [activeShoppers, feed, storeRes] = await Promise.all([
+      analyticsRepo.getActiveShoppersCount(storeId, 5),
+      analyticsRepo.getLiveActivityFeed(storeId, 30),
+      db.query('SELECT live_tracking_enabled FROM stores WHERE id = $1', [storeId]),
+    ]);
+
+    const isTrackingEnabled = storeRes.rows[0]?.live_tracking_enabled !== false;
+
+    res.json({
+      success: true,
+      data: {
+        active_shoppers: activeShoppers,
+        feed,
+        live_tracking_enabled: isTrackingEnabled,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:storeId/analytics/funnel', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const days = parseInt((req.query.days as string) || '7', 10);
+    const db = getDatabaseClient();
+    const analyticsRepo = new AnalyticsRepository(db);
+
+    const funnel = await analyticsRepo.getConversionFunnel(storeId, isNaN(days) ? 7 : days);
+
+    res.json({
+      success: true,
+      data: funnel,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:storeId/analytics/products', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const limit = parseInt((req.query.limit as string) || '10', 10);
+    const db = getDatabaseClient();
+    const analyticsRepo = new AnalyticsRepository(db);
+
+    const performance = await analyticsRepo.getRecommendationPerformance(storeId, isNaN(limit) ? 10 : limit);
+
+    res.json({
+      success: true,
+      data: performance,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
+

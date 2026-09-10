@@ -14,6 +14,7 @@ export interface Store {
   currency?: string;
   timezone?: string;
   status: 'active' | 'paused' | 'disabled';
+  live_tracking_enabled?: boolean;
   created_at: Date;
   updated_at: Date;
 }
