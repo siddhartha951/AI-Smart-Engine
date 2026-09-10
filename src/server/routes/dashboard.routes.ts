@@ -210,13 +210,19 @@ router.put(['/:storeId/widget', '/:storeId/settings'], enforceStoreAccess, async
           button_text = $1, 
           primary_colour = $2, 
           secondary_colour = $3,
-          position = $4
-         WHERE store_id = $5`,
+          position = $4,
+          avatar_url = $5,
+          header_title = $6,
+          custom_css = $7
+         WHERE store_id = $8`,
         [
           widget.button_text !== undefined ? widget.button_text : old.button_text,
           widget.primary_colour !== undefined ? widget.primary_colour : old.primary_colour,
           widget.secondary_colour !== undefined ? widget.secondary_colour : old.secondary_colour,
           widget.position !== undefined ? widget.position : old.position,
+          widget.avatar_url !== undefined ? widget.avatar_url : old.avatar_url,
+          widget.header_title !== undefined ? widget.header_title : old.header_title,
+          widget.custom_css !== undefined ? widget.custom_css : old.custom_css,
           storeId
         ]
       );
@@ -462,6 +468,85 @@ router.get('/:storeId/leads', enforceStoreAccess, async (req: Request, res: Resp
         leads,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 4.2 Leads CSV Export
+router.get('/:storeId/leads/export', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+
+    const leadsQuery = `
+      SELECT 
+        mc.id,
+        mc.store_id,
+        mc.visitor_id,
+        mc.opted_in,
+        mc.captured_at,
+        mc.source,
+        v.email,
+        v.phone,
+        v.anonymous_id
+      FROM marketing_consents mc
+      JOIN visitors v ON v.id = mc.visitor_id
+      WHERE mc.store_id = $1
+      ORDER BY mc.captured_at DESC
+    `;
+
+    const leadsRes = await db.query(leadsQuery, [storeId]);
+    const visitorIds = leadsRes.rows.map((r: any) => r.visitor_id);
+
+    const purchasesByVisitor: Record<string, any> = {};
+    if (visitorIds.length > 0) {
+      const placeholders = visitorIds.map((_, idx) => `$${idx + 2}`).join(', ');
+      const purchasesRes = await db.query(
+        `SELECT visitor_id, payload, created_at FROM events 
+         WHERE store_id = $1 AND type = 'purchase_completed' AND visitor_id IN (${placeholders})
+         ORDER BY created_at DESC`,
+        [storeId, ...visitorIds]
+      );
+      for (const p of purchasesRes.rows) {
+        if (!purchasesByVisitor[p.visitor_id]) {
+          purchasesByVisitor[p.visitor_id] = p;
+        }
+      }
+    }
+
+    const csvHeaders = ['ID', 'Email', 'Phone', 'Marketing Opt-In', 'Captured Date', 'Source', 'Converted', 'Order Number', 'Order Total', 'Currency'];
+    const rows = leadsRes.rows.map((r: any) => {
+      const purchase = purchasesByVisitor[r.visitor_id];
+      let payload = purchase?.payload;
+      if (typeof payload === 'string') {
+        try { payload = JSON.parse(payload); } catch {}
+      }
+      payload = payload || {};
+      const converted = Boolean(purchase) ? 'Yes' : 'No';
+      const orderNum = payload.order_number || payload.order_id || '';
+      const orderTotal = payload.total_price || '';
+      const currency = payload.currency || '';
+
+      return [
+        `"${r.id}"`,
+        `"${(r.email || '').replace(/"/g, '""')}"`,
+        `"${(r.phone || '').replace(/"/g, '""')}"`,
+        r.opted_in ? 'Yes' : 'No',
+        `"${new Date(r.captured_at).toISOString()}"`,
+        `"${r.source || 'widget'}"`,
+        converted,
+        `"${orderNum}"`,
+        `"${orderTotal}"`,
+        `"${currency}"`
+      ].join(',');
+    });
+
+    const csvContent = [csvHeaders.join(','), ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="leads_${storeId.substring(0, 8)}_${Date.now()}.csv"`);
+    res.status(200).send(csvContent);
   } catch (err) {
     next(err);
   }

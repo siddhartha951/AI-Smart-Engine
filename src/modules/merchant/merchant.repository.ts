@@ -113,18 +113,24 @@ export class MerchantRepository {
       primary_colour?: string;
       secondary_colour?: string;
       greeting?: string;
+      avatar_url?: string;
+      header_title?: string;
+      custom_css?: string;
     }
   ): Promise<WidgetSettings> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
     const res = await this.db.query<WidgetSettings>(
-      `INSERT INTO widget_settings (store_id, button_text, position, primary_colour, secondary_colour, greeting, updated_at)
-       VALUES ($1, COALESCE($2, 'Ask our shopping assistant'), COALESCE($3, 'bottom-right'), COALESCE($4, '#1a1a1a'), COALESCE($5, '#ffffff'), COALESCE($6, 'Hi there! Looking for recommendations today?'), NOW())
+      `INSERT INTO widget_settings (store_id, button_text, position, primary_colour, secondary_colour, greeting, avatar_url, header_title, custom_css, updated_at)
+       VALUES ($1, COALESCE($2, 'Ask our shopping assistant'), COALESCE($3, 'bottom-right'), COALESCE($4, '#1a1a1a'), COALESCE($5, '#ffffff'), COALESCE($6, 'Hi there! Looking for recommendations today?'), $7, $8, $9, NOW())
        ON CONFLICT (store_id) DO UPDATE SET
          button_text = COALESCE($2, widget_settings.button_text),
          position = COALESCE($3, widget_settings.position),
          primary_colour = COALESCE($4, widget_settings.primary_colour),
          secondary_colour = COALESCE($5, widget_settings.secondary_colour),
          greeting = COALESCE($6, widget_settings.greeting),
+         avatar_url = COALESCE($7, widget_settings.avatar_url),
+         header_title = COALESCE($8, widget_settings.header_title),
+         custom_css = COALESCE($9, widget_settings.custom_css),
          updated_at = NOW()
        RETURNING *`,
       [
@@ -134,6 +140,9 @@ export class MerchantRepository {
         settings.primary_colour,
         settings.secondary_colour,
         settings.greeting,
+        settings.avatar_url || null,
+        settings.header_title || null,
+        settings.custom_css || null,
       ]
     );
     return res.rows[0];

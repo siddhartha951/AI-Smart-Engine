@@ -162,11 +162,16 @@
 
         <!-- 2.5 Leads & Opt-ins Section -->
         <section id="leads-optins" class="content-section hidden">
-          <header>
-            <h2>Marketing Opt-ins & Leads</h2>
-            <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">
-              Track visitors who opted in for marketing messages and monitor real-time purchase conversions.
-            </p>
+          <header style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <h2>Marketing Opt-ins & Leads</h2>
+              <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">
+                Track visitors who opted in for marketing messages and monitor real-time purchase conversions.
+              </p>
+            </div>
+            <button id="btn-export-leads" class="btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500; padding: 9px 16px; cursor: pointer; border-radius: 8px;">
+              <span>📥</span> Export Leads (CSV)
+            </button>
           </header>
 
           <div class="metrics-grid" style="margin-bottom: 24px;">
@@ -201,38 +206,97 @@
 
         <!-- 3. Widget Settings Section -->
         <section id="widget-settings" class="content-section hidden">
-          <header><h2>Widget Settings</h2></header>
+          <header><h2>Widget Customization & Styling</h2></header>
           <div class="split-layout">
             <form id="widget-form" class="half-width">
               <div class="form-group">
-                <label for="widget-btn-text">Button Text</label>
-                <input type="text" id="widget-btn-text">
+                <label for="widget-btn-text">Floating Launcher Button Text</label>
+                <input type="text" id="widget-btn-text" placeholder="Ask our shopping assistant">
               </div>
+
+              <div class="form-group">
+                <label for="widget-header-title">Chat Window Header Title</label>
+                <input type="text" id="widget-header-title" placeholder="e.g. AI Shopping Concierge">
+                <small style="color: var(--text-muted); font-size: 12px;">Displayed prominently at the top of the chat popup window.</small>
+              </div>
+
               <div class="form-group row">
                 <div class="col">
                   <label for="widget-primary-color">Primary Colour</label>
-                  <input type="color" id="widget-primary-color">
+                  <input type="color" id="widget-primary-color" value="#1a1a1a">
                 </div>
                 <div class="col">
-                  <label for="widget-secondary-color">Secondary Colour</label>
-                  <input type="color" id="widget-secondary-color">
+                  <label for="widget-secondary-color">Secondary / Text Colour</label>
+                  <input type="color" id="widget-secondary-color" value="#ffffff">
                 </div>
               </div>
+
               <div class="form-group">
-                <label for="widget-position">Position</label>
+                <label for="widget-position">Screen Position</label>
                 <select id="widget-position">
                   <option value="bottom-right">Bottom Right</option>
                   <option value="bottom-left">Bottom Left</option>
                 </select>
               </div>
-              <button type="submit" class="btn-primary">Save Widget Settings</button>
+
+              <!-- 3D Bot Avatars Gallery -->
+              <div class="form-group">
+                <label style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>Readymade 3D Bot Avatars</span>
+                  <span style="font-size: 11px; color: var(--primary); font-weight: 500;">Click to select</span>
+                </label>
+                <div id="avatar-presets-grid" class="avatar-presets-grid">
+                  <!-- Populated by app.js -->
+                </div>
+
+                <label for="widget-avatar-url" style="font-size: 12px; margin-top: 8px; color: var(--text-muted);">
+                  Or Custom Avatar URL (Image / GIF)
+                </label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="url" id="widget-avatar-url" placeholder="https://... (or select a 3D avatar above)">
+                  <button type="button" id="btn-clear-avatar" class="btn-secondary outline" style="white-space: nowrap; padding: 0 14px; font-size: 12px;">Clear</button>
+                </div>
+                <small style="color: var(--text-muted); font-size: 11px;">Supports 3D avatars, brand logos, animated GIFs, or image URLs.</small>
+              </div>
+
+              <!-- Custom CSS Editor -->
+              <div class="form-group">
+                <label for="widget-custom-css">Custom CSS (Widget Shadow DOM)</label>
+                <textarea id="widget-custom-css" rows="4" style="font-family: monospace; font-size: 12px;" placeholder="/* Custom CSS overrides injected directly into widget shadow DOM */&#10;.chat-popup { border-radius: 20px; }&#10;.header-bar { background: linear-gradient(135deg, #4f46e5, #7c3aed); }&#10;.bot-msg { font-size: 14px; }"></textarea>
+                <small style="color: var(--text-muted); font-size: 11px;">Full CSS power: customize borders, glassmorphism, fonts, or animations.</small>
+              </div>
+
+              <button type="submit" class="btn-primary" style="margin-top: 10px;">Save Widget Settings</button>
             </form>
             
             <div class="live-preview-container half-width">
-              <h3>Live Preview</h3>
-              <div class="preview-box">
+              <h3>Live Widget Preview</h3>
+              <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">Real-time preview of launcher button & chat popup header.</p>
+              
+              <!-- Floating Button Preview -->
+              <div class="preview-box" style="margin-bottom: 16px;">
                 <div id="preview-widget-btn" class="preview-btn">
                   <span>Ask our shopping assistant</span>
+                </div>
+              </div>
+
+              <!-- Chat Header Preview -->
+              <div class="preview-header-card">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 8px 14px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border);">
+                  Chat Window Header Preview
+                </div>
+                <div id="preview-chat-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #1a1a1a; color: #fff; transition: all 0.2s ease;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <img id="preview-avatar-img" src="" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: none; border: 2px solid rgba(255,255,255,0.25);">
+                    <div id="preview-avatar-fallback" style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; font-size: 14px;">🛍️</div>
+                    <div>
+                      <div id="preview-header-title-text" style="font-size: 13px; font-weight: 600;">AI Shopping Assistant</div>
+                      <div style="display: flex; align-items: center; gap: 4px; font-size: 10px; opacity: 0.85;">
+                        <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; display: inline-block;"></span> Online
+                      </div>
+                    </div>
+                  </div>
+                  <div style="font-size: 15px; opacity: 0.6; cursor: default;">✕</div>
                 </div>
               </div>
             </div>

@@ -217,10 +217,12 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       let products: ShopifyProduct[] = data.data.products.edges.map((edge: any) => {
         const node = edge.node;
         const variant = node.variants.edges[0]?.node;
+        const rawVarId = variant?.id || '';
+        const numericVarId = rawVarId.split('/').pop() || rawVarId;
         
         return {
           id: node.id,
-          variant_id: variant?.id || '',
+          variant_id: numericVarId,
           title: node.title,
           price: parseFloat(variant?.price?.amount || '0'),
           currency: variant?.price?.currencyCode || 'INR',
@@ -347,6 +349,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       const afterArg = cursor ? `, after: "${cursor}"` : '';
       const graphqlQuery = `
         {
+          shop {
+            currencyCode
+          }
           products(first: 50${afterArg}) {
             pageInfo {
               hasNextPage
@@ -399,6 +404,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       }
 
       const data = (await response.json()) as any;
+      const shopCurrency = data.data?.shop?.currencyCode || 'INR';
       const productsData = data.data?.products;
       if (!productsData?.edges || productsData.edges.length === 0) {
         break;
@@ -410,14 +416,16 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         const imgUrl = node.featuredImage?.url || node.images?.edges[0]?.node?.url || '';
         const rawId = node.id || '';
         const numericId = rawId.split('/').pop() || rawId;
+        const rawVarId = variant?.id || '';
+        const numericVarId = rawVarId.split('/').pop() || rawVarId;
 
         products.push({
           id: rawId,
-          variant_id: variant?.id || '',
+          variant_id: numericVarId,
           title: node.title || '',
           handle: node.handle || '',
           price: parseFloat(variant?.price || '0'),
-          currency: 'INR',
+          currency: shopCurrency,
           in_stock: variant?.availableForSale ?? (node.status === 'ACTIVE'),
           category: node.productType || '',
           image_url: imgUrl,
@@ -434,6 +442,21 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
   private async syncViaAdminREST(shopDomain: string, adminToken: string): Promise<ShopifyProduct[]> {
     const products: ShopifyProduct[] = [];
+    let shopCurrency = 'INR';
+
+    try {
+      const shopRes = await fetch(`https://${shopDomain}/admin/api/2024-01/shop.json`, {
+        headers: {
+          'X-Shopify-Access-Token': adminToken,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (shopRes.ok) {
+        const shopJson = (await shopRes.json()) as any;
+        if (shopJson.shop?.currency) shopCurrency = shopJson.shop.currency;
+      }
+    } catch (_) {}
+
     const response = await fetch(`https://${shopDomain}/admin/api/2024-01/products.json?limit=250`, {
       headers: {
         'X-Shopify-Access-Token': adminToken,
@@ -452,13 +475,16 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     for (const p of rawProducts) {
       const variant = p.variants?.[0];
       const imgUrl = p.image?.src || p.images?.[0]?.src || '';
+      const rawVarId = variant ? String(variant.id) : '';
+      const numericVarId = rawVarId.split('/').pop() || rawVarId;
+
       products.push({
         id: String(p.id),
-        variant_id: variant ? String(variant.id) : '',
+        variant_id: numericVarId,
         title: p.title || '',
         handle: p.handle || '',
         price: parseFloat(variant?.price || '0'),
-        currency: 'INR',
+        currency: shopCurrency,
         in_stock: variant?.available ?? (p.status === 'active'),
         category: p.product_type || '',
         image_url: imgUrl,
@@ -536,9 +562,11 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       for (const edge of productsData.edges) {
         const node = edge.node;
         const variant = node.variants?.edges[0]?.node;
+        const rawVarId = variant?.id || '';
+        const numericVarId = rawVarId.split('/').pop() || rawVarId;
         products.push({
           id: node.id,
-          variant_id: variant?.id || '',
+          variant_id: numericVarId,
           title: node.title,
           price: parseFloat(variant?.price?.amount || '0'),
           currency: variant?.price?.currencyCode || 'INR',

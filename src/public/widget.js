@@ -34,6 +34,25 @@
     }
   }
 
+  function formatCurrencyPrice(amount, currencyCode) {
+    if (amount === undefined || amount === null || amount === '') return '';
+    const code = (currencyCode || 'INR').toUpperCase();
+    const symbolMap = {
+      INR: '₹',
+      USD: '$',
+      EUR: '€',
+      GBP: '£',
+      AED: 'AED ',
+      CAD: 'CA$',
+      AUD: 'AU$',
+      SGD: 'SG$',
+      JPY: '¥',
+      SAR: 'SAR '
+    };
+    const symbol = symbolMap[code] || (code + ' ');
+    return `${symbol}${amount}`;
+  }
+
   async function syncShopifyCartAttributes(sessionId, visitorId) {
     try {
       if (!window.location.hostname.includes('myshopify.com') && !window.Shopify) {
@@ -145,14 +164,40 @@
         return;
       }
 
-      // Restore previously saved session if active
+      // Restore previously saved session and chat history if active
       try {
         const savedSid = sessionStorage.getItem('ai_session_id') || localStorage.getItem('ai_session_id');
         const savedVid = sessionStorage.getItem('ai_visitor_id') || localStorage.getItem('ai_visitor_id');
         if (savedSid) this.sessionId = savedSid;
         if (savedVid) this.visitorId = savedVid;
+
+        const savedMsgs = sessionStorage.getItem('ai_chat_messages');
+        const savedView = sessionStorage.getItem('ai_widget_view');
+        const savedOpen = sessionStorage.getItem('ai_widget_open');
+
+        if (savedMsgs) {
+          try {
+            const parsed = JSON.parse(savedMsgs);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              this.state.messages = parsed;
+              this.state.view = 'chat';
+            }
+          } catch (_) {}
+        }
+
+        if (savedView && savedView !== 'welcome') {
+          this.state.view = savedView;
+        }
+        if (savedOpen === 'true') {
+          this.state.isOpen = true;
+        }
+
         if (savedSid && savedVid) {
           syncShopifyCartAttributes(savedSid, savedVid);
+        }
+
+        if (savedSid && (!this.state.messages || this.state.messages.length === 0)) {
+          this.loadChatHistory(savedSid);
         }
       } catch (_) {}
       
@@ -310,8 +355,34 @@
       }
     }
 
+    async loadChatHistory(sessionId) {
+      if (!sessionId) return;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/widget/chat/history?session_id=${sessionId}`, {
+          headers: this.getHeaders()
+        });
+        const json = await res.json();
+        if (json.success && json.data?.messages && json.data.messages.length > 0) {
+          const recs = json.data.recommendations || [];
+          const formatted = json.data.messages.map((m, idx) => ({
+            role: m.role,
+            content: m.content,
+            recommendations: m.role === 'assistant' && idx === json.data.messages.length - 1 ? recs : []
+          }));
+          this.setState({ messages: formatted, view: 'chat' });
+        }
+      } catch (_) {}
+    }
+
     setState(newState) {
       this.state = { ...this.state, ...newState };
+      try {
+        if (this.state.messages && this.state.messages.length > 0) {
+          sessionStorage.setItem('ai_chat_messages', JSON.stringify(this.state.messages));
+        }
+        sessionStorage.setItem('ai_widget_view', this.state.view || 'welcome');
+        sessionStorage.setItem('ai_widget_open', this.state.isOpen ? 'true' : 'false');
+      } catch (_) {}
       this.render();
       
       // Auto scroll to bottom if in chat view
@@ -349,12 +420,41 @@
           border: none;
           border-radius: 50px;
           padding: 12px 24px;
-          font-size: 16px;
+          font-size: 15px;
           font-weight: bold;
           cursor: pointer;
           box-shadow: 0 4px 12px rgba(0,0,0,0.15);
           transition: transform 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
+
+        .header-title-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .header-avatar {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 2px solid rgba(255, 255, 255, 0.7);
+          box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+
+        .launcher-avatar {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 2px solid rgba(255, 255, 255, 0.7);
+        }
+
+        /* Custom Merchant CSS overrides */
+        ${this.state.config?.widget?.custom_css || ''}
         
         #launcher:hover {
           transform: scale(1.05);
@@ -741,19 +841,27 @@
     }
 
     render() {
-      const { widget: widgetConfig, assistant: assistantConfig } = this.state.config;
+      const { widget: widgetConfig, assistant: assistantConfig } = this.state.config || {};
       
       const buttonText = widgetConfig?.button_text || 'Ask our shopping assistant';
       const greeting = widgetConfig?.greeting || 'Hello! How can I help you today?';
       const assistantName = assistantConfig?.assistant_name || 'Assistant';
+      const headerTitle = widgetConfig?.header_title || assistantName;
+      const avatarUrl = widgetConfig?.avatar_url || '';
       const policyUrl = assistantConfig?.privacy_policy_url || '#';
+
+      const avatarHeaderHtml = avatarUrl ? `<img src="${avatarUrl}" class="header-avatar" alt="Avatar" />` : '';
+      const avatarLauncherHtml = avatarUrl ? `<img src="${avatarUrl}" class="launcher-avatar" alt="Avatar" />` : '';
 
       this.shadowRoot.innerHTML = `
         <style>${this.getStyles()}</style>
         <div id="widget-container">
           <div id="popup" class="${this.state.isOpen ? 'open' : ''}">
             <div class="header">
-              <span>${assistantName}</span>
+              <div class="header-title-container">
+                ${avatarHeaderHtml}
+                <span>${headerTitle}</span>
+              </div>
               <button class="close-btn">&times;</button>
             </div>
             
@@ -763,7 +871,8 @@
           </div>
           
           <button id="launcher">
-            ${this.state.isOpen ? 'Close' : buttonText}
+            ${avatarLauncherHtml}
+            <span>${this.state.isOpen ? 'Close' : buttonText}</span>
           </button>
         </div>
       `;
@@ -830,8 +939,7 @@
           if (recs.length > 0) {
             recsHtml = '<div class="product-cards-list">' + recs.map(r => {
               const rawPrice = r.price !== undefined ? r.price : '';
-              const currency = r.currency || '₹';
-              const priceDisplay = currency.length === 1 ? `${currency}${rawPrice}` : `${currency} ${rawPrice}`;
+              const priceDisplay = formatCurrencyPrice(rawPrice, r.currency);
               const trackingUrl = buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId);
               const inStock = r.in_stock !== false;
               const imgUrl = r.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
@@ -861,7 +969,8 @@
                               data-product-id="${r.product_id || r.productId || ''}" 
                               data-title="${encodeURIComponent(r.title || '')}" 
                               data-price="${rawPrice}" 
-                              data-currency="${r.currency || 'INR'}">
+                              data-currency="${r.currency || 'INR'}"
+                              data-product-url="${encodeURIComponent(trackingUrl)}">
                         Add to Cart 🛒
                       </button>
                     </div>
@@ -983,11 +1092,13 @@
       this.shadowRoot.querySelectorAll('.btn-add-to-cart').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.preventDefault();
-          const variantId = btn.getAttribute('data-variant-id');
+          const rawVarId = btn.getAttribute('data-variant-id') || '';
+          const cleanVariantId = rawVarId.replace(/^.*\/ProductVariant\//, '').trim();
           const prodId = btn.getAttribute('data-product-id');
           const title = decodeURIComponent(btn.getAttribute('data-title') || '');
           const price = btn.getAttribute('data-price');
           const currency = btn.getAttribute('data-currency');
+          const productUrl = decodeURIComponent(btn.getAttribute('data-product-url') || '');
 
           btn.disabled = true;
           btn.textContent = 'Adding...';
@@ -995,14 +1106,15 @@
           // 1. Sync cart note attributes to Shopify cart
           await syncShopifyCartAttributes(this.sessionId, this.visitorId);
 
+          let addedToShopify = false;
           // 2. Add item to Shopify cart if on storefront
-          if (variantId && (window.Shopify || window.location.hostname.includes('myshopify.com'))) {
+          if (cleanVariantId) {
             try {
-              await fetch('/cart/add.js', {
+              const cartRes = await fetch('/cart/add.js', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({
-                  id: variantId,
+                  id: cleanVariantId,
                   quantity: 1,
                   properties: {
                     '_ai_recommended': 'true',
@@ -1010,15 +1122,26 @@
                   }
                 })
               });
-              document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
-              document.dispatchEvent(new CustomEvent('cart:updated', { bubbles: true }));
-            } catch (_) {}
+              if (cartRes.ok) {
+                addedToShopify = true;
+                document.dispatchEvent(new CustomEvent('cart:refresh', { bubbles: true }));
+                document.dispatchEvent(new CustomEvent('cart:updated', { bubbles: true }));
+                try {
+                  const drawerTrigger = document.querySelector('[data-ajax-cart-trigger], .cart-drawer-trigger, #cart-icon-bubble, .header__icon--cart');
+                  if (drawerTrigger) drawerTrigger.click();
+                } catch (_) {}
+              } else {
+                console.warn('Shopify /cart/add.js returned non-ok', await cartRes.text());
+              }
+            } catch (err) {
+              console.warn('Error calling /cart/add.js', err);
+            }
           }
 
           // 3. Track event in backend
           await this.trackEvent('add_to_cart', {
             product_id: prodId,
-            variant_id: variantId,
+            variant_id: cleanVariantId,
             title,
             price: parseFloat(price) || 0,
             currency: currency || 'INR',
@@ -1027,14 +1150,28 @@
             utm_campaign: 'ai_recommendation'
           });
 
-          // 4. Update button UI
-          btn.classList.add('added');
-          btn.textContent = 'Added ✓';
-          setTimeout(() => {
-            btn.classList.remove('added');
+          // 4. Update button UI or fallback
+          if (addedToShopify) {
+            btn.classList.add('added');
+            btn.textContent = 'Added ✓ (View Cart)';
             btn.disabled = false;
-            btn.textContent = 'Add to Cart 🛒';
-          }, 2000);
+            btn.onclick = () => { window.location.href = '/cart'; };
+            setTimeout(() => {
+              btn.classList.remove('added');
+              btn.textContent = 'Add to Cart 🛒';
+            }, 3500);
+          } else if (productUrl && productUrl !== '#') {
+            btn.textContent = 'Opening Product...';
+            window.location.href = productUrl;
+          } else {
+            btn.classList.add('added');
+            btn.textContent = 'Added ✓';
+            setTimeout(() => {
+              btn.classList.remove('added');
+              btn.disabled = false;
+              btn.textContent = 'Add to Cart 🛒';
+            }, 2000);
+          }
         });
       });
     }

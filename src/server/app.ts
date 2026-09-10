@@ -111,6 +111,9 @@ export function createApp(deps: AppDependencies = {}): Express {
                   primary_colour: widgetSettings.primary_colour,
                   secondary_colour: widgetSettings.secondary_colour,
                   greeting: widgetSettings.greeting,
+                  avatar_url: widgetSettings.avatar_url || '',
+                  header_title: widgetSettings.header_title || '',
+                  custom_css: widgetSettings.custom_css || '',
                 }
               : null,
             assistant: assistantSettings
@@ -375,6 +378,35 @@ export function createApp(deps: AppDependencies = {}): Express {
           data: {
             message: cleanMessage,
             recommendations
+          }
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // Widget chat history for cross-page persistence
+  app.get(
+    '/api/v1/widget/chat/history',
+    storeAuth,
+    validateStoreOrigin,
+    async (req: Request, res: Response, next) => {
+      try {
+        const storeId = req.storeId!;
+        const sessionId = req.query.session_id as string;
+        if (!sessionId) {
+          return res.status(400).json({ success: false, error: 'Missing session_id' });
+        }
+        const [messages, recs] = await Promise.all([
+          chatRepo.getSessionMessages(storeId, sessionId),
+          chatRepo.getSessionRecommendations(storeId, sessionId),
+        ]);
+        res.json({
+          success: true,
+          data: {
+            messages,
+            recommendations: recs
           }
         });
       } catch (err) {

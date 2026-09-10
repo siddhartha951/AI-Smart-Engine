@@ -36,6 +36,9 @@ export interface WidgetSettings {
   primary_colour: string;
   secondary_colour: string;
   greeting: string;
+  avatar_url?: string;
+  header_title?: string;
+  custom_css?: string;
   created_at: Date;
   updated_at: Date;
 }

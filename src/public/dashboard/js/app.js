@@ -6,6 +6,40 @@ let state = {
   stores: []
 };
 
+// 3D Avatar Presets Gallery for AI Assistant
+const AVATAR_PRESETS = [
+  {
+    id: 'cyber-nova',
+    name: '3D Nova',
+    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nova&backgroundColor=6366f1,818cf8',
+  },
+  {
+    id: 'quantum-apex',
+    name: '3D Apex',
+    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Apex&backgroundColor=0284c7,38bdf8',
+  },
+  {
+    id: 'neon-sparkle',
+    name: '3D Sparkle',
+    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Sparkle&backgroundColor=ec4899,d946ef',
+  },
+  {
+    id: 'emerald-aura',
+    name: '3D Aura',
+    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Emerald&backgroundColor=059669,34d399',
+  },
+  {
+    id: 'solar-cosmo',
+    name: '3D Cosmo',
+    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Cosmo&backgroundColor=f59e0b,fbbf24',
+  },
+  {
+    id: 'zenith-bot',
+    name: '3D Zenith',
+    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Zenith&backgroundColor=7c3aed,a855f7',
+  },
+];
+
 // DOM Elements
 const views = {
   login: document.getElementById('login-view'),
@@ -23,6 +57,7 @@ const sections = {
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
+  initAvatarPresets();
   setupEventListeners();
   if (state.token) {
     verifySession();
@@ -163,7 +198,10 @@ function setupEventListeners() {
         button_text: document.getElementById('widget-btn-text').value,
         primary_colour: document.getElementById('widget-primary-color').value,
         secondary_colour: document.getElementById('widget-secondary-color').value,
-        position: document.getElementById('widget-position').value
+        position: document.getElementById('widget-position').value,
+        header_title: document.getElementById('widget-header-title') ? document.getElementById('widget-header-title').value : '',
+        avatar_url: document.getElementById('widget-avatar-url') ? document.getElementById('widget-avatar-url').value.trim() : '',
+        custom_css: document.getElementById('widget-custom-css') ? document.getElementById('widget-custom-css').value : '',
       }
     };
 
@@ -185,9 +223,63 @@ function setupEventListeners() {
   });
 
   // Widget preview auto-update
-  ['widget-btn-text', 'widget-primary-color', 'widget-secondary-color', 'widget-position'].forEach(id => {
-    document.getElementById(id).addEventListener('input', updateLivePreview);
+  ['widget-btn-text', 'widget-header-title', 'widget-primary-color', 'widget-secondary-color', 'widget-position', 'widget-avatar-url'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        if (id === 'widget-avatar-url') {
+          updateAvatarPresetSelection(el.value.trim());
+        }
+        updateLivePreview();
+      });
+    }
   });
+
+  // Clear Avatar Button
+  const clearAvatarBtn = document.getElementById('btn-clear-avatar');
+  if (clearAvatarBtn) {
+    clearAvatarBtn.addEventListener('click', () => {
+      const avatarInput = document.getElementById('widget-avatar-url');
+      if (avatarInput) avatarInput.value = '';
+      updateAvatarPresetSelection('');
+      updateLivePreview();
+      showToast('Avatar cleared. Default bag icon will be used.');
+    });
+  }
+
+  // Export Leads (CSV)
+  const exportLeadsBtn = document.getElementById('btn-export-leads');
+  if (exportLeadsBtn) {
+    exportLeadsBtn.addEventListener('click', async () => {
+      if (!state.activeStoreId) return;
+      const originalText = exportLeadsBtn.innerHTML;
+      exportLeadsBtn.disabled = true;
+      exportLeadsBtn.innerHTML = '<span>⏳</span> Exporting...';
+      showToast('Preparing leads export...');
+
+      try {
+        const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/leads/export`, {
+          headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+        if (!res.ok) throw new Error('Failed to export leads');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `leads_${state.activeStoreId.substring(0, 8)}_${Date.now()}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        showToast('Leads CSV downloaded successfully!');
+      } catch (err) {
+        showToast(err.message, true);
+      } finally {
+        exportLeadsBtn.disabled = false;
+        exportLeadsBtn.innerHTML = originalText;
+      }
+    });
+  }
 
   // Regenerate Key
   document.getElementById('regenerate-key-btn').addEventListener('click', () => {
@@ -418,20 +510,103 @@ function updateSnippetCode(widgetKey) {
   }
 }
 
+function initAvatarPresets() {
+  const grid = document.getElementById('avatar-presets-grid');
+  if (!grid) return;
+  grid.innerHTML = AVATAR_PRESETS.map(preset => `
+    <div class="avatar-preset-card" data-url="${preset.url}" title="${preset.name}">
+      <img src="${preset.url}" alt="${preset.name}">
+      <span>${preset.name}</span>
+    </div>
+  `).join('');
+
+  grid.querySelectorAll('.avatar-preset-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const url = card.getAttribute('data-url');
+      const avatarInput = document.getElementById('widget-avatar-url');
+      if (avatarInput) avatarInput.value = url;
+      updateAvatarPresetSelection(url);
+      updateLivePreview();
+      showToast(`Selected ${card.querySelector('span').textContent} avatar! Save settings to apply.`);
+    });
+  });
+}
+
+function updateAvatarPresetSelection(selectedUrl = '') {
+  const grid = document.getElementById('avatar-presets-grid');
+  if (!grid) return;
+  const cleanSelected = (selectedUrl || '').trim();
+  grid.querySelectorAll('.avatar-preset-card').forEach(card => {
+    if (cleanSelected && card.getAttribute('data-url') === cleanSelected) {
+      card.classList.add('active');
+    } else {
+      card.classList.remove('active');
+    }
+  });
+}
+
 function updateLivePreview() {
   const btn = document.getElementById('preview-widget-btn');
+  const primaryColor = document.getElementById('widget-primary-color')?.value || '#1a1a1a';
+  const secondaryColor = document.getElementById('widget-secondary-color')?.value || '#ffffff';
+  const btnText = document.getElementById('widget-btn-text')?.value || 'Ask our shopping assistant';
+  const headerTitle = document.getElementById('widget-header-title')?.value || 'AI Shopping Assistant';
+  const avatarUrl = document.getElementById('widget-avatar-url')?.value?.trim() || '';
+
   if (btn) {
-    btn.querySelector('span').textContent = document.getElementById('widget-btn-text').value || 'Ask our shopping assistant';
-    btn.style.backgroundColor = document.getElementById('widget-primary-color').value || '#1a1a1a';
-    btn.style.color = document.getElementById('widget-secondary-color').value || '#ffffff';
+    btn.querySelector('span').textContent = btnText;
+    btn.style.backgroundColor = primaryColor;
+    btn.style.color = secondaryColor;
     
-    const pos = document.getElementById('widget-position').value;
+    let btnThumb = btn.querySelector('.preview-btn-avatar');
+    if (avatarUrl) {
+      if (!btnThumb) {
+        btnThumb = document.createElement('img');
+        btnThumb.className = 'preview-btn-avatar';
+        btnThumb.style.width = '24px';
+        btnThumb.style.height = '24px';
+        btnThumb.style.borderRadius = '50%';
+        btnThumb.style.marginRight = '8px';
+        btnThumb.style.objectFit = 'cover';
+        btn.prepend(btnThumb);
+      }
+      btnThumb.src = avatarUrl;
+      btnThumb.style.display = 'inline-block';
+    } else if (btnThumb) {
+      btnThumb.style.display = 'none';
+    }
+
+    const pos = document.getElementById('widget-position')?.value;
     if (pos === 'bottom-left') {
       btn.style.right = 'auto';
       btn.style.left = '20px';
     } else {
       btn.style.left = 'auto';
       btn.style.right = '20px';
+    }
+  }
+
+  // Header Preview
+  const chatHeader = document.getElementById('preview-chat-header');
+  const headerTitleText = document.getElementById('preview-header-title-text');
+  const previewAvatarImg = document.getElementById('preview-avatar-img');
+  const previewAvatarFallback = document.getElementById('preview-avatar-fallback');
+
+  if (chatHeader) {
+    chatHeader.style.backgroundColor = primaryColor;
+    chatHeader.style.color = secondaryColor;
+  }
+  if (headerTitleText) {
+    headerTitleText.textContent = headerTitle;
+  }
+  if (previewAvatarImg && previewAvatarFallback) {
+    if (avatarUrl) {
+      previewAvatarImg.src = avatarUrl;
+      previewAvatarImg.style.display = 'block';
+      previewAvatarFallback.style.display = 'none';
+    } else {
+      previewAvatarImg.style.display = 'none';
+      previewAvatarFallback.style.display = 'flex';
     }
   }
 }
@@ -576,10 +751,20 @@ async function loadSectionData(section) {
     }
     else if (section === 'widget-settings') {
       if (data.widget) {
-        document.getElementById('widget-btn-text').value = data.widget.button_text;
-        document.getElementById('widget-primary-color').value = data.widget.primary_colour;
-        document.getElementById('widget-secondary-color').value = data.widget.secondary_colour;
-        document.getElementById('widget-position').value = data.widget.position;
+        document.getElementById('widget-btn-text').value = data.widget.button_text || '';
+        document.getElementById('widget-primary-color').value = data.widget.primary_colour || '#1a1a1a';
+        document.getElementById('widget-secondary-color').value = data.widget.secondary_colour || '#ffffff';
+        document.getElementById('widget-position').value = data.widget.position || 'bottom-right';
+        if (document.getElementById('widget-header-title')) {
+          document.getElementById('widget-header-title').value = data.widget.header_title || '';
+        }
+        if (document.getElementById('widget-avatar-url')) {
+          document.getElementById('widget-avatar-url').value = data.widget.avatar_url || '';
+        }
+        if (document.getElementById('widget-custom-css')) {
+          document.getElementById('widget-custom-css').value = data.widget.custom_css || '';
+        }
+        updateAvatarPresetSelection(data.widget.avatar_url || '');
         updateLivePreview();
       }
       if (data.widget_key) {
