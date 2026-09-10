@@ -116,9 +116,54 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
   async searchProducts(storeId: string, query: ProductSearchQuery): Promise<ShopifyProduct[]> {
     try {
+      const db = getDatabaseClient();
+
+      // 1. Check local synced products catalog in DB first (fast & reliable)
+      try {
+        let sql = 'SELECT * FROM products WHERE store_id = $1 AND in_stock = true';
+        const params: any[] = [storeId];
+
+        if (query.budget_max) {
+          params.push(query.budget_max);
+          sql += ` AND price <= $${params.length}`;
+        }
+
+        if (query.category) {
+          params.push(query.category.toLowerCase());
+          sql += ` AND LOWER(category) = $${params.length}`;
+        }
+
+        if (query.keywords && query.keywords.length > 0) {
+          const kwClauses = query.keywords.map((kw) => {
+            params.push(`%${kw.toLowerCase()}%`);
+            return `(LOWER(title) LIKE $${params.length} OR LOWER(category) LIKE $${params.length})`;
+          });
+          sql += ` AND (${kwClauses.join(' OR ')})`;
+        }
+
+        sql += ' ORDER BY price ASC LIMIT 20';
+        const dbRes = await db.query(sql, params);
+        if (dbRes.rows.length > 0) {
+          return dbRes.rows.map((r: any) => ({
+            id: r.shopify_id || r.id,
+            variant_id: r.variant_id || '',
+            title: r.title,
+            handle: r.handle,
+            price: parseFloat(r.price || '0'),
+            currency: r.currency || 'INR',
+            in_stock: r.in_stock,
+            category: r.category,
+            image_url: r.image_url,
+            product_url: r.product_url,
+          }));
+        }
+      } catch (dbErr) {
+        // Table may not exist in non-migrated tests, continue to live API
+      }
+
+      // 2. Fallback to live Storefront API search
       const { storefrontToken, shopDomain } = await this.getCredentials(storeId);
       
-      // We will perform a basic Storefront API GraphQL query
       const graphqlQuery = `
         {
           products(first: 20, query: "${query.keywords?.join(' ') || ''}") {
@@ -186,12 +231,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         };
       });
 
-      // Client-side budget filtering if needed
       if (query.budget_max) {
         products = products.filter(p => p.price <= query.budget_max!);
       }
       
-      // Client-side category filtering if needed
       if (query.category) {
         products = products.filter(p => p.category.toLowerCase() === query.category!.toLowerCase());
       }
@@ -205,89 +248,81 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
   async syncAllProducts(storeId: string): Promise<{ count: number; products: ShopifyProduct[] }> {
     try {
-      const { storefrontToken, shopDomain } = await this.getCredentials(storeId);
-      const allProducts: ShopifyProduct[] = [];
-      let hasNextPage = true;
-      let cursor: string | null = null;
-      let iterations = 0;
-      const maxIterations = 20; // Up to 1,000 products
+      const { adminToken, storefrontToken, shopDomain } = await this.getCredentials(storeId);
+      let allProducts: ShopifyProduct[] = [];
 
-      while (hasNextPage && iterations < maxIterations) {
-        iterations++;
-        const afterArg = cursor ? `, after: "${cursor}"` : '';
-        const graphqlQuery = `
-          {
-            products(first: 50${afterArg}) {
-              pageInfo {
-                hasNextPage
-                endCursor
-              }
-              edges {
-                node {
-                  id
-                  title
-                  productType
-                  variants(first: 1) {
-                    edges {
-                      node {
-                        id
-                        price { amount currencyCode }
-                        availableForSale
-                      }
-                    }
-                  }
-                  images(first: 1) {
-                    edges {
-                      node {
-                        url
-                      }
-                    }
-                  }
-                  onlineStoreUrl
-                }
-              }
-            }
+      // 1. Primary: Shopify Admin GraphQL API (uses adminToken)
+      if (adminToken) {
+        try {
+          allProducts = await this.syncViaAdminGraphQL(shopDomain, adminToken);
+          logger.info(`Admin GraphQL synced ${allProducts.length} products for ${shopDomain}`);
+        } catch (err) {
+          logger.warn(`Admin GraphQL sync failed for ${shopDomain}, trying Admin REST: ${err}`);
+        }
+
+        // 2. Fallback: Shopify Admin REST API
+        if (allProducts.length === 0) {
+          try {
+            allProducts = await this.syncViaAdminREST(shopDomain, adminToken);
+            logger.info(`Admin REST synced ${allProducts.length} products for ${shopDomain}`);
+          } catch (err) {
+            logger.warn(`Admin REST sync failed for ${shopDomain}: ${err}`);
           }
-        `;
-
-        const response = await fetch(`https://${shopDomain}/api/2024-01/graphql.json`, {
-          method: 'POST',
-          headers: {
-            'X-Shopify-Storefront-Access-Token': storefrontToken,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ query: graphqlQuery })
-        });
-
-        if (!response.ok) {
-          logger.warn(`Shopify GraphQL sync request returned status ${response.status}`);
-          break;
         }
+      }
 
-        const data = (await response.json()) as any;
-        const productsData = data.data?.products;
-        if (!productsData?.edges || productsData.edges.length === 0) {
-          break;
+      // 3. Fallback: Storefront GraphQL API
+      if (allProducts.length === 0 && storefrontToken) {
+        try {
+          allProducts = await this.syncViaStorefrontGraphQL(shopDomain, storefrontToken);
+          logger.info(`Storefront GraphQL synced ${allProducts.length} products for ${shopDomain}`);
+        } catch (err) {
+          logger.warn(`Storefront GraphQL sync failed for ${shopDomain}: ${err}`);
         }
+      }
 
-        for (const edge of productsData.edges) {
-          const node = edge.node;
-          const variant = node.variants?.edges[0]?.node;
-          allProducts.push({
-            id: node.id,
-            variant_id: variant?.id || '',
-            title: node.title,
-            price: parseFloat(variant?.price?.amount || '0'),
-            currency: variant?.price?.currencyCode || 'INR',
-            in_stock: variant?.availableForSale ?? true,
-            category: node.productType || '',
-            image_url: node.images?.edges[0]?.node?.url || '',
-            product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`
-          });
+      // 4. Save/Upsert synced products to local products table
+      if (allProducts.length > 0) {
+        try {
+          const db = getDatabaseClient();
+          for (const p of allProducts) {
+            const rawId = p.id.split('/').pop() || p.id;
+            const compositeId = `${storeId}_${rawId}`;
+            await db.query(`
+              INSERT INTO products (
+                id, store_id, shopify_id, variant_id, title, handle, price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
+              ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+              )
+              ON CONFLICT (id) DO UPDATE SET
+                title = EXCLUDED.title,
+                handle = EXCLUDED.handle,
+                price = EXCLUDED.price,
+                currency = EXCLUDED.currency,
+                in_stock = EXCLUDED.in_stock,
+                category = EXCLUDED.category,
+                image_url = EXCLUDED.image_url,
+                product_url = EXCLUDED.product_url,
+                synced_at = NOW(),
+                updated_at = NOW()
+            `, [
+              compositeId,
+              storeId,
+              p.id,
+              p.variant_id || '',
+              p.title,
+              p.handle || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
+              p.price || 0,
+              p.currency || 'INR',
+              p.in_stock ?? true,
+              p.category || '',
+              p.image_url || '',
+              p.product_url || ''
+            ]);
+          }
+        } catch (dbErr) {
+          logger.warn(`Could not persist synced products to database: ${dbErr}`);
         }
-
-        hasNextPage = productsData.pageInfo?.hasNextPage || false;
-        cursor = productsData.pageInfo?.endCursor || null;
       }
 
       return {
@@ -300,8 +335,228 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     }
   }
 
+  private async syncViaAdminGraphQL(shopDomain: string, adminToken: string): Promise<ShopifyProduct[]> {
+    const products: ShopifyProduct[] = [];
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let iterations = 0;
+    const maxIterations = 20; // Up to 1,000 products
+
+    while (hasNextPage && iterations < maxIterations) {
+      iterations++;
+      const afterArg = cursor ? `, after: "${cursor}"` : '';
+      const graphqlQuery = `
+        {
+          products(first: 50${afterArg}) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                title
+                handle
+                productType
+                status
+                featuredImage {
+                  url
+                }
+                images(first: 1) {
+                  edges {
+                    node {
+                      url
+                    }
+                  }
+                }
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      price
+                      availableForSale
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const response = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': adminToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: graphqlQuery }),
+      });
+
+      if (!response.ok) {
+        logger.warn(`Shopify Admin GraphQL returned status ${response.status}`);
+        break;
+      }
+
+      const data = (await response.json()) as any;
+      const productsData = data.data?.products;
+      if (!productsData?.edges || productsData.edges.length === 0) {
+        break;
+      }
+
+      for (const edge of productsData.edges) {
+        const node = edge.node;
+        const variant = node.variants?.edges[0]?.node;
+        const imgUrl = node.featuredImage?.url || node.images?.edges[0]?.node?.url || '';
+        const rawId = node.id || '';
+        const numericId = rawId.split('/').pop() || rawId;
+
+        products.push({
+          id: rawId,
+          variant_id: variant?.id || '',
+          title: node.title || '',
+          handle: node.handle || '',
+          price: parseFloat(variant?.price || '0'),
+          currency: 'INR',
+          in_stock: variant?.availableForSale ?? (node.status === 'ACTIVE'),
+          category: node.productType || '',
+          image_url: imgUrl,
+          product_url: `https://${shopDomain}/products/${node.handle || numericId}`,
+        });
+      }
+
+      hasNextPage = productsData.pageInfo?.hasNextPage || false;
+      cursor = productsData.pageInfo?.endCursor || null;
+    }
+
+    return products;
+  }
+
+  private async syncViaAdminREST(shopDomain: string, adminToken: string): Promise<ShopifyProduct[]> {
+    const products: ShopifyProduct[] = [];
+    const response = await fetch(`https://${shopDomain}/admin/api/2024-01/products.json?limit=250`, {
+      headers: {
+        'X-Shopify-Access-Token': adminToken,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      logger.warn(`Shopify Admin REST returned status ${response.status}`);
+      return [];
+    }
+
+    const data = (await response.json()) as any;
+    const rawProducts = data.products || [];
+
+    for (const p of rawProducts) {
+      const variant = p.variants?.[0];
+      const imgUrl = p.image?.src || p.images?.[0]?.src || '';
+      products.push({
+        id: String(p.id),
+        variant_id: variant ? String(variant.id) : '',
+        title: p.title || '',
+        handle: p.handle || '',
+        price: parseFloat(variant?.price || '0'),
+        currency: 'INR',
+        in_stock: variant?.available ?? (p.status === 'active'),
+        category: p.product_type || '',
+        image_url: imgUrl,
+        product_url: `https://${shopDomain}/products/${p.handle || p.id}`,
+      });
+    }
+
+    return products;
+  }
+
+  private async syncViaStorefrontGraphQL(shopDomain: string, storefrontToken: string): Promise<ShopifyProduct[]> {
+    const products: ShopifyProduct[] = [];
+    let hasNextPage = true;
+    let cursor: string | null = null;
+    let iterations = 0;
+    const maxIterations = 20;
+
+    while (hasNextPage && iterations < maxIterations) {
+      iterations++;
+      const afterArg = cursor ? `, after: "${cursor}"` : '';
+      const graphqlQuery = `
+        {
+          products(first: 50${afterArg}) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                title
+                productType
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      price { amount currencyCode }
+                      availableForSale
+                    }
+                  }
+                }
+                images(first: 1) {
+                  edges {
+                    node {
+                      url
+                    }
+                  }
+                }
+                onlineStoreUrl
+              }
+            }
+          }
+        }
+      `;
+
+      const response = await fetch(`https://${shopDomain}/api/2024-01/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Storefront-Access-Token': storefrontToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: graphqlQuery }),
+      });
+
+      if (!response.ok) {
+        break;
+      }
+
+      const data = (await response.json()) as any;
+      const productsData = data.data?.products;
+      if (!productsData?.edges || productsData.edges.length === 0) {
+        break;
+      }
+
+      for (const edge of productsData.edges) {
+        const node = edge.node;
+        const variant = node.variants?.edges[0]?.node;
+        products.push({
+          id: node.id,
+          variant_id: variant?.id || '',
+          title: node.title,
+          price: parseFloat(variant?.price?.amount || '0'),
+          currency: variant?.price?.currencyCode || 'INR',
+          in_stock: variant?.availableForSale ?? true,
+          category: node.productType || '',
+          image_url: node.images?.edges[0]?.node?.url || '',
+          product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`,
+        });
+      }
+
+      hasNextPage = productsData.pageInfo?.hasNextPage || false;
+      cursor = productsData.pageInfo?.endCursor || null;
+    }
+
+    return products;
+  }
+
   async getProductDetails(storeId: string, productId: string): Promise<ShopifyProduct | null> {
-    // For simplicity, just search for it and return first result
     const products = await this.searchProducts(storeId, {});
     return products.find(p => p.id === productId || p.id.includes(productId)) || null;
   }

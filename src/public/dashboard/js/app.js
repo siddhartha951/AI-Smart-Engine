@@ -252,6 +252,27 @@ function setupEventListeners() {
     });
   });
 
+  // Product Catalog Search & Refresh
+  const searchInput = document.getElementById('product-search-input');
+  if (searchInput) {
+    let debounceTimer;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadProductsTable(e.target.value);
+      }, 300);
+    });
+  }
+
+  const refreshProductsBtn = document.getElementById('refresh-products-btn');
+  if (refreshProductsBtn) {
+    refreshProductsBtn.addEventListener('click', () => {
+      const q = searchInput ? searchInput.value : '';
+      loadProductsTable(q);
+      showToast('Product catalog refreshed');
+    });
+  }
+
   // 4. Email Settings
   document.getElementById('email-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -575,6 +596,7 @@ async function loadSectionData(section) {
       }
       document.getElementById('shopify-last-sync').textContent = data.last_sync ? new Date(data.last_sync).toLocaleString() : 'Never';
       document.getElementById('shopify-creds').textContent = data.credentials_configured ? 'Yes (Encrypted)' : 'No';
+      loadProductsTable();
     }
     else if (section === 'email-automation') {
       if (data.settings) {
@@ -597,6 +619,74 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+async function loadProductsTable(search = '') {
+  if (!state.activeStoreId) return;
+  const tbody = document.getElementById('products-table-body');
+  if (!tbody) return;
+
+  try {
+    const url = `/api/v1/dashboard/${state.activeStoreId}/products${search ? `?q=${encodeURIComponent(search)}` : ''}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load products');
+    const { data } = await res.json();
+
+    const summary = data.summary || { total: 0, in_stock: 0, categories_count: 0 };
+    const statTotal = document.getElementById('stat-products-total');
+    const statInStock = document.getElementById('stat-products-instock');
+    const statCats = document.getElementById('stat-products-categories');
+
+    if (statTotal) statTotal.textContent = summary.total;
+    if (statInStock) statInStock.textContent = summary.in_stock;
+    if (statCats) statCats.textContent = summary.categories_count;
+
+    const products = data.products || [];
+    if (products.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            ${search ? 'No products match your search keyword.' : 'No products synced yet. Click "Sync Products" above to import your Shopify catalog.'}
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = products.map(p => {
+      const price = parseFloat(p.price || 0).toFixed(2);
+      const currencySymbol = p.currency === 'INR' ? '₹' : (p.currency === 'USD' ? '$' : (p.currency === 'GBP' ? '£' : p.currency));
+      const stockBadge = p.in_stock
+        ? `<span class="badge success">In Stock</span>`
+        : `<span class="badge danger">Out of Stock</span>`;
+
+      const imgHtml = p.image_url
+        ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #1e293b;">`
+        : `<div style="width: 44px; height: 44px; border-radius: 6px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted);">No Img</div>`;
+
+      const linkHtml = p.product_url
+        ? `<a href="${escapeHtml(p.product_url)}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: none; font-size: 12px; font-weight: 500;">View ↗</a>`
+        : `—`;
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 10px;">${imgHtml}</td>
+          <td style="padding: 10px;">
+            <div style="font-weight: 500; color: var(--text-main); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(p.title)}</div>
+            ${p.handle ? `<div style="font-size: 11px; color: var(--text-muted);">/${escapeHtml(p.handle)}</div>` : ''}
+          </td>
+          <td style="padding: 10px; color: var(--text-muted); font-size: 13px;">${escapeHtml(p.category || 'General')}</td>
+          <td style="padding: 10px; font-weight: 600;">${currencySymbol}${price}</td>
+          <td style="padding: 10px;">${stockBadge}</td>
+          <td style="padding: 10px; text-align: right;">${linkHtml}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Error loading products table:', err);
+  }
 }
 
 // UI Utilities

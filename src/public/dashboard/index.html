@@ -268,6 +268,50 @@
             <button id="sync-products-btn" class="btn-primary">Sync Products</button>
             <button class="btn-secondary outline" onclick="window.location.href='mailto:support@platform.com'">Request Admin Support</button>
           </div>
+
+          <!-- Synced Product Catalog Display -->
+          <div class="products-catalog-container" style="margin-top: 32px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 600;">Synced Products Catalog</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-top: 2px;">
+                  Products synced from your Shopify store that your AI assistant references to answer shopper questions and pitch recommendations.
+                </p>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="product-search-input" placeholder="Search catalog..." style="padding: 8px 12px; font-size: 13px; width: 220px; border-radius: 8px; border: 1px solid var(--border); background: rgba(15,23,42,0.5); color: var(--text-main);">
+                <button id="refresh-products-btn" class="btn-secondary" style="padding: 8px 14px; font-size: 13px;">Refresh</button>
+              </div>
+            </div>
+
+            <div class="metrics-grid" style="margin-bottom: 20px;">
+              <div class="stat-card"><h3>Total Products</h3><p id="stat-products-total">--</p></div>
+              <div class="stat-card"><h3>In Stock</h3><p id="stat-products-instock">--</p></div>
+              <div class="stat-card"><h3>Categories</h3><p id="stat-products-categories">--</p></div>
+            </div>
+
+            <div class="table-container glass-panel" style="padding: 16px; overflow-x: auto; border-radius: 12px;">
+              <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 12px;">
+                    <th style="padding: 10px; width: 60px;">Image</th>
+                    <th style="padding: 10px;">Product Title</th>
+                    <th style="padding: 10px;">Category</th>
+                    <th style="padding: 10px;">Price</th>
+                    <th style="padding: 10px;">Stock Status</th>
+                    <th style="padding: 10px; text-align: right;">Storefront</th>
+                  </tr>
+                </thead>
+                <tbody id="products-table-body">
+                  <tr>
+                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      Click "Sync Products" above to import your Shopify catalog.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <!-- 5. Email Automation Section -->

@@ -2,6 +2,7 @@ export interface ShopifyProduct {
   id: string;
   variant_id: string;
   title: string;
+  handle?: string;
   price: number;
   currency: string;
   in_stock: boolean;

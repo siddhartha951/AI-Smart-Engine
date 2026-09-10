@@ -115,7 +115,7 @@ describe('Custom Agent Training, Leads & Widget Enhancements', () => {
     expect(leadsRes.body.data.leads[0].order_total).toBe('49.99');
   });
 
-  it('Shopify sync executes product sync without 501 error', async () => {
+  it('Shopify sync executes product sync and GET /products returns synced catalog', async () => {
     const syncRes = await request(app)
       .post(`/api/v1/dashboard/${STORE_A_ID}/shopify/sync`)
       .set('Authorization', `Bearer ${tokenStoreA}`);
@@ -124,6 +124,19 @@ describe('Custom Agent Training, Leads & Widget Enhancements', () => {
     expect(syncRes.body.success).toBe(true);
     expect(syncRes.body.message).toContain('synced');
     expect(typeof syncRes.body.total_synced).toBe('number');
+    expect(syncRes.body.total_synced).toBeGreaterThan(0);
+
+    // Fetch synced products
+    const productsRes = await request(app)
+      .get(`/api/v1/dashboard/${STORE_A_ID}/products`)
+      .set('Authorization', `Bearer ${tokenStoreA}`);
+
+    expect(productsRes.status).toBe(200);
+    expect(productsRes.body.success).toBe(true);
+    expect(productsRes.body.data.summary.total).toBe(syncRes.body.total_synced);
+    expect(productsRes.body.data.products.length).toBeGreaterThan(0);
+    expect(productsRes.body.data.products[0]).toHaveProperty('title');
+    expect(productsRes.body.data.products[0]).toHaveProperty('price');
   });
 
   it('Widget config returns 200 even when assistant is inactive (always visible widget)', async () => {

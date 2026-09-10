@@ -288,6 +288,45 @@ router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, r
       result = { count: list.length, products: list };
     }
 
+    // Save/upsert products into products table
+    if (result.products && result.products.length > 0) {
+      for (const p of result.products) {
+        const rawId = p.id.split('/').pop() || p.id;
+        const compositeId = `${storeId}_${rawId}`;
+        await db.query(`
+          INSERT INTO products (
+            id, store_id, shopify_id, variant_id, title, handle, price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            title = EXCLUDED.title,
+            handle = EXCLUDED.handle,
+            price = EXCLUDED.price,
+            currency = EXCLUDED.currency,
+            in_stock = EXCLUDED.in_stock,
+            category = EXCLUDED.category,
+            image_url = EXCLUDED.image_url,
+            product_url = EXCLUDED.product_url,
+            synced_at = NOW(),
+            updated_at = NOW()
+        `, [
+          compositeId,
+          storeId,
+          p.id,
+          p.variant_id || '',
+          p.title,
+          p.handle || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
+          p.price || 0,
+          p.currency || 'INR',
+          p.in_stock ?? true,
+          p.category || '',
+          p.image_url || '',
+          p.product_url || ''
+        ]);
+      }
+    }
+
     // Update stores updated_at so dashboard displays fresh sync timestamp
     await db.query('UPDATE stores SET updated_at = NOW() WHERE id = $1', [storeId]);
 
@@ -299,6 +338,45 @@ router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, r
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message || 'Product sync failed' });
+  }
+});
+
+// 3.1 Synced Products Catalog
+router.get('/:storeId/products', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const search = (req.query.q as string || '').trim();
+
+    let query = 'SELECT * FROM products WHERE store_id = $1';
+    const params: any[] = [storeId];
+
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      query += ` AND (LOWER(title) LIKE $${params.length} OR LOWER(category) LIKE $${params.length})`;
+    }
+
+    query += ' ORDER BY synced_at DESC, title ASC LIMIT 250';
+
+    const resProducts = await db.query(query, params);
+    const totalCount = resProducts.rows.length;
+    const inStockCount = resProducts.rows.filter((r: any) => r.in_stock).length;
+    const uniqueCategories = Array.from(new Set(resProducts.rows.map((r: any) => r.category).filter(Boolean)));
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          total: totalCount,
+          in_stock: inStockCount,
+          out_of_stock: totalCount - inStockCount,
+          categories_count: uniqueCategories.length,
+        },
+        products: resProducts.rows,
+      },
+    });
+  } catch (err) {
+    next(err);
   }
 });
 
