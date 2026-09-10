@@ -1,0 +1,40 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database & Backups
+backups/
+*.sqlite
+*.db
+
+# Testing and Coverage
+coverage/
+.vitest/
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary and Scratch
+scratch/
+tmp/
+.temp/

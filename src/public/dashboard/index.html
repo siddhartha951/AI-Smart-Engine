@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merchant Dashboard | AI Smart Engine</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Three.js Interactive Background -->
+  <canvas id="three-canvas"></canvas>
+
+  <div id="app-container">
+    <!-- Login View -->
+    <main id="login-view" class="view glass-panel active">
+      <div class="login-header">
+        <h1>AI Smart Engine</h1>
+        <p>Merchant Portal</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required placeholder="admin@platform.com">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required placeholder="password123">
+        </div>
+        <button type="submit" class="btn-primary">Sign In</button>
+        <div id="login-error" class="error-msg"></div>
+      </form>
+    </main>
+
+    <!-- Dashboard View -->
+    <div id="dashboard-view" class="view hidden">
+      <nav class="sidebar glass-panel">
+        <div class="brand">
+          <h2>AI Smart Engine</h2>
+          <p id="user-role-badge" class="badge">Merchant</p>
+        </div>
+        
+        <div id="store-selector-container" class="store-selector hidden">
+          <label for="store-selector">Active Store:</label>
+          <select id="store-selector"></select>
+        </div>
+
+        <ul class="nav-links">
+          <li><a href="#" data-target="overview" class="active">Overview</a></li>
+          <li><a href="#" data-target="my-agent">My Agent</a></li>
+          <li><a href="#" data-target="widget-settings">Widget Settings</a></li>
+          <li><a href="#" data-target="shopify-connection">Shopify Connection</a></li>
+          <li><a href="#" data-target="email-automation">Email Automation</a></li>
+        </ul>
+        <div class="sidebar-footer">
+          <button id="logout-btn" class="btn-secondary outline">Log Out</button>
+        </div>
+      </nav>
+
+      <main class="dashboard-content glass-panel">
+        <!-- 1. Overview Section -->
+        <section id="overview" class="content-section active">
+          <header>
+            <h2>Store Overview</h2>
+            <div class="status-indicators">
+              <span class="status-badge" id="agent-status-badge"><span class="dot"></span> Agent Status: Loading...</span>
+              <span class="status-badge" id="widget-status-badge"><span class="dot"></span> Widget Status: Loading...</span>
+            </div>
+          </header>
+          
+          <div class="metrics-grid">
+            <div class="stat-card"><h3>Chats</h3><p id="stat-chats">--</p></div>
+            <div class="stat-card"><h3>Leads Captured</h3><p id="stat-leads">--</p></div>
+            <div class="stat-card"><h3>Marketing Opt-ins</h3><p id="stat-optins">--</p></div>
+            <div class="stat-card"><h3>Recommendations</h3><p id="stat-recs">--</p></div>
+            <div class="stat-card"><h3>Add to Carts</h3><p id="stat-carts">--</p></div>
+            <div class="stat-card"><h3>Completed Purchases</h3><p id="stat-purchases">--</p></div>
+            <div class="stat-card full-width">
+              <h3>Recovery Emails</h3>
+              <div class="split-stats">
+                <div><span>Sent:</span> <strong id="stat-emails-sent">--</strong></div>
+                <div><span>Opened:</span> <strong id="stat-emails-opened">--</strong></div>
+                <div><span>Unsub:</span> <strong id="stat-emails-unsub">--</strong></div>
+              </div>
+            </div>
+            <div class="stat-card full-width ai-usage">
+              <h3>Current Month AI Usage</h3>
+              <div class="split-stats">
+                <div><span>Input Tokens:</span> <strong id="stat-ai-input">--</strong></div>
+                <div><span>Output Tokens:</span> <strong id="stat-ai-output">--</strong></div>
+                <div><span>Estimated Cost:</span> <strong id="stat-ai-cost">--</strong> <small>(Limit: $14.00)</small></div>
+              </div>
+              <div class="progress-bar-container">
+                <div class="progress-bar" id="ai-budget-progress" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. My Agent Section -->
+        <section id="my-agent" class="content-section hidden">
+          <header><h2>My Agent</h2></header>
+          <form id="agent-form">
+            <div class="form-group toggle-group">
+              <label for="agent-is-active">Enable Assistant</label>
+              <label class="switch">
+                <input type="checkbox" id="agent-is-active">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="agent-name">Agent Name</label>
+              <input type="text" id="agent-name">
+            </div>
+            <div class="form-group">
+              <label for="agent-welcome">Welcome Message</label>
+              <textarea id="agent-welcome" rows="2"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="agent-tone">Tone</label>
+              <select id="agent-tone">
+                <option value="friendly and helpful">Friendly and Helpful</option>
+                <option value="professional and concise">Professional and Concise</option>
+                <option value="enthusiastic and persuasive">Enthusiastic and Persuasive</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="agent-support">Support Email/WhatsApp</label>
+              <input type="text" id="agent-support">
+            </div>
+            <div class="form-group">
+              <label for="store-faq">Store Policies & FAQ</label>
+              <textarea id="store-faq" rows="5"></textarea>
+              <small>Provide your delivery rules, returns policy, and common FAQs so the agent won't hallucinate.</small>
+            </div>
+            <button type="submit" class="btn-primary">Save Agent Settings</button>
+          </form>
+        </section>
+
+        <!-- 3. Widget Settings Section -->
+        <section id="widget-settings" class="content-section hidden">
+          <header><h2>Widget Settings</h2></header>
+          <div class="split-layout">
+            <form id="widget-form" class="half-width">
+              <div class="form-group">
+                <label for="widget-btn-text">Button Text</label>
+                <input type="text" id="widget-btn-text">
+              </div>
+              <div class="form-group row">
+                <div class="col">
+                  <label for="widget-primary-color">Primary Colour</label>
+                  <input type="color" id="widget-primary-color">
+                </div>
+                <div class="col">
+                  <label for="widget-secondary-color">Secondary Colour</label>
+                  <input type="color" id="widget-secondary-color">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="widget-position">Position</label>
+                <select id="widget-position">
+                  <option value="bottom-right">Bottom Right</option>
+                  <option value="bottom-left">Bottom Left</option>
+                </select>
+              </div>
+              <button type="submit" class="btn-primary">Save Widget Settings</button>
+            </form>
+            
+            <div class="live-preview-container half-width">
+              <h3>Live Preview</h3>
+              <div class="preview-box">
+                <div id="preview-widget-btn" class="preview-btn">
+                  <span>Ask our shopping assistant</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <hr class="divider">
+          
+          <div class="snippet-section">
+            <h3>Installation Snippet</h3>
+            <p>Paste this inside your Shopify theme's <code>&lt;head&gt;</code> or just before <code>&lt;/body&gt;</code>:</p>
+            <div class="code-block">
+              <code id="snippet-code">&lt;script src="https://yourdomain.com/widget.js" data-widget-key="LOADING" defer&gt;&lt;/script&gt;</code>
+              <button id="copy-snippet-btn" class="btn-secondary">Copy</button>
+            </div>
+            <div class="danger-zone">
+              <p>If your key is compromised, you can regenerate it. This immediately invalidates the old snippet.</p>
+              <button id="regenerate-key-btn" class="btn-danger outline">Regenerate Key</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Shopify Connection Section -->
+        <section id="shopify-connection" class="content-section hidden">
+          <header><h2>Shopify Connection</h2></header>
+          <div class="status-card">
+            <h3>Domain: <span id="shopify-domain" class="highlight">--</span></h3>
+            <p>Status: <span id="shopify-status" class="badge">--</span></p>
+            <p>Last Product Sync: <span id="shopify-last-sync">--</span></p>
+            <p>Credentials Configured: <span id="shopify-creds">--</span></p>
+          </div>
+          <div class="action-buttons">
+            <button id="test-connection-btn" class="btn-secondary">Test Connection</button>
+            <button id="sync-products-btn" class="btn-primary">Sync Products</button>
+            <button class="btn-secondary outline" onclick="window.location.href='mailto:support@platform.com'">Request Admin Support</button>
+          </div>
+        </section>
+
+        <!-- 5. Email Automation Section -->
+        <section id="email-automation" class="content-section hidden">
+          <header><h2>Email Automation</h2></header>
+          <form id="email-form">
+            <div class="form-group toggle-group">
+              <label for="email-is-enabled">Enable Abandoned Cart Recovery</label>
+              <label class="switch">
+                <input type="checkbox" id="email-is-enabled">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="email-interval">Follow-up Interval (Minutes)</label>
+              <input type="number" id="email-interval" min="15" max="1440">
+            </div>
+            <div class="form-group">
+              <label for="email-max">Maximum Recovery Emails per Session</label>
+              <input type="number" id="email-max" min="1" max="3">
+            </div>
+            <div class="form-group">
+              <label for="email-consent">Consent Checkbox Wording</label>
+              <textarea id="email-consent" rows="2"></textarea>
+              <small>UK PECR requires explicit, unambiguous wording.</small>
+            </div>
+            <button type="submit" class="btn-primary">Save Email Settings</button>
+          </form>
+
+          <hr class="divider">
+
+          <div class="test-email-section">
+            <h3>Send Test Email</h3>
+            <div class="form-group row">
+              <input type="email" id="test-email-input" placeholder="test@yourdomain.com">
+              <button id="send-test-email-btn" class="btn-secondary">Send Preview Email</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel">
+      <h3 id="confirm-title">Confirm Action</h3>
+      <p id="confirm-message">Are you sure you want to proceed?</p>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn-secondary">Cancel</button>
+        <button id="modal-confirm" class="btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="js/three-bg.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

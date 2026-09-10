@@ -1,0 +1,109 @@
+import OpenAI from 'openai';
+import { AiRequestContext, AiResponse, ChatMessage, IAiProvider } from './ai.provider';
+import { getEnvConfig } from '../../config/env';
+
+export class OpenAiProvider implements IAiProvider {
+  private openai: OpenAI;
+
+  constructor() {
+    const env = getEnvConfig();
+    this.openai = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
+  }
+
+  async generateResponse(
+    chatHistory: ChatMessage[],
+    context: AiRequestContext
+  ): Promise<AiResponse> {
+    const env = getEnvConfig();
+
+    const systemPrompt = `
+You are "${context.assistantSettings.assistant_name}", an AI shopping assistant for a Shopify store.
+Your goal is to help customers find products, answer questions about the store, and provide a great shopping experience.
+
+Strict Rules:
+1. ONLY recommend products from the "Available Catalog Subset" below.
+2. NEVER invent or hallucinate products, prices, or stock.
+3. If the user asks for something not in the subset, politely explain you don't have it right now.
+4. You may discuss topics: ${context.assistantSettings.allowed_topics.join(', ')}.
+5. Store Policies to reference if asked: 
+   - Delivery: ${context.storePolicies.delivery_policy}
+   - Returns: ${context.storePolicies.returns_policy}
+   - FAQ: ${context.storePolicies.faq_content}
+
+Available Catalog Subset (JSON):
+${JSON.stringify(context.catalogSubset, null, 2)}
+`;
+
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.map((m) => ({
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+      })),
+    ];
+
+    const response = await this.openai.chat.completions.create({
+      model: env.OPENAI_MODEL || 'gpt-4o-mini',
+      messages,
+      temperature: 0.7,
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'recommend_products',
+            description: 'Recommend specific products to the user based on their request. Use this whenever you mention products.',
+            parameters: {
+              type: 'object',
+              properties: {
+                message: {
+                  type: 'string',
+                  description: 'The conversational response to the user',
+                },
+                product_ids: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'List of product IDs from the catalog subset to show to the user as cards',
+                },
+              },
+              required: ['message', 'product_ids'],
+            },
+          },
+        },
+      ],
+      tool_choice: 'auto',
+    });
+
+    const choice = response.choices[0];
+    const usage = response.usage;
+
+    let finalContent = choice.message.content || '';
+    let recommendedIds: string[] = [];
+
+    if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+      const toolCall = choice.message.tool_calls[0];
+      if (toolCall.type === 'function' && toolCall.function.name === 'recommend_products') {
+        const args = JSON.parse(toolCall.function.arguments);
+        finalContent = args.message;
+        
+        // Ensure recommended IDs actually exist in the subset
+        const validIds = context.catalogSubset.map(p => p.id);
+        recommendedIds = (args.product_ids || []).filter((id: string) => validIds.includes(id));
+      }
+    }
+
+    // Rough estimated cost calculation for tracking (e.g., gpt-4o-mini is ~$0.15/1M input, $0.60/1M output)
+    const inputTokens = usage?.prompt_tokens || 0;
+    const outputTokens = usage?.completion_tokens || 0;
+    const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
+
+    return {
+      content: finalContent,
+      recommended_product_ids: recommendedIds,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      estimated_cost_usd: costUsd,
+    };
+  }
+}

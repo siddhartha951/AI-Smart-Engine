@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Shopping Assistant - Two Store Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      background-color: #f9f9f9;
+    }
+    
+    .store-panel {
+      flex: 1;
+      padding: 40px;
+      position: relative;
+    }
+    
+    .store-panel.store-a {
+      border-right: 2px dashed #ccc;
+    }
+    
+    .store-header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+    
+    h1 { margin-top: 0; font-size: 24px; }
+    h2 { font-size: 18px; color: #555; }
+    
+    .dummy-products {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 20px;
+    }
+    
+    .dummy-product {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      text-align: center;
+    }
+    
+    .dummy-image {
+      width: 100%;
+      height: 120px;
+      background: #eaeaea;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+    
+    /* We inject the widget manually into each panel so we can show two on the same page for demo purposes. */
+    /* Normally, a store would just include the script and it attaches to body. */
+    .widget-wrapper {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* Let clicks pass through except on the widget itself */
+    }
+    
+    .widget-wrapper ai-shopping-assistant {
+      pointer-events: auto;
+    }
+  </style>
+
+  <script src="/widget.js"></script>
+</head>
+<body>
+
+  <div class="store-panel store-a">
+    <div class="store-header">
+      <h1>Store A (Tech Gadgets)</h1>
+      <p>Store ID: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa</p>
+    </div>
+    
+    <div class="dummy-products">
+      <div class="dummy-product">
+        <div class="dummy-image"></div>
+        <strong>Wireless Earbuds</strong>
+        <p>£49.99</p>
+      </div>
+      <div class="dummy-product">
+        <div class="dummy-image"></div>
+        <strong>Smart Watch</strong>
+        <p>£129.99</p>
+      </div>
+    </div>
+    
+    <div class="widget-wrapper">
+      <ai-shopping-assistant data-store-id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"></ai-shopping-assistant>
+    </div>
+  </div>
+
+  <div class="store-panel store-b">
+    <div class="store-header">
+      <h1>Store B (Home Decor)</h1>
+      <p>Store ID: bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb</p>
+    </div>
+    
+    <div class="dummy-products">
+      <div class="dummy-product">
+        <div class="dummy-image"></div>
+        <strong>Ceramic Vase</strong>
+        <p>£24.99</p>
+      </div>
+      <div class="dummy-product">
+        <div class="dummy-image"></div>
+        <strong>Wool Blanket</strong>
+        <p>£59.99</p>
+      </div>
+    </div>
+    
+    <div class="widget-wrapper">
+      <ai-shopping-assistant data-store-id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"></ai-shopping-assistant>
+    </div>
+  </div>
+
+</body>
+</html>
