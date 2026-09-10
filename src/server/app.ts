@@ -42,6 +42,7 @@ export function createApp(deps: AppDependencies = {}): Express {
 
   app.use(
     helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
@@ -56,13 +57,18 @@ export function createApp(deps: AppDependencies = {}): Express {
       },
     })
   );
-  app.use(cors());
+  app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({
     verify: (req: any, res, buf) => {
       req.rawBody = buf;
     }
   }));
-  app.use(express.static(path.join(process.cwd(), 'src/public')));
+  app.use(express.static(path.join(process.cwd(), 'src/public'), {
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    },
+  }));
 
   // Health-check endpoint
   app.get(['/health', '/api/v1/health'], async (_req: Request, res: Response) => {
