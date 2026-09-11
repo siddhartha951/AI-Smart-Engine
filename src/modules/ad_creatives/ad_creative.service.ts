@@ -216,6 +216,7 @@ export class AdCreativeService {
     revised_prompt?: string;
     model: string;
     estimated_cost_usd: number;
+    notice?: string;
     product: ShopifyProduct;
   }> {
     // 1. Enforce BudgetGuard
@@ -263,6 +264,7 @@ export class AdCreativeService {
       revised_prompt: genResult.revised_prompt,
       model: genResult.model,
       estimated_cost_usd: genResult.estimated_cost_usd,
+      notice: genResult.notice,
       product,
     };
   }

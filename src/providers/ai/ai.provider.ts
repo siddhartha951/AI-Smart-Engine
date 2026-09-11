@@ -85,6 +85,7 @@ export interface AdImageGenerationResult {
   revised_prompt?: string;
   model: string;
   estimated_cost_usd: number;
+  notice?: string;
 }
 
 export interface IAiProvider {

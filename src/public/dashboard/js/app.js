@@ -1905,7 +1905,11 @@ async function generateAiAdImageAction() {
 
     adStudioState.generatedImageUrl = imageUrl;
     renderActiveAdVariation();
-    showToast('✨ AI Ad visual generated via OpenAI DALL-E 3!');
+    if (data.data?.notice) {
+      showToast(data.data.notice);
+    } else {
+      showToast('✨ AI Ad visual generated via OpenAI!');
+    }
   } catch (err) {
     console.error('Failed to generate AI ad image:', err);
     showToast(err.message || 'Image generation failed', true);

@@ -52,8 +52,8 @@ export function createApp(deps: AppDependencies = {}): Express {
           scriptSrcAttr: ["'self'", "'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
           fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-          imgSrc: ["'self'", 'data:'],
-          connectSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
+          connectSrc: ["'self'", 'https:', 'blob:', 'wss:'],
         },
       },
     })
