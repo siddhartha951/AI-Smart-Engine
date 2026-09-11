@@ -1,4 +1,5 @@
 import { IShopifyCatalogAdapter, ProductSearchQuery, ShopifyProduct } from './shopify.adapter';
+import { resolveProductImageUrl } from './shopify.utils';
 import { getDatabaseClient } from '../../database/client';
 import { decryptString } from '../../utils/crypto';
 import { TenantIsolationError } from '../../utils/errors';
@@ -231,7 +232,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           currency: variant?.price?.currencyCode || 'INR',
           in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',
-          image_url: node.featuredImage?.url || node.images?.edges[0]?.node?.url || '',
+          image_url: resolveProductImageUrl(node.featuredImage?.url || node.images?.edges[0]?.node?.url, node.productType, node.title),
           product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`
         };
       });
@@ -306,7 +307,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 currency = EXCLUDED.currency,
                 in_stock = EXCLUDED.in_stock,
                 category = EXCLUDED.category,
-                image_url = EXCLUDED.image_url,
+                image_url = CASE WHEN EXCLUDED.image_url IS NOT NULL AND EXCLUDED.image_url != '' THEN EXCLUDED.image_url ELSE products.image_url END,
                 product_url = EXCLUDED.product_url,
                 synced_at = NOW(),
                 updated_at = NOW()
@@ -321,7 +322,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
               p.currency || 'INR',
               p.in_stock ?? true,
               p.category || '',
-              p.image_url || '',
+              resolveProductImageUrl(p.image_url, p.category, p.title),
               p.product_url || ''
             ]);
           }
@@ -431,7 +432,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           currency: shopCurrency,
           in_stock: variant?.availableForSale ?? (node.status === 'ACTIVE'),
           category: node.productType || '',
-          image_url: imgUrl,
+          image_url: resolveProductImageUrl(imgUrl, node.productType, node.title),
           product_url: `https://${shopDomain}/products/${node.handle || numericId}`,
         });
       }
@@ -490,7 +491,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         currency: shopCurrency,
         in_stock: variant?.available ?? (p.status === 'active'),
         category: p.product_type || '',
-        image_url: imgUrl,
+        image_url: resolveProductImageUrl(imgUrl, p.product_type, p.title),
         product_url: `https://${shopDomain}/products/${p.handle || p.id}`,
       });
     }
@@ -578,7 +579,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           currency: variant?.price?.currencyCode || 'INR',
           in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',
-          image_url: node.featuredImage?.url || node.images?.edges[0]?.node?.url || '',
+          image_url: resolveProductImageUrl(node.featuredImage?.url || node.images?.edges[0]?.node?.url, node.productType, node.title),
           product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`,
         });
       }

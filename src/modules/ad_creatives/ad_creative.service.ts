@@ -1,7 +1,7 @@
 import { IDatabaseClient, getDatabaseClient } from '../../database/client';
 import { AdCreative, AdObjective, AdPlatform } from '../../database/types';
 import { getAiProvider, BudgetGuard, IAiProvider, AdCreativeVariation, AdImageContext, AdImageGenerationResult } from '../../providers/ai';
-import { getShopifyAdapter, IShopifyCatalogAdapter, ShopifyProduct } from '../../providers/shopify';
+import { getShopifyAdapter, IShopifyCatalogAdapter, ShopifyProduct, resolveProductImageUrl } from '../../providers/shopify';
 import { AdCreativeRepository, CreateAdCreativeInput } from './ad_creative.repository';
 
 export class BudgetExceededError extends Error {
@@ -81,7 +81,7 @@ export class AdCreativeService {
         currency: r.currency || 'GBP',
         in_stock: Boolean(r.in_stock),
         category: r.category || 'General',
-        image_url: r.image_url || '',
+        image_url: resolveProductImageUrl(r.image_url, r.category, r.title),
         product_url: r.product_url || '',
       }));
     }
@@ -122,7 +122,7 @@ export class AdCreativeService {
         currency: r.currency || 'GBP',
         in_stock: Boolean(r.in_stock),
         category: r.category || 'General',
-        image_url: r.image_url || '',
+        image_url: resolveProductImageUrl(r.image_url, r.category, r.title),
         product_url: r.product_url || '',
       };
     }

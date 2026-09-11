@@ -10,6 +10,7 @@ import { WhatsAppService } from '../../modules/whatsapp/whatsapp.service';
 import { WhatsAppRepository } from '../../modules/whatsapp/whatsapp.repository';
 import { AppError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import { resolveProductImageUrl } from '../../providers/shopify/shopify.utils';
 
 const router = Router();
 
@@ -333,7 +334,7 @@ router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, r
           p.currency || 'INR',
           p.in_stock ?? true,
           p.category || '',
-          p.image_url || '',
+          resolveProductImageUrl(p.image_url, p.category, p.title),
           p.product_url || ''
         ]);
       }
@@ -384,7 +385,10 @@ router.get('/:storeId/products', enforceStoreAccess, async (req: Request, res: R
           out_of_stock: totalCount - inStockCount,
           categories_count: uniqueCategories.length,
         },
-        products: resProducts.rows,
+        products: resProducts.rows.map((p: any) => ({
+          ...p,
+          image_url: resolveProductImageUrl(p.image_url, p.category, p.title),
+        })),
       },
     });
   } catch (err) {

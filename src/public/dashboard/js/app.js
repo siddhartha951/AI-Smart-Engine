@@ -901,6 +901,38 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function getProductFallbackImageUrl(category = '', title = '') {
+  const combined = `${category || ''} ${title || ''}`.toLowerCase();
+  if (combined.includes('seed') || combined.includes('plant') || combined.includes('organic') || combined.includes('herb') || combined.includes('fusion')) {
+    return 'https://images.unsplash.com/photo-1509358271058-acd22cc93898?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('earbud') || combined.includes('audio') || combined.includes('speaker') || combined.includes('sound')) {
+    return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('headphone')) {
+    return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('watch') || combined.includes('wearable') || combined.includes('band')) {
+    return 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('shoe') || combined.includes('sneaker') || combined.includes('footwear') || combined.includes('boot')) {
+    return 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('cloth') || combined.includes('shirt') || combined.includes('pant') || combined.includes('dress') || combined.includes('apparel') || combined.includes('fashion') || combined.includes('jacket')) {
+    return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('decor') || combined.includes('vase') || combined.includes('ceramic') || combined.includes('pot') || combined.includes('home')) {
+    return 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('bed') || combined.includes('blanket') || combined.includes('linen') || combined.includes('pillow')) {
+    return 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=600&auto=format&fit=crop&q=80';
+  }
+  if (combined.includes('beauty') || combined.includes('skin') || combined.includes('serum') || combined.includes('cosmetic') || combined.includes('lotion')) {
+    return 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600&auto=format&fit=crop&q=80';
+  }
+  return 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80';
+}
+
 function getProductFallbackBadgeHtml(category = '') {
   const cat = (category || '').toLowerCase();
   let icon = '🛍️';
@@ -973,10 +1005,17 @@ async function loadProductsTable(search = '') {
         ? `<span class="badge success">In Stock</span>`
         : `<span class="badge danger">Out of Stock</span>`;
 
-      const fallbackBadge = getProductFallbackBadgeHtml(p.category);
-      const imgHtml = p.image_url
-        ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #1e293b;"><div style="display: none;">${fallbackBadge}</div>`
-        : fallbackBadge;
+      const fallbackImg = getProductFallbackImageUrl(p.category, p.title);
+      const rawImg = (p.image_url && !p.image_url.includes('example.com')) ? p.image_url : fallbackImg;
+      const imgHtml = `
+        <div style="width: 44px; height: 44px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: #1e293b; display: flex; align-items: center; justify-content: center; position: relative;">
+          <img src="${escapeHtml(rawImg)}" 
+               alt="${escapeHtml(p.title)}" 
+               loading="lazy" 
+               onerror="this.onerror=null; this.src='${fallbackImg}';" 
+               style="width: 100%; height: 100%; object-fit: cover; display: block;">
+        </div>
+      `;
 
       const linkHtml = p.product_url
         ? `<a href="${escapeHtml(p.product_url)}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: none; font-size: 12px; font-weight: 500;">View ↗</a>`
@@ -1347,9 +1386,17 @@ async function loadProductPerformance() {
     }
 
     tbody.innerHTML = data.map(p => {
-      const imgHtml = p.image_url
-        ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" style="width: 38px; height: 38px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #1e293b;">`
-        : `<div style="width: 38px; height: 38px; border-radius: 6px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 14px;">📦</div>`;
+      const fallbackImg = getProductFallbackImageUrl('', p.title);
+      const rawImg = (p.image_url && !p.image_url.includes('example.com')) ? p.image_url : fallbackImg;
+      const imgHtml = `
+        <div style="width: 38px; height: 38px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: #1e293b; display: flex; align-items: center; justify-content: center;">
+          <img src="${escapeHtml(rawImg)}" 
+               alt="${escapeHtml(p.title)}" 
+               loading="lazy"
+               onerror="this.onerror=null; this.src='${fallbackImg}';" 
+               style="width: 100%; height: 100%; object-fit: cover; display: block;">
+        </div>
+      `;
 
       const currencySymbol = p.currency === 'GBP' ? '£' : (p.currency === 'USD' ? '$' : '₹');
       const convBadgeColor = p.conversion_rate > 10 ? '#10b981' : (p.conversion_rate > 0 ? '#3b82f6' : '#94a3b8');
@@ -1647,17 +1694,16 @@ function updateSelectedProductPreview(product) {
     stockEl.className = product.in_stock ? 'tag-stock' : 'tag-stock out';
   }
 
-  if (product.image_url && thumbEl && noThumbEl) {
-    thumbEl.src = product.image_url;
+  const fallbackImg = getProductFallbackImageUrl(product.category, product.title);
+  const effectiveImg = (product.image_url && !product.image_url.includes('example.com')) ? product.image_url : fallbackImg;
+
+  if (thumbEl && noThumbEl) {
+    thumbEl.src = effectiveImg;
     thumbEl.style.display = 'block';
     noThumbEl.style.display = 'none';
     thumbEl.onerror = () => {
-      thumbEl.style.display = 'none';
-      noThumbEl.style.display = 'flex';
+      thumbEl.src = fallbackImg;
     };
-  } else if (thumbEl && noThumbEl) {
-    thumbEl.style.display = 'none';
-    noThumbEl.style.display = 'flex';
   }
 }
 
@@ -1773,7 +1819,8 @@ function renderActiveAdVariation() {
 
   // Product media handling
   const prod = adStudioState.selectedProduct;
-  const activeMediaUrl = adStudioState.generatedImageUrl || prod?.image_url;
+  const prodFallback = prod ? getProductFallbackImageUrl(prod.category, prod.title) : '';
+  const activeMediaUrl = adStudioState.generatedImageUrl || (prod?.image_url && !prod.image_url.includes('example.com') ? prod.image_url : prodFallback);
   const isAiGenerated = Boolean(adStudioState.generatedImageUrl);
 
   if (badgeElMedia && activeMediaUrl) {
@@ -1796,10 +1843,14 @@ function renderActiveAdVariation() {
     imgEl.style.display = 'block';
     fallbackEl.style.display = 'none';
     imgEl.onerror = () => {
-      imgEl.style.display = 'none';
-      fallbackEl.style.display = 'flex';
-      if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
-      if (badgeElMedia) badgeElMedia.classList.add('hidden');
+      if (prodFallback && imgEl.src !== prodFallback) {
+        imgEl.src = prodFallback;
+      } else {
+        imgEl.style.display = 'none';
+        fallbackEl.style.display = 'flex';
+        if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
+        if (badgeElMedia) badgeElMedia.classList.add('hidden');
+      }
     };
   } else if (imgEl && fallbackEl) {
     imgEl.style.display = 'none';
@@ -1997,9 +2048,9 @@ async function loadSavedCreativesTable() {
 
       const objLabel = c.objective.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-      const mediaHtml = c.image_url
-        ? `<img src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.product_title)}" class="saved-creative-thumb" onerror="this.onerror=null; this.outerHTML='<div class=\\'product-cat-badge\\' style=\\'width:44px;height:44px;font-size:18px;\\'>🛍️</div>';">`
-        : `<div class="product-cat-badge" style="width:44px;height:44px;font-size:18px;">🛍️</div>`;
+      const mediaFallback = getProductFallbackImageUrl('', c.product_title);
+      const mediaUrl = (c.image_url && !c.image_url.includes('example.com')) ? c.image_url : mediaFallback;
+      const mediaHtml = `<img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(c.product_title)}" class="saved-creative-thumb" onerror="this.onerror=null; this.src='${mediaFallback}';">`;
 
       return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">

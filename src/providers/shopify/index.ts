@@ -4,6 +4,7 @@ import { LiveShopifyAdapter } from './live.shopify.adapter';
 import { getEnvConfig } from '../../config/env';
 
 export * from './shopify.adapter';
+export * from './shopify.utils';
 
 export function getShopifyAdapter(): IShopifyCatalogAdapter {
   const env = getEnvConfig();
