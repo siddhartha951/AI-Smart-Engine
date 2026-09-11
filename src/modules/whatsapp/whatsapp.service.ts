@@ -7,7 +7,7 @@ import {
 } from '../../providers/whatsapp';
 import { getAiProvider, IAiProvider, BudgetGuard, ChatMessage } from '../../providers/ai';
 import { getShopifyAdapter, IShopifyCatalogAdapter } from '../../providers/shopify';
-import { getPurchaseAdapter, IPurchaseAdapter } from '../../providers/purchase';
+import { getPurchaseAdapter, IPurchaseAdapter, FakePurchaseAdapter } from '../../providers/purchase';
 import { MerchantRepository } from '../merchant/merchant.repository';
 import { VisitorRepository } from '../visitor/visitor.repository';
 import { EventRepository } from '../events/event.repository';
@@ -44,7 +44,11 @@ export class WhatsAppService {
     this.explicitProvider = opts?.whatsappProvider || null;
     this.aiProvider = opts?.aiProvider || getAiProvider();
     this.shopifyAdapter = opts?.shopifyAdapter || getShopifyAdapter();
-    this.purchaseAdapter = opts?.purchaseAdapter || getPurchaseAdapter();
+    try {
+      this.purchaseAdapter = opts?.purchaseAdapter || getPurchaseAdapter();
+    } catch {
+      this.purchaseAdapter = new FakePurchaseAdapter();
+    }
     this.merchantRepo = opts?.merchantRepo || new MerchantRepository(this.db);
     this.visitorRepo = opts?.visitorRepo || new VisitorRepository(this.db);
     this.eventRepo = opts?.eventRepo || new EventRepository(this.db);

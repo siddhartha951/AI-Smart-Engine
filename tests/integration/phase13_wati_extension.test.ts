@@ -941,5 +941,29 @@ describe('Phase 13 Extension: WATI WhatsApp Provider Integration', () => {
       expect(res.body.error).toBeDefined();
       expect(res.body.error.message).toContain('WATI API Endpoint URL must start with http:// or https://');
     });
+
+    it('8.3 allows saving WATI config and constructing WhatsAppService when SHOPIFY_ADAPTER_MODE is real', async () => {
+      const prevMode = process.env.SHOPIFY_ADAPTER_MODE;
+      try {
+        process.env.SHOPIFY_ADAPTER_MODE = 'real';
+        const res = await request(app)
+          .put(`/api/v1/dashboard/${STORE_A_ID}/whatsapp/config`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({
+            provider: 'wati',
+            watiApiEndpoint: 'https://live-mt-server.wati.io/10248349',
+            displayPhoneNumber: '+919336167136',
+            watiAccessToken: 'my_real_wati_token_secret',
+            webhookVerifyToken: 'my_real_webhook_token',
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.configured).toBe(true);
+        expect(res.body.data.provider).toBe('wati');
+      } finally {
+        process.env.SHOPIFY_ADAPTER_MODE = prevMode;
+      }
+    });
   });
 });

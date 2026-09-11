@@ -211,4 +211,19 @@
   - Dedicated tests added in `tests/integration/phase13_wati_extension.test.ts` for long JWT bearer tokens (> 350 chars) and Bearer prefix stripping.
   - 155/155 tests passing across 20 test files. TypeScript type-check and ESLint clean. Production build compiled cleanly.
 
+---
+
+### [2026-09-11] Production Hotfix — RealPurchaseAdapter Implementation
+- **Issue**:
+  - In production (`SHOPIFY_ADAPTER_MODE=real`), instantiating `WhatsAppService` or running `email.worker.ts` threw `Real Purchase Adapter not yet implemented in Phase 5 MVP`, blocking WhatsApp configuration saves.
+- **Root Cause**:
+  - `src/providers/purchase/index.ts` contained a Phase 5 stub that threw an unconditional error whenever `SHOPIFY_ADAPTER_MODE === 'real'`.
+- **Resolution**:
+  - Implemented `RealPurchaseAdapter` (`src/providers/purchase/real.purchase.adapter.ts`) that verifies purchases against the database `events` table (`purchase_completed` events).
+  - Updated `getPurchaseAdapter()` in `src/providers/purchase/index.ts` to return `RealPurchaseAdapter` when in `real` mode without throwing.
+  - Wrapped `purchaseAdapter` instantiation in `WhatsAppService` constructor in a safe try-catch fallback.
+  - Added unit test suite in `tests/unit/purchase_adapter.test.ts` and integration test in `tests/integration/phase13_wati_extension.test.ts`.
+- **Verification**:
+  - 159/159 tests passing across 21 test files. TypeScript type-check and production build clean.
+
 
