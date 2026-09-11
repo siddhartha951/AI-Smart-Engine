@@ -5,6 +5,7 @@ import { AuditRepository } from '../../modules/merchant/audit.repository';
 import { getEmailProvider, getTestEmailProvider } from '../../providers/email';
 import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
 import { AnalyticsRepository } from '../../modules/analytics/analytics.repository';
+import { AdCreativeService, BudgetExceededError, ProductNotFoundError } from '../../modules/ad_creatives/ad_creative.service';
 
 const router = Router();
 
@@ -775,6 +776,182 @@ router.get('/:storeId/analytics/products', enforceStoreAccess, async (req: Reque
     res.json({
       success: true,
       data: performance,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================
+// 8. Phase 12: AI Ad Creative Studio Routes
+// ==========================================
+
+// 8.1 Available Catalogue Products for Ad Creative Studio
+router.get('/:storeId/ad-creatives/products', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const service = new AdCreativeService({ db });
+
+    const products = await service.getCatalogueProducts(storeId);
+    res.json({
+      success: true,
+      data: {
+        products,
+        total: products.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 8.2 Generate Ad Creative Variations
+router.post('/:storeId/ad-creatives/generate', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { productId, platform, objective } = req.body || {};
+
+    if (!productId || typeof productId !== 'string') {
+      res.status(400).json({ success: false, error: 'Product ID is required.' });
+      return;
+    }
+
+    const validPlatforms = ['facebook', 'instagram'];
+    if (!platform || !validPlatforms.includes(platform)) {
+      res.status(400).json({ success: false, error: 'Platform must be "facebook" or "instagram".' });
+      return;
+    }
+
+    const validObjectives = ['product_sales', 'traffic', 'retargeting', 'product_launch'];
+    if (!objective || !validObjectives.includes(objective)) {
+      res.status(400).json({ success: false, error: 'Invalid ad objective provided.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new AdCreativeService({ db });
+
+    const result = await service.generateCreatives(storeId, {
+      productId: productId.trim(),
+      platform,
+      objective,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err: any) {
+    if (err instanceof BudgetExceededError) {
+      res.status(403).json({ success: false, error: err.message, code: 'BUDGET_EXCEEDED' });
+      return;
+    }
+    if (err instanceof ProductNotFoundError) {
+      res.status(404).json({ success: false, error: err.message });
+      return;
+    }
+    next(err);
+  }
+});
+
+// 8.3 Save an Ad Creative Variation
+router.post('/:storeId/ad-creatives/save', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { productId, productTitle, platform, objective, hook, primaryText, headline, cta, metadata } = req.body || {};
+
+    if (!productId || !productTitle || !platform || !objective || !hook || !primaryText || !headline || !cta) {
+      res.status(400).json({ success: false, error: 'Missing required creative fields.' });
+      return;
+    }
+
+    const validPlatforms = ['facebook', 'instagram'];
+    if (!validPlatforms.includes(platform)) {
+      res.status(400).json({ success: false, error: 'Platform must be "facebook" or "instagram".' });
+      return;
+    }
+
+    const validObjectives = ['product_sales', 'traffic', 'retargeting', 'product_launch'];
+    if (!validObjectives.includes(objective)) {
+      res.status(400).json({ success: false, error: 'Invalid ad objective provided.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new AdCreativeService({ db });
+
+    const saved = await service.saveCreative(storeId, {
+      productId: String(productId).trim(),
+      productTitle: String(productTitle).trim(),
+      platform,
+      objective,
+      hook: String(hook).trim(),
+      primaryText: String(primaryText).trim(),
+      headline: String(headline).trim(),
+      cta: String(cta).trim(),
+      metadata,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Creative saved successfully.',
+      data: saved,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 8.4 Retrieve Saved Creatives
+router.get('/:storeId/ad-creatives/saved', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const offset = parseInt((req.query.offset as string) || '0', 10);
+
+    const db = getDatabaseClient();
+    const service = new AdCreativeService({ db });
+
+    const result = await service.getSavedCreatives(
+      storeId,
+      isNaN(limit) ? 50 : Math.min(limit, 100),
+      isNaN(offset) ? 0 : offset
+    );
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 8.5 Delete a Saved Creative
+router.delete('/:storeId/ad-creatives/saved/:id', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const creativeId = req.params.id as string;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creativeId);
+    if (!isUuid) {
+      res.status(400).json({ success: false, error: 'Invalid creative ID format.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new AdCreativeService({ db });
+
+    const deleted = await service.deleteSavedCreative(storeId, creativeId);
+    if (!deleted) {
+      res.status(404).json({ success: false, error: 'Creative not found or already deleted.' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Creative deleted successfully.',
     });
   } catch (err) {
     next(err);

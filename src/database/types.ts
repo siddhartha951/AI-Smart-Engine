@@ -214,3 +214,22 @@ export interface EmailWebhookEvent {
   created_at: Date;
 }
 
+export type AdPlatform = 'facebook' | 'instagram';
+export type AdObjective = 'product_sales' | 'traffic' | 'retargeting' | 'product_launch';
+
+export interface AdCreative {
+  id: string;
+  store_id: string;
+  product_id: string;
+  product_title: string;
+  platform: AdPlatform;
+  objective: AdObjective;
+  hook: string;
+  primary_text: string;
+  headline: string;
+  cta: string;
+  metadata?: Record<string, unknown>;
+  created_at: Date;
+  updated_at: Date;
+}
+

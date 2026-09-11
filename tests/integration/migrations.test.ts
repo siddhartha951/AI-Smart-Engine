@@ -10,6 +10,7 @@ describe('Database Migrations & Seed Verification', () => {
     const result = await migrator.runMigrations();
     expect(result.applied).toContain('001_initial_schema.sql');
     expect(result.applied).toContain('002_seed_two_stores.sql');
+    expect(result.applied).toContain('016_ad_creative_studio.sql');
 
     // Verify stores were seeded
     const storesRes = await db.query('SELECT * FROM stores ORDER BY brand_name ASC');
@@ -24,6 +25,10 @@ describe('Database Migrations & Seed Verification', () => {
     // Verify widget settings
     const widgetRes = await db.query('SELECT * FROM widget_settings');
     expect(widgetRes.rows.length).toBe(2);
+
+    // Verify ad_creatives table exists
+    const adCreativesRes = await db.query('SELECT * FROM ad_creatives');
+    expect(adCreativesRes.rows.length).toBe(0);
 
     await db.close();
   });

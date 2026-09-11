@@ -53,7 +53,18 @@ const sections = {
   'leads-optins': document.getElementById('leads-optins'),
   'widget-settings': document.getElementById('widget-settings'),
   'shopify-connection': document.getElementById('shopify-connection'),
+  'ad-creative-studio': document.getElementById('ad-creative-studio'),
   'email-automation': document.getElementById('email-automation')
+};
+
+let adStudioState = {
+  products: [],
+  selectedProduct: null,
+  variations: [],
+  activeVariationIndex: 0,
+  platform: 'facebook',
+  objective: 'product_sales',
+  savedCreatives: []
 };
 
 let liveAnalyticsTimer = null;
@@ -96,6 +107,9 @@ function setupEventListeners() {
       loadConversionFunnel(parseInt(e.target.value, 10));
     });
   }
+
+  // AI Ad Creative Studio controls
+  setupAdStudioEventListeners();
 
   // Login
   document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -683,6 +697,14 @@ async function loadSectionData(section) {
         loadLiveAnalytics(),
         loadConversionFunnel(parseInt(document.getElementById('funnel-timeframe')?.value || '7', 10)),
         loadProductPerformance(),
+      ]);
+      return;
+    }
+
+    if (section === 'ad-creative-studio') {
+      await Promise.all([
+        loadAdStudioProducts(),
+        loadSavedCreativesTable()
       ]);
       return;
     }
@@ -1360,6 +1382,503 @@ function showConfirmModal(title, message, onConfirm) {
   function cleanup() {
     btnConfirm.removeEventListener('click', handleConfirm);
     btnCancel.removeEventListener('click', handleCancel);
+  }
+}
+
+// ==========================================
+// Phase 12: AI Ad Creative Studio Handlers
+// ==========================================
+
+function setupAdStudioEventListeners() {
+  // Platform pills toggle
+  const platformRadios = document.querySelectorAll('input[name="ad-platform"]');
+  platformRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      adStudioState.platform = e.target.value;
+      const fbPill = document.getElementById('pill-platform-facebook');
+      const instaPill = document.getElementById('pill-platform-instagram');
+      if (fbPill && instaPill) {
+        fbPill.classList.toggle('active', adStudioState.platform === 'facebook');
+        instaPill.classList.toggle('active', adStudioState.platform === 'instagram');
+      }
+      if (adStudioState.variations.length > 0) {
+        renderActiveAdVariation();
+      }
+    });
+  });
+
+  // Objective selector
+  const objSelect = document.getElementById('ad-objective-select');
+  if (objSelect) {
+    objSelect.addEventListener('change', (e) => {
+      adStudioState.objective = e.target.value;
+    });
+  }
+
+  // Product selector
+  const prodSelect = document.getElementById('ad-product-select');
+  if (prodSelect) {
+    prodSelect.addEventListener('change', onAdProductSelected);
+  }
+
+  // Refresh catalogue button
+  const btnRefresh = document.getElementById('btn-refresh-products');
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', async () => {
+      await loadAdStudioProducts();
+      showToast('Product catalogue refreshed');
+    });
+  }
+
+  // Generate button
+  const btnGenerate = document.getElementById('btn-generate-creatives');
+  if (btnGenerate) {
+    btnGenerate.addEventListener('click', generateAdCreativesAction);
+  }
+
+  // Variation tabs
+  const variationTabs = document.querySelectorAll('.variation-tab');
+  variationTabs.forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.getAttribute('data-variation') || '0', 10);
+      adStudioState.activeVariationIndex = idx;
+      renderActiveAdVariation();
+    });
+  });
+
+  // Copy element buttons
+  const copyBtns = document.querySelectorAll('.btn-copy-elem');
+  copyBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.getAttribute('data-target-text');
+      const targetEl = document.getElementById(targetId);
+      if (targetEl) {
+        const label = targetId.includes('hook') ? 'Hook' : 'Primary Text';
+        copyTextToClipboard(targetEl.innerText || targetEl.textContent, label);
+      }
+    });
+  });
+
+  // Copy Full Ad button
+  const btnCopyFull = document.getElementById('btn-copy-full-ad');
+  if (btnCopyFull) {
+    btnCopyFull.addEventListener('click', copyFullAdAction);
+  }
+
+  // Save Creative button
+  const btnSave = document.getElementById('btn-save-creative');
+  if (btnSave) {
+    btnSave.addEventListener('click', saveCurrentCreativeAction);
+  }
+
+  // Regenerate button
+  const btnRegen = document.getElementById('btn-regenerate-ad');
+  if (btnRegen) {
+    btnRegen.addEventListener('click', generateAdCreativesAction);
+  }
+}
+
+async function loadAdStudioProducts() {
+  if (!state.activeStoreId) return;
+  const select = document.getElementById('ad-product-select');
+  if (!select) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ad-creatives/products`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load catalogue products');
+
+    const { data } = await res.json();
+    adStudioState.products = data.products || [];
+
+    if (adStudioState.products.length === 0) {
+      select.innerHTML = '<option value="">No products found (Sync catalog in Shopify tab)</option>';
+      return;
+    }
+
+    const options = [
+      '<option value="">-- Choose a product from catalogue --</option>',
+      ...adStudioState.products.map(p => {
+        const price = parseFloat(p.price || 0).toFixed(2);
+        const currency = p.currency === 'INR' ? '₹' : (p.currency === 'USD' ? '$' : '£');
+        return `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)} (${currency}${price})</option>`;
+      })
+    ];
+
+    select.innerHTML = options.join('');
+
+    // If product was previously selected, restore or reset preview
+    if (adStudioState.selectedProduct) {
+      const stillExists = adStudioState.products.find(p => p.id === adStudioState.selectedProduct.id);
+      if (stillExists) {
+        select.value = stillExists.id;
+        updateSelectedProductPreview(stillExists);
+      } else {
+        adStudioState.selectedProduct = null;
+        updateSelectedProductPreview(null);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load ad studio products:', err);
+    showToast(err.message, true);
+  }
+}
+
+function onAdProductSelected(e) {
+  const pId = e.target.value;
+  const product = adStudioState.products.find(p => p.id === pId) || null;
+  adStudioState.selectedProduct = product;
+  updateSelectedProductPreview(product);
+}
+
+function updateSelectedProductPreview(product) {
+  const card = document.getElementById('ad-selected-product-card');
+  if (!card) return;
+
+  if (!product) {
+    card.classList.add('hidden');
+    return;
+  }
+
+  card.classList.remove('hidden');
+
+  const titleEl = document.getElementById('ad-prod-title');
+  const priceEl = document.getElementById('ad-prod-price');
+  const catEl = document.getElementById('ad-prod-category');
+  const stockEl = document.getElementById('ad-prod-stock');
+  const thumbEl = document.getElementById('ad-prod-thumb');
+  const noThumbEl = document.getElementById('ad-prod-no-thumb');
+
+  const price = parseFloat(product.price || 0).toFixed(2);
+  const currency = product.currency === 'INR' ? '₹' : (product.currency === 'USD' ? '$' : '£');
+
+  if (titleEl) titleEl.textContent = product.title;
+  if (priceEl) priceEl.textContent = `${currency}${price}`;
+  if (catEl) catEl.textContent = product.category || 'General';
+  if (stockEl) {
+    stockEl.textContent = product.in_stock ? 'In Stock' : 'Out of Stock';
+    stockEl.className = product.in_stock ? 'tag-stock' : 'tag-stock out';
+  }
+
+  if (product.image_url && thumbEl && noThumbEl) {
+    thumbEl.src = product.image_url;
+    thumbEl.style.display = 'block';
+    noThumbEl.style.display = 'none';
+  } else if (thumbEl && noThumbEl) {
+    thumbEl.style.display = 'none';
+    noThumbEl.style.display = 'flex';
+  }
+}
+
+async function generateAdCreativesAction() {
+  if (!adStudioState.selectedProduct) {
+    showToast('Please select a product from your catalogue first.', true);
+    return;
+  }
+
+  const emptyState = document.getElementById('ad-empty-state');
+  const loadingState = document.getElementById('ad-loading-state');
+  const mockupContainer = document.getElementById('ad-mockup-container');
+  const variationsNav = document.getElementById('ad-variations-nav');
+  const btnGenerate = document.getElementById('btn-generate-creatives');
+
+  if (emptyState) emptyState.classList.add('hidden');
+  if (mockupContainer) mockupContainer.classList.add('hidden');
+  if (variationsNav) variationsNav.classList.add('hidden');
+  if (loadingState) loadingState.classList.remove('hidden');
+  if (btnGenerate) btnGenerate.disabled = true;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ad-creatives/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({
+        productId: adStudioState.selectedProduct.id,
+        platform: adStudioState.platform,
+        objective: adStudioState.objective
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Ad creative generation failed');
+    }
+
+    adStudioState.variations = data.data?.variations || [];
+    adStudioState.activeVariationIndex = 0;
+    adStudioState.model = data.data?.model || 'gpt-4o-mini';
+
+    if (loadingState) loadingState.classList.add('hidden');
+    if (mockupContainer) mockupContainer.classList.remove('hidden');
+    if (variationsNav) variationsNav.classList.remove('hidden');
+
+    renderActiveAdVariation();
+    showToast('✨ Generated 3 high-converting ad variations!');
+  } catch (err) {
+    if (loadingState) loadingState.classList.add('hidden');
+    if (adStudioState.variations.length > 0) {
+      if (mockupContainer) mockupContainer.classList.remove('hidden');
+      if (variationsNav) variationsNav.classList.remove('hidden');
+    } else {
+      if (emptyState) emptyState.classList.remove('hidden');
+    }
+    showToast(err.message, true);
+  } finally {
+    if (btnGenerate) btnGenerate.disabled = false;
+  }
+}
+
+function renderActiveAdVariation() {
+  const variations = adStudioState.variations;
+  if (!variations || variations.length === 0) return;
+
+  const current = variations[adStudioState.activeVariationIndex] || variations[0];
+
+  // Update variation tabs
+  document.querySelectorAll('.variation-tab').forEach((tab, i) => {
+    tab.classList.toggle('active', i === adStudioState.activeVariationIndex);
+  });
+
+  // Mockup elements
+  const hookEl = document.getElementById('ad-mockup-hook');
+  const primaryEl = document.getElementById('ad-mockup-primary');
+  const headlineEl = document.getElementById('ad-mockup-headline');
+  const ctaEl = document.getElementById('ad-mockup-cta');
+  const badgeEl = document.getElementById('ad-platform-badge');
+  const brandNameEl = document.getElementById('ad-brand-name');
+  const avatarEl = document.getElementById('ad-brand-avatar');
+  const domainEl = document.getElementById('ad-domain-tag');
+  const imgEl = document.getElementById('ad-mockup-img');
+  const fallbackEl = document.getElementById('ad-media-fallback');
+  const fallbackTitleEl = document.getElementById('ad-media-fallback-title');
+
+  if (hookEl) hookEl.textContent = current.hook;
+  if (primaryEl) primaryEl.textContent = current.primary_text;
+  if (headlineEl) headlineEl.textContent = current.headline;
+  if (ctaEl) ctaEl.textContent = current.cta;
+
+  // Platform badge & brand info
+  const isInsta = adStudioState.platform === 'instagram';
+  if (badgeEl) {
+    badgeEl.textContent = isInsta ? '📸 Instagram Feed' : '🌐 Meta / Facebook';
+    badgeEl.className = isInsta ? 'ad-platform-badge instagram' : 'ad-platform-badge';
+  }
+
+  // Active store brand
+  const currentStore = state.stores?.find(s => s.id === state.activeStoreId);
+  const brandName = currentStore?.brand_name || currentStore?.shop_domain || 'Official Store';
+  if (brandNameEl) brandNameEl.textContent = brandName;
+  if (avatarEl) avatarEl.textContent = brandName.substring(0, 2).toUpperCase();
+
+  const domain = (currentStore?.shop_domain || 'shop.myshopify.com').replace(/^https?:\/\//, '').toUpperCase();
+  if (domainEl) domainEl.textContent = domain;
+
+  // Product media
+  const prod = adStudioState.selectedProduct;
+  if (prod && prod.image_url && imgEl && fallbackEl) {
+    imgEl.src = prod.image_url;
+    imgEl.style.display = 'block';
+    fallbackEl.style.display = 'none';
+  } else if (imgEl && fallbackEl) {
+    imgEl.style.display = 'none';
+    fallbackEl.style.display = 'flex';
+    if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
+  }
+}
+
+function copyTextToClipboard(text, label = 'Content') {
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(`Copied ${label} to clipboard!`);
+    }).catch(() => {
+      fallbackCopyText(text, label);
+    });
+  } else {
+    fallbackCopyText(text, label);
+  }
+}
+
+function fallbackCopyText(text, label) {
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  try {
+    document.execCommand('copy');
+    showToast(`Copied ${label} to clipboard!`);
+  } catch {
+    showToast('Failed to copy to clipboard', true);
+  }
+  document.body.removeChild(textArea);
+}
+
+function copyFullAdAction() {
+  const current = adStudioState.variations[adStudioState.activeVariationIndex];
+  if (!current) {
+    showToast('No active creative to copy', true);
+    return;
+  }
+
+  const fullText = `[HOOK]\n${current.hook}\n\n[PRIMARY TEXT]\n${current.primary_text}\n\n[HEADLINE]\n${current.headline}\n\n[CALL TO ACTION]\n${current.cta}`;
+  copyTextToClipboard(fullText, 'Complete Ad Copy');
+}
+
+async function saveCurrentCreativeAction() {
+  const current = adStudioState.variations[adStudioState.activeVariationIndex];
+  const prod = adStudioState.selectedProduct;
+
+  if (!current || !prod) {
+    showToast('No active ad variation to save', true);
+    return;
+  }
+
+  const btnSave = document.getElementById('btn-save-creative');
+  if (btnSave) btnSave.disabled = true;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ad-creatives/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({
+        productId: prod.id,
+        productTitle: prod.title,
+        platform: adStudioState.platform,
+        objective: adStudioState.objective,
+        hook: current.hook,
+        primaryText: current.primary_text,
+        headline: current.headline,
+        cta: current.cta,
+        metadata: {
+          variation_index: adStudioState.activeVariationIndex,
+          model: adStudioState.model || 'gpt-4o-mini'
+        }
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save creative');
+
+    showToast('💾 Creative saved to library!');
+    await loadSavedCreativesTable();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btnSave) btnSave.disabled = false;
+  }
+}
+
+async function loadSavedCreativesTable() {
+  if (!state.activeStoreId) return;
+  const tbody = document.getElementById('saved-creatives-tbody');
+  const countEl = document.getElementById('saved-creatives-count');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ad-creatives/saved`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load saved creatives');
+
+    const { data } = await res.json();
+    const creatives = data.creatives || [];
+    const total = data.total || creatives.length;
+
+    if (countEl) countEl.textContent = `${total} saved`;
+
+    if (creatives.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No saved creatives yet. Generate ad copy above and click "Save Creative" to build your library.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = creatives.map(c => {
+      const dateStr = new Date(c.created_at).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+
+      const isInsta = c.platform === 'instagram';
+      const platformPill = isInsta
+        ? `<span class="badge" style="background: rgba(225, 48, 108, 0.2); color: #f472b6; border: 1px solid rgba(225, 48, 108, 0.4);">📸 Instagram</span>`
+        : `<span class="badge" style="background: rgba(24, 119, 242, 0.2); color: #60a5fa; border: 1px solid rgba(24, 119, 242, 0.4);">🌐 Meta / FB</span>`;
+
+      const objLabel = c.objective.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${escapeHtml(c.product_title)}
+          </td>
+          <td style="padding: 12px;">${platformPill}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted); text-transform: capitalize;">${escapeHtml(objLabel)}</td>
+          <td style="padding: 12px; max-width: 320px;">
+            <div style="font-weight: 500; font-size: 13px; color: var(--text-main); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.headline)}</div>
+            <div style="font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.hook)}</div>
+          </td>
+          <td style="padding: 12px;"><span class="badge primary" style="font-size: 11px;">${escapeHtml(c.cta)}</span></td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted);">${dateStr}</td>
+          <td style="padding: 12px; text-align: right; white-space: nowrap;">
+            <button class="btn-sm btn-secondary btn-copy-saved" data-id="${c.id}" style="margin-right: 6px;" title="Copy Full Ad">📋 Copy</button>
+            <button class="btn-sm btn-secondary outline btn-delete-saved" data-id="${c.id}" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4);" title="Delete Creative">🗑️</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Attach copy & delete event handlers
+    tbody.querySelectorAll('.btn-copy-saved').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const c = creatives.find(item => item.id === id);
+        if (c) {
+          const fullText = `[HOOK]\n${c.hook}\n\n[PRIMARY TEXT]\n${c.primary_text}\n\n[HEADLINE]\n${c.headline}\n\n[CALL TO ACTION]\n${c.cta}`;
+          copyTextToClipboard(fullText, 'Saved Creative Copy');
+        }
+      });
+    });
+
+    tbody.querySelectorAll('.btn-delete-saved').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        showConfirmModal('Delete Saved Creative?', 'This creative will be permanently removed from your library.', async () => {
+          await deleteSavedCreativeAction(id);
+        });
+      });
+    });
+  } catch (err) {
+    console.error('Error loading saved creatives:', err);
+  }
+}
+
+async function deleteSavedCreativeAction(creativeId) {
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ad-creatives/saved/${creativeId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to delete creative');
+
+    showToast('Creative deleted');
+    await loadSavedCreativesTable();
+  } catch (err) {
+    showToast(err.message, true);
   }
 }
 

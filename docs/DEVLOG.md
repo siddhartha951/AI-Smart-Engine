@@ -1,5 +1,38 @@
 # Development Log (DEVLOG)
 
+## Entry 2026-09-11 - Phase 12: AI Ad Creative Studio
+- **Status**: Completed Phase 12 implementation and verification.
+- **Components Built**:
+  - PostgreSQL schema migration `migrations/016_ad_creative_studio.sql` creating `ad_creatives` table with composite indexes on `(store_id, created_at DESC)` and `(store_id, product_id)`.
+  - Extended AI Provider architecture (`IAiProvider`, `MockAiProvider`, `OpenAiProvider` in `src/providers/ai/`) with `generateAdCreatives()`, structured multi-angle copy variations, strict catalogue grounding, and quota fallback.
+  - Multi-tenant data repository `src/modules/ad_creatives/ad_creative.repository.ts` enforcing store-level isolation for saving, fetching, and deleting ad creatives.
+  - Business service layer `src/modules/ad_creatives/ad_creative.service.ts` integrating Shopify catalogue product resolution, `BudgetGuard` ($14 limit), and `ai_usage_ledger` token tracking.
+  - Authenticated REST API endpoints mounted in `src/server/routes/dashboard.routes.ts`:
+    - `GET /api/v1/dashboard/:storeId/ad-creatives/products`
+    - `POST /api/v1/dashboard/:storeId/ad-creatives/generate`
+    - `POST /api/v1/dashboard/:storeId/ad-creatives/save`
+    - `GET /api/v1/dashboard/:storeId/ad-creatives/saved`
+    - `DELETE /api/v1/dashboard/:storeId/ad-creatives/saved/:id`
+  - Merchant Dashboard Studio UI in `src/public/dashboard/`:
+    - Responsive desktop two-column & mobile stacked layout.
+    - Product selector with dynamic preview card, Meta (Facebook & Instagram) platform pills, and campaign objective selection.
+    - Realistic social mockup feed card with brand badge, sponsored tag, hook banner, primary text, product visual, headline, and CTA.
+    - 3 variation tabs with smooth switching, 1-click individual element copying, full ad copying, saving to library, and regeneration.
+    - Saved Creatives Library table with preview, copy, and deletion actions.
+- **Verification Evidence**:
+  - 12/12 integration tests passing in `tests/integration/phase12_ad_creatives.test.ts`.
+  - Migration test updated in `tests/integration/migrations.test.ts`.
+  - Full test suite: 18 test suites, 108 tests passing (0 failures).
+  - Clean TypeScript compilation (`npm run type-check`), linting (`npm run lint`), and production build (`npm run build`).
+  - Live HTTP verification on port 3000 verifying full Generate → Preview → Save → Retrieve → Delete lifecycle.
+- **Rules Adherence**:
+  - Zero browser-supplied `store_id` trust.
+  - Multi-tenant isolation verified with cross-store generation and deletion blocking.
+  - Purely additive changes; zero regressions to existing chat widget, Shopify cart injection, live analytics, or admin features.
+  - Stopping upon Phase 12 completion as mandated.
+
+---
+
 ## Entry 2026-09-10 - Phase 2: Live Visitor Pulse & Analytics & Merchant Dashboard Overhaul
 - **Status**: Completed Phase 2 implementation and verification.
 - **Components Built**:

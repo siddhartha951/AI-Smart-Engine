@@ -86,6 +86,7 @@
           <li><a href="#" data-target="leads-optins"><span class="nav-icon">👥</span> Leads & Opt-ins</a></li>
           <li><a href="#" data-target="widget-settings"><span class="nav-icon">🎨</span> Widget Settings</a></li>
           <li><a href="#" data-target="shopify-connection"><span class="nav-icon">🛍️</span> Shopify Catalog</a></li>
+          <li><a href="#" data-target="ad-creative-studio"><span class="nav-icon">📢</span> Ad Creative Studio</a></li>
           <li><a href="#" data-target="email-automation"><span class="nav-icon">✉️</span> Email Automation</a></li>
         </ul>
         <div class="sidebar-footer">
@@ -610,6 +611,218 @@
             <div class="form-group row">
               <input type="email" id="test-email-input" placeholder="test@yourdomain.com">
               <button id="send-test-email-btn" class="btn-secondary">Send Preview Email</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 8. AI Ad Creative Studio Section -->
+        <section id="ad-creative-studio" class="content-section hidden">
+          <header class="section-header">
+            <div>
+              <h2>AI Ad Creative Studio</h2>
+              <p class="section-subtitle">Generate high-converting, catalogue-grounded ad copy & hooks for Meta & Instagram</p>
+            </div>
+            <div class="header-actions">
+              <button id="btn-refresh-products" class="btn-secondary outline btn-sm">
+                <span>🔄</span> Refresh Catalogue
+              </button>
+            </div>
+          </header>
+
+          <!-- Studio Two-Column Grid -->
+          <div class="ad-studio-grid">
+            <!-- Left Column: Controls & Product Selection -->
+            <div class="glass-card ad-controls-card">
+              <h3 class="card-title"><span class="icon">🎯</span> Campaign Configuration</h3>
+              
+              <div class="form-group">
+                <label for="ad-product-select">Select Product from Catalogue</label>
+                <select id="ad-product-select" class="form-control">
+                  <option value="">-- Choose a product --</option>
+                </select>
+                <small class="form-hint">AI copy will be strictly grounded in this product's actual data.</small>
+              </div>
+
+              <!-- Product Summary Card -->
+              <div id="ad-selected-product-card" class="selected-product-preview hidden">
+                <div class="product-thumb-container">
+                  <img id="ad-prod-thumb" src="" alt="Product Thumbnail" class="product-thumb">
+                  <div id="ad-prod-no-thumb" class="product-thumb-fallback">🛍️</div>
+                </div>
+                <div class="product-meta">
+                  <h4 id="ad-prod-title">Product Title</h4>
+                  <div class="product-tags">
+                    <span id="ad-prod-price" class="tag-price">£0.00</span>
+                    <span id="ad-prod-category" class="tag-category">Category</span>
+                    <span id="ad-prod-stock" class="tag-stock">In Stock</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Target Ad Platform</label>
+                <div class="platform-selector-group">
+                  <label class="platform-pill active" id="pill-platform-facebook">
+                    <input type="radio" name="ad-platform" value="facebook" checked>
+                    <span class="platform-label"><span class="platform-icon">🌐</span> Meta / Facebook</span>
+                  </label>
+                  <label class="platform-pill" id="pill-platform-instagram">
+                    <input type="radio" name="ad-platform" value="instagram">
+                    <span class="platform-label"><span class="platform-icon">📸</span> Instagram</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="ad-objective-select">Campaign Objective</label>
+                <select id="ad-objective-select" class="form-control">
+                  <option value="product_sales">🛍️ Product Sales (Direct Conversion)</option>
+                  <option value="traffic">🚀 Store Traffic (Clicks & Exploration)</option>
+                  <option value="retargeting">🎯 Retargeting (Cart Abandoners & Repeat Shoppers)</option>
+                  <option value="product_launch">✨ Product Launch (New Arrival & Awareness)</option>
+                </select>
+              </div>
+
+              <div class="studio-action-row">
+                <button id="btn-generate-creatives" class="btn-primary btn-block">
+                  <span class="btn-sparkle">✨</span> Generate Ad Creatives
+                </button>
+              </div>
+
+              <div id="ad-budget-note" class="budget-guard-note">
+                <span class="icon">🛡️</span> Protected by AI BudgetGuard. Real-time cost tracked to usage ledger.
+              </div>
+            </div>
+
+            <!-- Right Column: Generated Creatives & Realistic Preview -->
+            <div class="glass-card ad-preview-card">
+              <div class="preview-header-bar">
+                <h3 class="card-title"><span class="icon">📱</span> Ad Mockup & Variations</h3>
+                <div id="ad-variations-nav" class="variations-tabs hidden">
+                  <button class="variation-tab active" data-variation="0">Variation 1</button>
+                  <button class="variation-tab" data-variation="1">Variation 2</button>
+                  <button class="variation-tab" data-variation="2">Variation 3</button>
+                </div>
+              </div>
+
+              <!-- Empty State -->
+              <div id="ad-empty-state" class="ad-empty-container">
+                <div class="empty-icon">🎨</div>
+                <h4>No Creatives Generated Yet</h4>
+                <p>Select a product on the left and click <strong>Generate Ad Creatives</strong> to preview instant, multi-angle Meta & Instagram ad copy.</p>
+              </div>
+
+              <!-- Loading State -->
+              <div id="ad-loading-state" class="ad-loading-container hidden">
+                <div class="spinner-pulse"></div>
+                <h4>Crafting High-Converting Copy...</h4>
+                <p>Grounded in authentic catalogue specifications and Meta direct-response standards.</p>
+              </div>
+
+              <!-- Active Ad Feed Mockup -->
+              <div id="ad-mockup-container" class="ad-mockup-wrapper hidden">
+                <!-- Platform-specific Social Feed Card -->
+                <div class="social-feed-card" id="social-ad-card">
+                  <!-- Ad Header -->
+                  <div class="ad-card-header">
+                    <div class="ad-brand-avatar" id="ad-brand-avatar">AI</div>
+                    <div class="ad-brand-info">
+                      <div class="ad-brand-name-row">
+                        <span id="ad-brand-name" class="brand-name">Brand Name</span>
+                        <span class="ad-sponsored-pill">Sponsored</span>
+                      </div>
+                      <span class="ad-platform-badge" id="ad-platform-badge">🌐 Meta / Facebook</span>
+                    </div>
+                  </div>
+
+                  <!-- Hook callout banner -->
+                  <div class="ad-hook-banner">
+                    <div class="hook-label-row">
+                      <span class="hook-tag">⚡ HOOK / PATTERN INTERRUPT</span>
+                      <button class="btn-copy-elem" data-target-text="ad-mockup-hook" title="Copy Hook">📋 Copy</button>
+                    </div>
+                    <div class="hook-text" id="ad-mockup-hook">Hook text goes here...</div>
+                  </div>
+
+                  <!-- Primary Text -->
+                  <div class="ad-primary-text-box">
+                    <div class="text-label-row">
+                      <span class="sub-label">PRIMARY AD TEXT</span>
+                      <button class="btn-copy-elem" data-target-text="ad-mockup-primary" title="Copy Primary Text">📋 Copy</button>
+                    </div>
+                    <p id="ad-mockup-primary" class="primary-text">Primary ad text...</p>
+                  </div>
+
+                  <!-- Media Box -->
+                  <div class="ad-media-box" id="ad-media-box">
+                    <img id="ad-mockup-img" src="" alt="Product Creative" class="ad-creative-img">
+                    <div id="ad-media-fallback" class="ad-media-fallback">
+                      <span class="fallback-icon">🛍️</span>
+                      <span id="ad-media-fallback-title">Product Preview</span>
+                    </div>
+                  </div>
+
+                  <!-- Link Bar -->
+                  <div class="ad-link-bar">
+                    <div class="link-info">
+                      <span class="ad-domain-tag" id="ad-domain-tag">STORE.COM</span>
+                      <h5 id="ad-mockup-headline" class="ad-headline">Headline goes here</h5>
+                    </div>
+                    <div class="link-action">
+                      <span class="ad-cta-button" id="ad-mockup-cta">Shop Now</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Ad Action Controls Bar -->
+                <div class="ad-actions-toolbar">
+                  <button id="btn-copy-full-ad" class="btn-secondary">
+                    <span>📋</span> Copy Full Ad
+                  </button>
+                  <button id="btn-save-creative" class="btn-primary">
+                    <span>💾</span> Save Creative
+                  </button>
+                  <button id="btn-regenerate-ad" class="btn-secondary outline">
+                    <span>🔄</span> Regenerate
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Saved Creatives Library Section -->
+          <div class="glass-card saved-creatives-card">
+            <div class="saved-header-row">
+              <div>
+                <h3 class="card-title"><span class="icon">📚</span> Saved Creatives Library</h3>
+                <p class="card-subtitle">Stored copy variations ready for deployment to Meta Ads Manager</p>
+              </div>
+              <div class="saved-filter-row">
+                <span class="saved-counter" id="saved-creatives-count">0 saved</span>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table" id="saved-creatives-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Platform</th>
+                    <th>Objective</th>
+                    <th>Headline & Hook Preview</th>
+                    <th>CTA</th>
+                    <th>Saved Date</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="saved-creatives-tbody">
+                  <tr>
+                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      No saved creatives yet. Generate ad copy above and click "Save Creative" to build your library.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </section>

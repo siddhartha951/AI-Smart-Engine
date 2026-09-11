@@ -1,5 +1,13 @@
 import OpenAI from 'openai';
-import { AiRequestContext, AiResponse, ChatMessage, IAiProvider } from './ai.provider';
+import { z } from 'zod';
+import {
+  AdCreativeContext,
+  AdCreativeGenerationResult,
+  AiRequestContext,
+  AiResponse,
+  ChatMessage,
+  IAiProvider,
+} from './ai.provider';
 import { getEnvConfig } from '../../config/env';
 
 export class OpenAiProvider implements IAiProvider {
@@ -161,6 +169,156 @@ ${JSON.stringify(context.catalogSubset, null, 2)}
           input_tokens: 0,
           output_tokens: 0,
           estimated_cost_usd: 0,
+        };
+      }
+      throw err;
+    }
+  }
+
+  async generateAdCreatives(
+    context: AdCreativeContext
+  ): Promise<AdCreativeGenerationResult> {
+    const env = getEnvConfig();
+    const { product, platform, objective } = context;
+    const currency = product.currency || 'GBP';
+    const priceFormatted = `${currency} ${Number(product.price || 0).toFixed(2)}`;
+    const platformLabel = platform === 'instagram' ? 'Instagram Feed & Stories' : 'Facebook News Feed';
+
+    const systemPrompt = `
+You are an expert direct-response ad copywriter specializing in Meta advertising (${platformLabel}) for e-commerce stores.
+Your objective is to generate 3 high-converting ad creative variations for the selected merchant product.
+
+STRICT ANTI-HALLUCINATION & FACTUAL GROUNDING CONSTRAINTS:
+1. ONLY use factual details directly supplied in the product context below (title, price, category).
+2. DO NOT invent product specifications, technical claims, organic/eco certifications, awards, ingredients, or health claims unless explicitly stated.
+3. DO NOT fabricate discounts, promotional percentage cuts (e.g. "50% off", "BOGO"), or free gifts.
+4. DO NOT make ungrounded shipping promises (e.g. "Free Next-Day Delivery") or money-back guarantees.
+5. The copy must feel authentic, compelling, and compliant with Meta Advertising Standards.
+
+Output must be a valid JSON object containing an array "variations" of exactly 3 objects with keys:
+- "hook": Catchy first line or pattern interrupt (1 sentence).
+- "primary_text": Compelling body text (2-3 sentences) describing the product accurately and driving action.
+- "headline": Punchy headline for the link card (under 60 characters).
+- "cta": Contextual call-to-action button text appropriate for the objective (${objective}).
+
+Example JSON structure:
+{
+  "variations": [
+    {
+      "hook": "...",
+      "primary_text": "...",
+      "headline": "...",
+      "cta": "..."
+    }
+  ]
+}
+`;
+
+    const userPrompt = `
+Product Details:
+- Title: ${product.title}
+- Category: ${product.category || 'General Merchandise'}
+- Regular Price: ${priceFormatted}
+${product.handle ? `- Product URL Handle: ${product.handle}` : ''}
+${context.storeName ? `- Store / Brand: ${context.storeName}` : ''}
+
+Target Platform: ${platformLabel}
+Campaign Objective: ${objective}
+
+Generate 3 diverse, highly engaging creative variations tailored to this product and objective now. Output pure JSON only.
+`;
+
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ];
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages,
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+      });
+
+      const choice = response.choices[0];
+      const usage = response.usage;
+      const rawContent = choice.message.content || '{}';
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawContent);
+      } catch (jsonErr: any) {
+        throw new Error(`Failed to parse AI response as JSON: ${jsonErr.message}`);
+      }
+
+      const variationSchema = z.object({
+        hook: z.string().min(1, 'Hook is required'),
+        primary_text: z.string().min(1, 'Primary text is required'),
+        headline: z.string().min(1, 'Headline is required'),
+        cta: z.string().min(1, 'CTA is required'),
+      });
+
+      const responseSchema = z.object({
+        variations: z.array(variationSchema).min(1, 'At least 1 variation required'),
+      });
+
+      const validated = responseSchema.safeParse(parsed);
+      if (!validated.success) {
+        throw new Error(`Malformed AI creative output: ${validated.error.issues.map(i => i.message).join(', ')}`);
+      }
+
+      const inputTokens = usage?.prompt_tokens || 0;
+      const outputTokens = usage?.completion_tokens || 0;
+      const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
+
+      return {
+        variations: validated.data.variations.slice(0, 3),
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        estimated_cost_usd: costUsd,
+        model: env.OPENAI_MODEL || 'gpt-4o-mini',
+      };
+    } catch (err: any) {
+      if (
+        err?.status === 429 ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('credits') ||
+        err?.message?.includes('quota')
+      ) {
+        const isInsta = platform === 'instagram';
+        const objLabel = objective.replace('_', ' ');
+        return {
+          variations: [
+            {
+              hook: isInsta
+                ? `✨ Elevate your everyday style with our ${product.title}.`
+                : `Looking for top-rated ${product.category || 'essentials'}? Discover the ${product.title}.`,
+              primary_text: `Crafted for dependable quality. The ${product.title} is available now for ${priceFormatted}. Explore authentic specifications and order directly from our store today.`,
+              headline: `${product.title} — Official Store`,
+              cta: objective === 'product_sales' ? 'Shop Now' : (objective === 'retargeting' ? 'Complete Your Order' : 'Learn More'),
+            },
+            {
+              hook: isInsta
+                ? `Stop scrolling: Meet the ${product.title}. 🔥`
+                : `Upgrade your daily routine with the ${product.title}.`,
+              primary_text: `Delivering authentic value and dependable craftsmanship at ${priceFormatted}. See full product details and order directly through our store.`,
+              headline: `Order ${product.title} Today | ${priceFormatted}`,
+              cta: objective === 'product_sales' ? 'Shop Now' : 'Explore Collection',
+            },
+            {
+              hook: objective === 'retargeting'
+                ? `Still thinking about the ${product.title}? It's waiting for you.`
+                : `Meet the ${product.title}: Pure quality in ${product.category || 'store'}.`,
+              primary_text: `Don't miss out on genuine quality. The ${product.title} is available now for ${priceFormatted}. Complete your purchase securely.`,
+              headline: `Genuine ${product.title} | ${objLabel.toUpperCase()}`,
+              cta: objective === 'product_launch' ? 'Be First To Shop' : 'Shop Now',
+            },
+          ],
+          input_tokens: 0,
+          output_tokens: 0,
+          estimated_cost_usd: 0,
+          model: 'fallback-gpt-4o-mini',
         };
       }
       throw err;
