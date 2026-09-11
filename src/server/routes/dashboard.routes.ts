@@ -8,6 +8,8 @@ import { AnalyticsRepository } from '../../modules/analytics/analytics.repositor
 import { AdCreativeService, BudgetExceededError, ProductNotFoundError } from '../../modules/ad_creatives/ad_creative.service';
 import { WhatsAppService } from '../../modules/whatsapp/whatsapp.service';
 import { WhatsAppRepository } from '../../modules/whatsapp/whatsapp.repository';
+import { AppError } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
@@ -1017,8 +1019,16 @@ const handleSaveWhatsAppConfig = async (req: Request, res: Response, next: any) 
       message: 'WhatsApp configuration saved successfully.',
       data: saved,
     });
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    logger.error(`Failed to save WhatsApp configuration for store ${String(req.params.storeId)}`, err, {
+      storeId: String(req.params.storeId),
+      provider: req.body?.provider,
+    });
+    if (err instanceof AppError) {
+      next(err);
+    } else {
+      next(new AppError(err?.message || 'Failed to save WhatsApp configuration', 400, 'SAVE_CONFIG_ERROR'));
+    }
   }
 };
 

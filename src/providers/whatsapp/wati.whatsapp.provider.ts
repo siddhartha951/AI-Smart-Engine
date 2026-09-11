@@ -33,9 +33,9 @@ export class WatiWhatsAppProvider implements IWhatsAppProvider {
    */
   async sendMessage(params: WhatsAppSendParams): Promise<WhatsAppSendResult> {
     const apiEndpoint = this.cleanEndpoint(params.apiEndpoint);
-    const accessToken = params.accessToken?.trim();
+    const cleanToken = (params.accessToken || '').trim().replace(/^(?:Bearer\s+)+/i, '');
 
-    if (!apiEndpoint || !accessToken) {
+    if (!apiEndpoint || !cleanToken) {
       return {
         success: false,
         error: 'Missing WATI API Endpoint URL or Access Token.',
@@ -92,7 +92,7 @@ export class WatiWhatsAppProvider implements IWhatsAppProvider {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${cleanToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(bodyData),

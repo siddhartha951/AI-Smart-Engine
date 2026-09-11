@@ -191,6 +191,24 @@
   - Built consent-gated abandoned cart recovery engine with completed order suppression and idempotency guarantees.
   - Automated transactional order confirmation and delivery notifications linked to Shopify order webhooks.
   - Added WhatsApp Growth workspace in Merchant Dashboard with connection credentials, live conversation manager, test message dispatch, and consent directory.
-- **Verification**: 17/17 dedicated Phase 13 tests passing; 125/125 regression tests passing across all 19 test files. Clean TypeScript compile and ESLint run.
+
+---
+
+### [2026-09-11] Phase 13 Hotfix — WATI Credential Storage & Frontend Error Formatter
+- **Issue**:
+  - When saving WATI credentials in the Merchant Dashboard, if the user entered long JWT bearer tokens into the `Webhook Secret / Verify Token` or token fields, the operation failed with a database length constraint error, which was subsequently displayed in the dashboard as `[object Object]` instead of human-readable text.
+- **Root Causes**:
+  - Column `webhook_verify_token` was defined as `VARCHAR(255)` in `017_whatsapp_growth_engine.sql`. Full JWT tokens copied by merchants exceeded 255 characters, triggering PostgreSQL truncation errors.
+  - In `src/public/dashboard/js/app.js`, API errors returned in standard `{ success: false, error: { code, message } }` format were passed to `new Error(result.error)` which cast the object into `"[object Object]"` for `showToast`.
+  - Tokens entered with leading `"Bearer "` prefix were not stripped prior to encryption and WATI API header attachment.
+- **Resolution**:
+  - Added Migration 019 (`019_expand_whatsapp_config_fields.sql`) altering `webhook_verify_token` and `app_secret` to `TEXT`, and `display_phone_number` to `VARCHAR(100)`, while guaranteeing all WATI columns exist idempotently.
+  - Updated `017_whatsapp_growth_engine.sql` for future fresh installs.
+  - Enhanced `src/public/dashboard/js/app.js` with `getErrorMessage` and safe `showToast` that never displays `[object Object]` and properly unrolls nested API error payloads.
+  - Sanitized access tokens in `WhatsAppService` and `WatiWhatsAppProvider` to strip any leading `Bearer ` prefixes automatically.
+  - Added operational error wrapping in `handleSaveWhatsAppConfig` and endpoint protocol validation (`http://` or `https://`).
+- **Verification**:
+  - Dedicated tests added in `tests/integration/phase13_wati_extension.test.ts` for long JWT bearer tokens (> 350 chars) and Bearer prefix stripping.
+  - 155/155 tests passing across 20 test files. TypeScript type-check and ESLint clean. Production build compiled cleanly.
 
 

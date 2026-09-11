@@ -1354,15 +1354,49 @@ function formatRelativeTime(date) {
   return date.toLocaleDateString();
 }
 
+function getErrorMessage(data, fallback = 'Operation failed') {
+  if (!data) return fallback;
+  if (typeof data === 'string') {
+    return (data === '[object Object]' || data === 'Error: [object Object]') ? fallback : data;
+  }
+  if (data instanceof Error) {
+    const msg = data.message;
+    return (msg && msg !== '[object Object]' && msg !== 'Error: [object Object]') ? msg : fallback;
+  }
+  if (data.error) {
+    if (typeof data.error === 'string') {
+      return data.error === '[object Object]' ? fallback : data.error;
+    }
+    if (data.error.message && typeof data.error.message === 'string') {
+      return data.error.message;
+    }
+    if (data.error.code && typeof data.error.code === 'string') {
+      return `${data.error.code}: ${data.error.message || fallback}`;
+    }
+  }
+  if (typeof data.message === 'string') return data.message;
+  try {
+    const serialized = JSON.stringify(data);
+    return serialized !== '{}' ? serialized : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function showToast(message, isError = false) {
   const toast = document.getElementById('toast');
-  toast.textContent = message;
+  if (!toast) return;
+
+  const displayMsg = getErrorMessage(message, isError ? 'An unexpected error occurred.' : 'Operation completed.');
+
+  toast.textContent = displayMsg;
   toast.style.background = isError ? 'var(--danger)' : 'var(--primary)';
   toast.classList.remove('hidden');
   
-  setTimeout(() => {
+  if (window._toastTimeout) clearTimeout(window._toastTimeout);
+  window._toastTimeout = setTimeout(() => {
     toast.classList.add('hidden');
-  }, 3000);
+  }, 4000);
 }
 
 function showConfirmModal(title, message, onConfirm) {
@@ -1612,9 +1646,9 @@ async function generateAdCreativesAction() {
       })
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.error || 'Ad creative generation failed');
+      throw new Error(getErrorMessage(data, 'Ad creative generation failed'));
     }
 
     adStudioState.variations = data.data?.variations || [];
@@ -1775,8 +1809,8 @@ async function saveCurrentCreativeAction() {
       })
     });
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to save creative');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(getErrorMessage(data, 'Failed to save creative'));
 
     showToast('💾 Creative saved to library!');
     await loadSavedCreativesTable();
@@ -2136,8 +2170,11 @@ async function saveWhatsAppConfig() {
       body: JSON.stringify(payload)
     });
 
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Failed to save WhatsApp config');
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = getErrorMessage(result, 'Failed to save WhatsApp config');
+      throw new Error(msg);
+    }
 
     showToast(`WhatsApp (${provider.toUpperCase()}) configuration saved successfully!`);
     await loadWhatsAppConfig();
@@ -2172,8 +2209,11 @@ async function sendWhatsAppTestMessage() {
       body: JSON.stringify({ toPhone })
     });
 
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Test dispatch failed');
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = getErrorMessage(result, 'Test dispatch failed');
+      throw new Error(msg);
+    }
 
     showToast(`Test message dispatched! WAMID: ${result.data?.wamid || 'OK'}`);
     await Promise.all([

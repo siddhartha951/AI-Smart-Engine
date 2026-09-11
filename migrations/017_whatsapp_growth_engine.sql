@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS whatsapp_configs (
     phone_number_id VARCHAR(100),
     waba_id VARCHAR(100),
     encrypted_access_token TEXT,
-    webhook_verify_token VARCHAR(255),
-    app_secret VARCHAR(255),
-    display_phone_number VARCHAR(50),
+    webhook_verify_token TEXT,
+    app_secret TEXT,
+    display_phone_number VARCHAR(100),
     status VARCHAR(50) NOT NULL DEFAULT 'disconnected', -- 'disconnected' | 'connected' | 'error'
     quality_rating VARCHAR(50) DEFAULT 'UNKNOWN',
     created_at TIMESTAMPTZ DEFAULT NOW(),

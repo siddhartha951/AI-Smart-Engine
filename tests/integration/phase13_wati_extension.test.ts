@@ -886,4 +886,60 @@ describe('Phase 13 Extension: WATI WhatsApp Provider Integration', () => {
       expect(mockMetaProvider.sentMessages[0].message.text.body).toContain('META');
     });
   });
+
+  // =========================================================================
+  // 8. Robust WATI Credential Handling & Large JWT Tokens
+  // =========================================================================
+
+  describe('8. Robust WATI Credential & Large Token Handling', () => {
+    it('8.1 safely stores long JWT bearer token in webhook_verify_token (> 255 chars)', async () => {
+      // Create a 350-character JWT token string
+      const rawJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' +
+        'eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE5OTk5OTk5OTksInN0b3JlSWQiOiJzdG9yZV8xMjM0NTY3OCIsInJvbGUiOiJ1c2VyIiwiaXNzIjoid2F0aS5pbyIsImF1ZCI6ImFpLXNtYXJ0LWVuZ2luZSIsImV4dHJhX2RhdGFfZmllbGQiOiJsb25nX3N0cmluZ192YWx1ZV90b19leGNlZWRfdHdvX2h1bmRyZWRfZmlmdHlfZml2ZV9jaGFyYWN0ZXJzX2NvbXBsZXRlbHkifQ.' +
+        '4z6Nvx9U2kL2Q3P4R5T6V7X8Z9A0B1C2D3E4F5G6H7I8J9K0L1M2N3O4P5Q6R7S8';
+      const bearerToken = 'Bearer ' + rawJwt;
+
+      expect(bearerToken.length).toBeGreaterThan(255);
+
+      const res = await request(app)
+        .put(`/api/v1/dashboard/${STORE_A_ID}/whatsapp/config`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          provider: 'wati',
+          watiApiEndpoint: 'https://live-mt-server.wati.io/10248349',
+          displayPhoneNumber: '9336167136',
+          watiAccessToken: bearerToken,
+          webhookVerifyToken: bearerToken,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.configured).toBe(true);
+      expect(res.body.data.provider).toBe('wati');
+      expect(res.body.data.webhook_verify_token).toBe(bearerToken);
+
+      // Verify in database: token decrypted has Bearer prefix stripped
+      const dbRow = await db.query(`SELECT * FROM whatsapp_configs WHERE store_id = '${STORE_A_ID}'`);
+      expect(dbRow.rows.length).toBe(1);
+      const decrypted = decryptString(dbRow.rows[0].encrypted_wati_token);
+      expect(decrypted.startsWith('Bearer ')).toBe(false);
+      expect(decrypted).toBe(rawJwt);
+    });
+
+    it('8.2 rejects invalid WATI API endpoint with clean validation error message', async () => {
+      const res = await request(app)
+        .put(`/api/v1/dashboard/${STORE_A_ID}/whatsapp/config`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          provider: 'wati',
+          watiApiEndpoint: 'invalid-url-without-protocol',
+          displayPhoneNumber: '9336167136',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBeDefined();
+      expect(res.body.error.message).toContain('WATI API Endpoint URL must start with http:// or https://');
+    });
+  });
 });

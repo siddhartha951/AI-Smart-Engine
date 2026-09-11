@@ -13,6 +13,7 @@ import { VisitorRepository } from '../visitor/visitor.repository';
 import { EventRepository } from '../events/event.repository';
 import { encryptString, decryptString } from '../../utils/crypto';
 import { WhatsAppConfig } from '../../database/types';
+import { ValidationError } from '../../utils/errors';
 
 export class WhatsAppService {
   private db: IDatabaseClient;
@@ -89,19 +90,29 @@ export class WhatsAppService {
       watiAccessToken?: string | null;
     }
   ) {
+    const provider = params.provider || 'meta';
+
+    if (provider === 'wati' && params.watiApiEndpoint) {
+      const trimmedEndpoint = params.watiApiEndpoint.trim();
+      if (!trimmedEndpoint.startsWith('http://') && !trimmedEndpoint.startsWith('https://')) {
+        throw new ValidationError('WATI API Endpoint URL must start with http:// or https://');
+      }
+    }
+
     let encryptedToken: string | undefined;
     if (params.accessToken) {
-      const encrypted = encryptString(params.accessToken.trim());
+      const cleanToken = params.accessToken.trim().replace(/^(?:Bearer\s+)+/i, '');
+      const encrypted = encryptString(cleanToken);
       encryptedToken = encrypted.encryptedString;
     }
 
     let encryptedWatiToken: string | undefined;
     if (params.watiAccessToken) {
-      const encrypted = encryptString(params.watiAccessToken.trim());
+      const cleanToken = params.watiAccessToken.trim().replace(/^(?:Bearer\s+)+/i, '');
+      const encrypted = encryptString(cleanToken);
       encryptedWatiToken = encrypted.encryptedString;
     }
 
-    const provider = params.provider || 'meta';
     const existing = await this.repo.getConfig(storeId);
 
     // Determine connection status based on provider
