@@ -6,6 +6,8 @@ import { getEmailProvider, getTestEmailProvider } from '../../providers/email';
 import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
 import { AnalyticsRepository } from '../../modules/analytics/analytics.repository';
 import { AdCreativeService, BudgetExceededError, ProductNotFoundError } from '../../modules/ad_creatives/ad_creative.service';
+import { WhatsAppService } from '../../modules/whatsapp/whatsapp.service';
+import { WhatsAppRepository } from '../../modules/whatsapp/whatsapp.repository';
 
 const router = Router();
 
@@ -952,6 +954,319 @@ router.delete('/:storeId/ad-creatives/saved/:id', enforceStoreAccess, async (req
     res.json({
       success: true,
       message: 'Creative deleted successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================
+// 9. Phase 13: WhatsApp Growth Engine Routes
+// ==========================================
+
+// 9.1 WhatsApp Configuration Status
+router.get('/:storeId/whatsapp/config', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const config = await service.getConfig(storeId);
+    res.json({
+      success: true,
+      data: config,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9.2 Save WhatsApp Configuration (supports PUT and POST)
+const handleSaveWhatsAppConfig = async (req: Request, res: Response, next: any) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const {
+      phoneNumberId,
+      wabaId,
+      accessToken,
+      webhookVerifyToken,
+      appSecret,
+      displayPhoneNumber
+    } = req.body || {};
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const saved = await service.saveConfig(storeId, {
+      phoneNumberId,
+      wabaId,
+      accessToken,
+      webhookVerifyToken,
+      appSecret,
+      displayPhoneNumber,
+    });
+
+    res.json({
+      success: true,
+      message: 'WhatsApp configuration saved successfully.',
+      data: saved,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.put('/:storeId/whatsapp/config', enforceStoreAccess, handleSaveWhatsAppConfig);
+router.post('/:storeId/whatsapp/config', enforceStoreAccess, handleSaveWhatsAppConfig);
+
+// 9.3 Send Test WhatsApp Message
+router.post('/:storeId/whatsapp/test', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const phone = req.body?.toPhone || req.body?.phone;
+
+    if (!phone || typeof phone !== 'string') {
+      res.status(400).json({ success: false, error: 'Recipient phone number is required.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const result = await service.sendTestMessage(storeId, phone);
+    res.json({
+      success: true,
+      message: 'Test message sent successfully.',
+      data: result,
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 9.4 List WhatsApp Conversations
+router.get('/:storeId/whatsapp/conversations', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const offset = parseInt((req.query.offset as string) || '0', 10);
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const result = await service.getConversations(storeId, isNaN(limit) ? 50 : limit, isNaN(offset) ? 0 : offset);
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9.5 Get Messages for Conversation
+const handleGetWhatsAppMessages = async (req: Request, res: Response, next: any) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const convId = (req.params.id || req.query.conversationId) as string;
+
+    if (!convId) {
+      res.status(400).json({ success: false, error: 'conversationId is required' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const messages = await service.getConversationMessages(storeId, convId);
+    res.json({
+      success: true,
+      data: { messages },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.get('/:storeId/whatsapp/messages', enforceStoreAccess, handleGetWhatsAppMessages);
+router.get('/:storeId/whatsapp/conversations/:id/messages', enforceStoreAccess, handleGetWhatsAppMessages);
+
+// 9.6 List Consented Contacts
+router.get('/:storeId/whatsapp/consents', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const limit = parseInt((req.query.limit as string) || '50', 10);
+    const offset = parseInt((req.query.offset as string) || '0', 10);
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const result = await service.getConsents(storeId, isNaN(limit) ? 50 : limit, isNaN(offset) ? 0 : offset);
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9.7 Revoke Consent by ID
+router.delete('/:storeId/whatsapp/consents/:id', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const consentId = req.params.id as string;
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    await service.revokeConsentById(storeId, consentId);
+    res.json({
+      success: true,
+      message: 'WhatsApp marketing consent revoked successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Revoke Consent by Phone
+router.post('/:storeId/whatsapp/consents/revoke', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { phone } = req.body || {};
+
+    if (!phone || typeof phone !== 'string') {
+      res.status(400).json({ success: false, error: 'Phone number is required.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    await service.revokeConsent(storeId, phone);
+    res.json({
+      success: true,
+      message: 'WhatsApp marketing consent revoked successfully.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9.8 Record Opt-In
+const handleRecordOptIn = async (req: Request, res: Response, next: any) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const phone = req.body?.phoneNumber || req.body?.phone;
+    const wording = req.body?.consentWording || req.body?.wording;
+    const { source, visitorId } = req.body || {};
+
+    if (!phone || typeof phone !== 'string') {
+      res.status(400).json({ success: false, error: 'Phone number is required.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const repo = new WhatsAppRepository(db);
+
+    const consent = await repo.recordConsent(storeId, {
+      phoneNumber: phone,
+      optedIn: true,
+      wording: wording || 'Opted in to WhatsApp updates',
+      source: source || 'merchant_dashboard',
+      visitorId,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'WhatsApp consent recorded successfully.',
+      data: consent,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.post('/:storeId/whatsapp/opt-in', enforceStoreAccess, handleRecordOptIn);
+router.post('/:storeId/whatsapp/consents/opt-in', enforceStoreAccess, handleRecordOptIn);
+
+// 9.9 WhatsApp Growth Analytics Summary
+router.get('/:storeId/whatsapp/analytics', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const analytics = await service.getAnalytics(storeId);
+    res.json({
+      success: true,
+      data: {
+        active_conversations: analytics.activeConversations,
+        inbound_messages: analytics.inboundMessages,
+        outbound_messages: analytics.outboundMessages,
+        recovered_carts: analytics.recoveredCarts,
+        consented_contacts: analytics.consentedContacts,
+        ...analytics,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9.10 Schedule Abandoned Cart Recovery
+router.post('/:storeId/whatsapp/recovery/schedule', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const phone = req.body?.customerPhone || req.body?.phone;
+    const cartToken = req.body?.checkoutToken || req.body?.cartToken;
+    const checkoutUrl = req.body?.recoveryUrl || req.body?.checkoutUrl;
+    const { productId, productTitle, price, currency, cartItems, visitorId } = req.body || {};
+
+    if (!phone) {
+      res.status(400).json({ success: false, error: 'Phone number is required.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const result = await service.scheduleAbandonedCartRecovery(storeId, {
+      phone,
+      cartToken,
+      productId,
+      productTitle,
+      price,
+      currency,
+      checkoutUrl,
+      cartItems,
+      visitorId,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 9.11 Process Abandoned Cart Recovery Job
+router.post('/:storeId/whatsapp/recovery/:id/process', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const jobId = req.params.id as string;
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const result = await service.processRecoveryJob(storeId, jobId);
+    res.json({
+      success: true,
+      message: result.status === 'sent' ? 'Recovery job processed successfully.' : 'Recovery job evaluated.',
+      data: result,
     });
   } catch (err) {
     next(err);

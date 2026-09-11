@@ -109,6 +109,25 @@ export class WebhookService {
         noteSessionId
       );
 
+      // WhatsApp Order Notification (if customer phone available)
+      const customerPhone = orderData.phone || orderData.customer?.phone || orderData.shipping_address?.phone || orderData.billing_address?.phone;
+      if (customerPhone) {
+        try {
+          const { WhatsAppService } = await import('../whatsapp/whatsapp.service');
+          const waService = new WhatsAppService({ db });
+          await waService.processOrderNotification(storeId, {
+            orderNumber: String(orderData.name || orderData.order_number || orderData.id),
+            phone: customerPhone,
+            totalPrice: orderData.total_price || '0.00',
+            currency: orderData.currency || 'GBP',
+            customerName: orderData.customer?.first_name || orderData.shipping_address?.first_name,
+            itemsCount: orderData.line_items?.length || 1,
+          });
+        } catch (waErr) {
+          logger.warn(`Failed to dispatch WhatsApp order notification for store ${storeId}: ${waErr}`);
+        }
+      }
+
       logger.info(`Processed order webhook for store ${storeId}, order ${orderData.order_number}, utm_source: ${utmSource}`);
     } catch (err) {
       logger.error('Error processing order webhook', err);

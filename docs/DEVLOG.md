@@ -137,3 +137,28 @@
   - Added one-click live tracking toggle in the Admin Portal merchant detail card.
 - **Verification**: 17 of 17 test suites passing (96 tests total, 0 failures). Live HTTP verification confirmed toggle state switching and real-time activity ingestion.
 
+---
+
+### [2026-09-11] Phase 12 Completed — AI Ad Creative Studio
+- **Changes**:
+  - Added Migration 016 (`ad_creatives` table with composite indexes on `(store_id, created_at DESC)` and `(store_id, product_id)`).
+  - Extended `IAiProvider` with `generateAdCreatives` grounded in catalogue inventory with strict anti-hallucination constraints and Zod schema validation.
+  - Implemented `AdCreativeRepository` and `AdCreativeService` supporting variation generation, saving, retrieval, and deletion with tenant isolation.
+  - Added full dashboard UI under `📢 Ad Creative Studio` with interactive platform toggles, objectives, live Facebook/Instagram mock previews, and 1-click clipboard copy.
+- **Verification**: 12/12 dedicated integration tests passing; 108/108 total regression tests passing.
+
+---
+
+### [2026-09-11] Phase 13 Completed — WhatsApp Growth Engine
+- **Changes**:
+  - Added Migration 017 (`whatsapp_configs`, `whatsapp_consents`, `whatsapp_conversations`, `whatsapp_messages`, `whatsapp_recovery_jobs`, `whatsapp_webhook_events`).
+  - Implemented `IWhatsAppProvider` abstraction with `MetaWhatsAppCloudProvider` and `MockWhatsAppProvider`.
+  - Implemented AES-256-GCM token encryption at rest via `src/utils/crypto.ts` with masked retrieval (`has_access_token`).
+  - Added Meta Webhook Challenge verification (`GET /api/v1/webhooks/whatsapp`) and event ingestion with HMAC validation and deduplication.
+  - Built two-way conversational AI assistant grounded in Shopify catalogue products and bounded by AI BudgetGuard.
+  - Built consent-gated abandoned cart recovery engine with completed order suppression and idempotency guarantees.
+  - Automated transactional order confirmation and delivery notifications linked to Shopify order webhooks.
+  - Added WhatsApp Growth workspace in Merchant Dashboard with connection credentials, live conversation manager, test message dispatch, and consent directory.
+- **Verification**: 17/17 dedicated Phase 13 tests passing; 125/125 regression tests passing across all 19 test files. Clean TypeScript compile and ESLint run.
+
+

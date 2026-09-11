@@ -54,6 +54,7 @@ const sections = {
   'widget-settings': document.getElementById('widget-settings'),
   'shopify-connection': document.getElementById('shopify-connection'),
   'ad-creative-studio': document.getElementById('ad-creative-studio'),
+  'whatsapp-growth': document.getElementById('whatsapp-growth'),
   'email-automation': document.getElementById('email-automation')
 };
 
@@ -110,6 +111,9 @@ function setupEventListeners() {
 
   // AI Ad Creative Studio controls
   setupAdStudioEventListeners();
+
+  // WhatsApp Growth Engine controls
+  setupWhatsAppEventListeners();
 
   // Login
   document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -706,6 +710,11 @@ async function loadSectionData(section) {
         loadAdStudioProducts(),
         loadSavedCreativesTable()
       ]);
+      return;
+    }
+
+    if (section === 'whatsapp-growth') {
+      await loadWhatsAppGrowthData();
       return;
     }
 
@@ -1877,6 +1886,435 @@ async function deleteSavedCreativeAction(creativeId) {
 
     showToast('Creative deleted');
     await loadSavedCreativesTable();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// ==========================================
+// Phase 13: WhatsApp Growth Engine Handlers
+// ==========================================
+
+let waState = {
+  config: null,
+  conversations: [],
+  selectedConvId: null,
+  consents: []
+};
+
+function setupWhatsAppEventListeners() {
+  // Save WhatsApp configuration
+  const configForm = document.getElementById('wa-config-form');
+  if (configForm) {
+    configForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await saveWhatsAppConfig();
+    });
+  }
+
+  // Copy Webhook URL button
+  const btnCopyWebhook = document.getElementById('btn-copy-wa-webhook');
+  if (btnCopyWebhook) {
+    btnCopyWebhook.addEventListener('click', () => {
+      const urlInput = document.getElementById('wa-webhook-url');
+      if (urlInput && urlInput.value) {
+        copyTextToClipboard(urlInput.value, 'WhatsApp Webhook Callback URL');
+      }
+    });
+  }
+
+  // Send Test Message button
+  const btnSendTest = document.getElementById('btn-send-wa-test');
+  if (btnSendTest) {
+    btnSendTest.addEventListener('click', async () => {
+      await sendWhatsAppTestMessage();
+    });
+  }
+}
+
+async function loadWhatsAppGrowthData() {
+  if (!state.activeStoreId) return;
+
+  // Pre-populate webhook URL with current origin
+  const webhookUrlInput = document.getElementById('wa-webhook-url');
+  if (webhookUrlInput && !webhookUrlInput.value) {
+    webhookUrlInput.value = `${window.location.origin}/api/v1/webhooks/whatsapp`;
+  }
+
+  await Promise.all([
+    loadWhatsAppAnalytics(),
+    loadWhatsAppConfig(),
+    loadWhatsAppConversations(),
+    loadWhatsAppConsents()
+  ]);
+}
+
+async function loadWhatsAppAnalytics() {
+  if (!state.activeStoreId) return;
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/analytics`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+    if (!data) return;
+
+    animateValue('wa-stat-conversations', data.active_conversations || 0);
+    animateValue('wa-stat-inbound', data.inbound_messages || 0);
+    animateValue('wa-stat-outbound', data.outbound_messages || 0);
+    animateValue('wa-stat-recovered', data.recovered_carts || 0);
+    animateValue('wa-stat-consents', data.consented_contacts || 0);
+  } catch (err) {
+    console.error('Failed to load WhatsApp analytics:', err);
+  }
+}
+
+async function loadWhatsAppConfig() {
+  if (!state.activeStoreId) return;
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/config`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+    waState.config = data;
+
+    const pill = document.getElementById('wa-connection-pill');
+    const phoneInput = document.getElementById('wa-phone-number-id');
+    const wabaInput = document.getElementById('wa-waba-id');
+    const displayPhoneInput = document.getElementById('wa-display-phone');
+    const verifyTokenInput = document.getElementById('wa-verify-token');
+    const webhookUrlInput = document.getElementById('wa-webhook-url');
+    const accessTokenInput = document.getElementById('wa-access-token');
+
+    if (data && data.configured) {
+      if (pill) {
+        pill.textContent = '● Connected (Live)';
+        pill.style.background = 'rgba(16, 185, 129, 0.2)';
+        pill.style.color = '#34d399';
+        pill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      }
+      if (phoneInput) phoneInput.value = data.phone_number_id || '';
+      if (wabaInput) wabaInput.value = data.waba_id || '';
+      if (displayPhoneInput) displayPhoneInput.value = data.display_phone_number || '';
+      if (verifyTokenInput) verifyTokenInput.value = data.webhook_verify_token || '';
+      if (webhookUrlInput) webhookUrlInput.value = data.webhook_callback_url || `${window.location.origin}/api/v1/webhooks/whatsapp`;
+      if (accessTokenInput) {
+        accessTokenInput.value = '';
+        accessTokenInput.placeholder = '•••••••••••••••••••• (Active)';
+      }
+    } else {
+      if (pill) {
+        pill.textContent = '● Disconnected';
+        pill.style.background = 'rgba(239, 68, 68, 0.2)';
+        pill.style.color = '#f87171';
+        pill.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      }
+      if (webhookUrlInput && !webhookUrlInput.value) {
+        webhookUrlInput.value = `${window.location.origin}/api/v1/webhooks/whatsapp`;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load WhatsApp config:', err);
+  }
+}
+
+async function saveWhatsAppConfig() {
+  if (!state.activeStoreId) return;
+  const btnSave = document.getElementById('btn-save-wa-config');
+  if (btnSave) btnSave.disabled = true;
+
+  try {
+    const phoneNumberId = document.getElementById('wa-phone-number-id')?.value.trim();
+    const wabaId = document.getElementById('wa-waba-id')?.value.trim();
+    const displayPhoneNumber = document.getElementById('wa-display-phone')?.value.trim();
+    const accessToken = document.getElementById('wa-access-token')?.value.trim();
+    const webhookVerifyToken = document.getElementById('wa-verify-token')?.value.trim();
+
+    if (!phoneNumberId) {
+      showToast('Phone Number ID is required', true);
+      return;
+    }
+
+    const payload = {
+      phoneNumberId,
+      wabaId,
+      displayPhoneNumber,
+      webhookVerifyToken
+    };
+    if (accessToken) {
+      payload.accessToken = accessToken;
+    }
+
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/config`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to save WhatsApp config');
+
+    showToast('WhatsApp configuration saved successfully!');
+    await loadWhatsAppConfig();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btnSave) btnSave.disabled = false;
+  }
+}
+
+async function sendWhatsAppTestMessage() {
+  if (!state.activeStoreId) return;
+  const toPhone = document.getElementById('wa-test-phone')?.value.trim();
+  if (!toPhone) {
+    showToast('Enter recipient phone number with country code (e.g. +44...)', true);
+    return;
+  }
+
+  const btn = document.getElementById('btn-send-wa-test');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+  }
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ toPhone })
+    });
+
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Test dispatch failed');
+
+    showToast(`Test message dispatched! WAMID: ${result.data?.wamid || 'OK'}`);
+    await Promise.all([
+      loadWhatsAppConversations(),
+      loadWhatsAppAnalytics()
+    ]);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Send Test';
+    }
+  }
+}
+
+async function loadWhatsAppConversations() {
+  if (!state.activeStoreId) return;
+  const listContainer = document.getElementById('wa-conversation-list');
+  const countEl = document.getElementById('wa-conv-count');
+  if (!listContainer) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/conversations?limit=20`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load conversations');
+
+    const { data } = await res.json();
+    waState.conversations = data.conversations || [];
+    const total = data.total || waState.conversations.length;
+
+    if (countEl) countEl.textContent = `${total} conversation${total === 1 ? '' : 's'}`;
+
+    if (waState.conversations.length === 0) {
+      listContainer.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 25px 8px;">No active conversations yet. Inbound customer chats and recovery conversations will appear here.</div>';
+      return;
+    }
+
+    listContainer.innerHTML = waState.conversations.map(c => {
+      const isSelected = c.id === waState.selectedConvId;
+      const dateStr = c.last_message_at ? formatRelativeTime(new Date(c.last_message_at)) : 'New';
+      const statusBadge = c.status === 'active'
+        ? '<span style="color: #34d399; font-size: 10px; font-weight: 700;">● LIVE</span>'
+        : '<span style="color: var(--text-muted); font-size: 10px;">CLOSED</span>';
+
+      return `
+        <div class="wa-conv-item ${isSelected ? 'active' : ''}" data-id="${c.id}" style="padding: 10px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: background 0.15s ease; border: 1px solid ${isSelected ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.04)'}; background: ${isSelected ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.02)'};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+            <span style="font-weight: 600; font-size: 12.5px; color: var(--text-main); font-family: var(--font-mono);">${escapeHtml(c.customer_phone)}</span>
+            ${statusBadge}
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted);">
+            <span>${c.message_count || 0} msgs</span>
+            <span>${dateStr}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach click handlers
+    listContainer.querySelectorAll('.wa-conv-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-id');
+        selectWhatsAppConversation(id);
+      });
+    });
+
+    // If no conversation is currently selected, select the first one automatically
+    if (!waState.selectedConvId && waState.conversations.length > 0) {
+      selectWhatsAppConversation(waState.conversations[0].id);
+    }
+  } catch (err) {
+    console.error('Error loading WhatsApp conversations:', err);
+  }
+}
+
+async function selectWhatsAppConversation(convId) {
+  waState.selectedConvId = convId;
+
+  // Highlight active in list
+  const listContainer = document.getElementById('wa-conversation-list');
+  if (listContainer) {
+    listContainer.querySelectorAll('.wa-conv-item').forEach(el => {
+      const isSel = el.getAttribute('data-id') === convId;
+      el.classList.toggle('active', isSel);
+      el.style.border = isSel ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(255, 255, 255, 0.04)';
+      el.style.background = isSel ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.02)';
+    });
+  }
+
+  await loadWhatsAppMessages(convId);
+}
+
+async function loadWhatsAppMessages(convId) {
+  if (!state.activeStoreId || !convId) return;
+  const container = document.getElementById('wa-messages-container');
+  if (!container) return;
+
+  container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 30px 0; font-size: 12px;">Loading messages...</div>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/messages?conversationId=${convId}&limit=50`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load messages');
+
+    const { data } = await res.json();
+    const messages = data.messages || [];
+
+    if (messages.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 13px;">No messages recorded in this conversation yet.</div>';
+      return;
+    }
+
+    container.innerHTML = messages.map(m => {
+      const isInbound = m.direction === 'inbound';
+      const timeStr = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const senderLabel = isInbound ? '👤 Customer' : '🤖 AI Assistant';
+
+      return `
+        <div style="display: flex; flex-direction: column; align-items: ${isInbound ? 'flex-start' : 'flex-end'}; margin-bottom: 8px;">
+          <div style="font-size: 10.5px; color: var(--text-muted); margin-bottom: 2px; padding: 0 4px;">
+            ${senderLabel} • ${timeStr}
+          </div>
+          <div class="wa-bubble ${isInbound ? 'inbound' : 'outbound'}" style="max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45; word-break: break-word; background: ${isInbound ? 'rgba(30, 41, 59, 0.9)' : 'linear-gradient(135deg, #059669 0%, #047857 100%)'}; color: #ffffff; border: 1px solid ${isInbound ? 'rgba(255,255,255,0.08)' : 'rgba(52, 211, 153, 0.3)'}; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            ${escapeHtml(m.body_text)}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+  } catch (err) {
+    container.innerHTML = `<div style="text-align: center; color: var(--danger); padding: 20px 0; font-size: 12px;">Failed to load messages: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function loadWhatsAppConsents() {
+  if (!state.activeStoreId) return;
+  const tbody = document.getElementById('wa-consents-tbody');
+  const countEl = document.getElementById('wa-consents-count');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/consents?limit=20`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load consents');
+
+    const { data } = await res.json();
+    waState.consents = data.consents || [];
+    const total = data.total || waState.consents.length;
+
+    if (countEl) countEl.textContent = `${total} contact${total === 1 ? '' : 's'}`;
+
+    if (waState.consents.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No opted-in WhatsApp contacts recorded yet. Shoppers opt in via storefront widget or affirmative keyword.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = waState.consents.map(c => {
+      const isActive = c.status === 'active';
+      const dateStr = new Date(c.captured_at).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      const statusBadge = isActive
+        ? '<span class="badge" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 11px;">Active Opt-In</span>'
+        : '<span class="badge" style="background: rgba(239, 68, 68, 0.18); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); font-size: 11px;">Revoked</span>';
+
+      const actionHtml = isActive
+        ? `<button class="btn-sm btn-secondary outline btn-revoke-consent" data-id="${c.id}" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4); font-size: 11px; padding: 4px 10px;">Revoke</button>`
+        : '<span style="font-size: 11px; color: var(--text-muted);">Revoked</span>';
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main); font-family: var(--font-mono);">${escapeHtml(c.phone_number)}</td>
+          <td style="padding: 12px;">${statusBadge}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted); text-transform: capitalize;">${escapeHtml(c.source || 'storefront_widget')}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-dim); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.consent_wording)}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted);">${dateStr}</td>
+          <td style="padding: 12px; text-align: right;">${actionHtml}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // Attach revoke buttons
+    tbody.querySelectorAll('.btn-revoke-consent').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        showConfirmModal('Revoke WhatsApp Opt-In?', 'The customer will immediately stop receiving WhatsApp cart reminders and notifications.', async () => {
+          await revokeWhatsAppConsent(id);
+        });
+      });
+    });
+  } catch (err) {
+    console.error('Error loading WhatsApp consents:', err);
+  }
+}
+
+async function revokeWhatsAppConsent(consentId) {
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/consents/${consentId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to revoke consent');
+
+    showToast('WhatsApp consent revoked');
+    await Promise.all([
+      loadWhatsAppConsents(),
+      loadWhatsAppAnalytics()
+    ]);
   } catch (err) {
     showToast(err.message, true);
   }

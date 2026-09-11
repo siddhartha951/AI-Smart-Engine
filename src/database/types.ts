@@ -233,3 +233,90 @@ export interface AdCreative {
   updated_at: Date;
 }
 
+export type WhatsAppConfigStatus = 'disconnected' | 'connected' | 'error';
+
+export interface WhatsAppConfig {
+  id: string;
+  store_id: string;
+  phone_number_id: string | null;
+  waba_id: string | null;
+  encrypted_access_token: string | null;
+  webhook_verify_token: string | null;
+  app_secret: string | null;
+  display_phone_number: string | null;
+  status: WhatsAppConfigStatus;
+  quality_rating: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WhatsAppConsent {
+  id: string;
+  store_id: string;
+  phone_number: string;
+  visitor_id: string | null;
+  opted_in: boolean;
+  wording: string;
+  source: string;
+  captured_at: Date;
+  revoked_at: Date | null;
+  created_at: Date;
+}
+
+export interface WhatsAppConversation {
+  id: string;
+  store_id: string;
+  phone_number: string;
+  customer_name: string | null;
+  visitor_id: string | null;
+  status: 'active' | 'closed';
+  last_message_at: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  store_id: string;
+  conversation_id: string;
+  direction: 'inbound' | 'outbound';
+  message_type: 'text' | 'template' | 'interactive';
+  content: string;
+  wamid: string | null;
+  status: 'received' | 'sent' | 'delivered' | 'read' | 'failed';
+  ai_generated: boolean;
+  tokens_used: number;
+  cost_usd: number;
+  error_message: string | null;
+  created_at: Date;
+}
+
+export interface WhatsAppRecoveryJob {
+  id: string;
+  store_id: string;
+  phone_number: string;
+  visitor_id: string | null;
+  cart_token: string | null;
+  product_id: string | null;
+  product_title: string | null;
+  price: number | null;
+  currency: string | null;
+  checkout_url: string | null;
+  idempotency_key: string;
+  status: 'pending' | 'sent' | 'cancelled' | 'failed';
+  cancel_reason: string | null;
+  sent_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface WhatsAppWebhookEvent {
+  id: string;
+  store_id: string | null;
+  event_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: Date;
+}
+
+

@@ -22,6 +22,7 @@ import onboardingRoutes from './routes/onboarding.routes';
 import widgetRoutes from './routes/widget.routes';
 import shopifyRoutes from './routes/shopify.routes';
 import resendWebhookRoutes from './routes/resend-webhook.routes';
+import whatsappWebhookRoutes from './routes/whatsapp-webhook.routes';
 
 export interface AppDependencies {
   db?: IDatabaseClient;
@@ -479,6 +480,7 @@ export function createApp(deps: AppDependencies = {}): Express {
   app.use('/api/v1/widget', widgetRoutes);
   app.use('/api/v1/shopify', shopifyRoutes);
   app.use('/api/v1/webhooks/resend', resendWebhookRoutes);
+  app.use('/api/v1/webhooks/whatsapp', whatsappWebhookRoutes);
 
   app.use(errorHandler);
 

@@ -87,6 +87,7 @@
           <li><a href="#" data-target="widget-settings"><span class="nav-icon">🎨</span> Widget Settings</a></li>
           <li><a href="#" data-target="shopify-connection"><span class="nav-icon">🛍️</span> Shopify Catalog</a></li>
           <li><a href="#" data-target="ad-creative-studio"><span class="nav-icon">📢</span> Ad Creative Studio</a></li>
+          <li><a href="#" data-target="whatsapp-growth"><span class="nav-icon">💬</span> WhatsApp Growth</a></li>
           <li><a href="#" data-target="email-automation"><span class="nav-icon">✉️</span> Email Automation</a></li>
         </ul>
         <div class="sidebar-footer">
@@ -819,6 +820,173 @@
                   <tr>
                     <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
                       No saved creatives yet. Generate ad copy above and click "Save Creative" to build your library.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- 9. WhatsApp Growth Engine Section -->
+        <section id="whatsapp-growth" class="content-section hidden">
+          <header class="section-header">
+            <div>
+              <h2>WhatsApp Growth Engine</h2>
+              <p class="section-subtitle">Official Meta WhatsApp Cloud API — Two-way AI shopping, cart recovery & order updates</p>
+            </div>
+            <div class="header-actions">
+              <span id="wa-connection-pill" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 6px 14px; font-size: 13px;">
+                ● Disconnected
+              </span>
+            </div>
+          </header>
+
+          <!-- WhatsApp Metrics Bar -->
+          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
+            <div class="metric-card glass-card">
+              <span class="metric-title">Active Conversations</span>
+              <span class="metric-value" id="wa-stat-conversations">0</span>
+              <span class="metric-trend">Live two-way chats</span>
+            </div>
+            <div class="metric-card glass-card">
+              <span class="metric-title">Inbound Messages</span>
+              <span class="metric-value" id="wa-stat-inbound">0</span>
+              <span class="metric-trend">From customers</span>
+            </div>
+            <div class="metric-card glass-card">
+              <span class="metric-title">Outbound AI Replies</span>
+              <span class="metric-value" id="wa-stat-outbound">0</span>
+              <span class="metric-trend">Catalogue grounded</span>
+            </div>
+            <div class="metric-card glass-card">
+              <span class="metric-title">Recovered Carts</span>
+              <span class="metric-value" id="wa-stat-recovered">0</span>
+              <span class="metric-trend">Via WhatsApp follow-up</span>
+            </div>
+            <div class="metric-card glass-card">
+              <span class="metric-title">Consented Contacts</span>
+              <span class="metric-value" id="wa-stat-consents">0</span>
+              <span class="metric-trend">Verified opt-ins</span>
+            </div>
+          </div>
+
+          <!-- Main WhatsApp Grid: Connection & Live Messenger -->
+          <div class="ad-studio-grid">
+            <!-- Left: Meta WhatsApp Configuration Card -->
+            <div class="glass-card ad-controls-card">
+              <h3 class="card-title"><span class="icon">⚙️</span> Meta Cloud API Connection</h3>
+              <p class="form-hint" style="margin-bottom: 16px;">Connect your WhatsApp Business Account (WABA) via Meta Graph API credentials. Tokens are encrypted at rest with AES-256-GCM.</p>
+
+              <form id="wa-config-form">
+                <div class="form-group">
+                  <label for="wa-phone-number-id">Phone Number ID</label>
+                  <input type="text" id="wa-phone-number-id" class="form-control" placeholder="e.g. 104829104810293" required>
+                  <small class="form-hint">From Meta App Dashboard → WhatsApp → API Setup.</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="wa-waba-id">WhatsApp Business Account ID (WABA ID)</label>
+                  <input type="text" id="wa-waba-id" class="form-control" placeholder="e.g. 109283746192834">
+                </div>
+
+                <div class="form-group">
+                  <label for="wa-display-phone">Display Phone Number</label>
+                  <input type="text" id="wa-display-phone" class="form-control" placeholder="e.g. +44 7123 456789">
+                </div>
+
+                <div class="form-group">
+                  <label for="wa-access-token">Permanent System User Token</label>
+                  <input type="password" id="wa-access-token" class="form-control" placeholder="••••••••••••••••••••">
+                  <small class="form-hint">Encrypted with AES-256-GCM. Never shown in plain text.</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="wa-verify-token">Webhook Verification Token</label>
+                  <input type="text" id="wa-verify-token" class="form-control" placeholder="Custom secret token for Meta webhook">
+                </div>
+
+                <div class="form-group">
+                  <label>Webhook Callback URL (for Meta Dashboard)</label>
+                  <div style="display: flex; gap: 8px;">
+                    <input type="text" id="wa-webhook-url" class="form-control" readonly style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 12px;" value="">
+                    <button type="button" id="btn-copy-wa-webhook" class="btn-secondary" style="white-space: nowrap;">📋 Copy</button>
+                  </div>
+                </div>
+
+                <div class="studio-action-row" style="margin-top: 20px;">
+                  <button type="submit" id="btn-save-wa-config" class="btn-primary btn-block">
+                    <span>💾</span> Save WhatsApp Configuration
+                  </button>
+                </div>
+              </form>
+
+              <!-- Test Message Dispatcher -->
+              <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <h4 style="font-size: 14px; margin-bottom: 8px; color: var(--text-main);">📲 Send Test WhatsApp Dispatch</h4>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="wa-test-phone" class="form-control" placeholder="+447123456789">
+                  <button type="button" id="btn-send-wa-test" class="btn-secondary outline" style="white-space: nowrap;">Send Test</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Live Conversations & Messenger -->
+            <div class="glass-card ad-preview-card" style="display: flex; flex-direction: column; height: 100%; min-height: 520px;">
+              <div class="preview-header-bar">
+                <h3 class="card-title"><span class="icon">💬</span> Live WhatsApp Customer Chats</h3>
+                <span class="saved-counter" id="wa-conv-count">0 conversations</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 200px 1fr; gap: 12px; flex: 1; min-height: 380px;">
+                <!-- Conversation List -->
+                <div id="wa-conversation-list" style="border-right: 1px solid rgba(255,255,255,0.06); padding-right: 10px; overflow-y: auto; max-height: 440px;">
+                  <div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 20px 0;">No conversations yet</div>
+                </div>
+
+                <!-- Chat Messages Stream -->
+                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
+                  <div id="wa-messages-container" style="flex: 1; overflow-y: auto; max-height: 390px; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 13px;">
+                      Select a conversation on the left to view the message transcript.
+                    </div>
+                  </div>
+                  <div id="wa-chat-active-indicator" style="font-size: 11px; color: var(--text-muted); padding: 6px 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    Two-way conversational AI actively responds to inbound customer inquiries using verified catalogue inventory.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom: Consented Contacts Table -->
+          <div class="glass-card saved-creatives-card" style="margin-top: 24px;">
+            <div class="saved-header-row">
+              <div>
+                <h3 class="card-title"><span class="icon">📋</span> Verified WhatsApp Opt-In Directory</h3>
+                <p class="card-subtitle">GDPR & PECR compliant consent records. Separate from email marketing consent.</p>
+              </div>
+              <div class="saved-filter-row">
+                <span class="saved-counter" id="wa-consents-count">0 contacts</span>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="data-table" id="wa-consents-table">
+                <thead>
+                  <tr>
+                    <th>Phone Number</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Consent Wording</th>
+                    <th>Captured Date</th>
+                    <th style="text-align: right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="wa-consents-tbody">
+                  <tr>
+                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      No opted-in WhatsApp contacts recorded yet.
                     </td>
                   </tr>
                 </tbody>
