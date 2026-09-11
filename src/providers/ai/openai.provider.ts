@@ -393,7 +393,6 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
     } catch (err: any) {
       logger.warn(`OpenAI image generation unavailable (${err?.status || err?.code || 'error'}: ${err?.message || err}). Applying resilient commercial photography visual.`);
 
-      const fallbackUrl = getCategoryFallbackImage(product.category, product.title);
       const isQuotaOrCredits =
         err?.status === 429 ||
         err?.code === 'credit_balance_exhausted' ||
@@ -402,14 +401,19 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
         err?.message?.includes('quota') ||
         err?.message?.includes('billing');
 
+      // Dynamically generate a brand-new AI commercial visual via Flux for this exact product
+      const seed = Math.floor(Math.random() * 900000) + 100000;
+      const cleanPrompt = encodeURIComponent(`Commercial advertising visual of ${product.title}, ${product.category || 'fashion'}, professional studio lighting, 8k resolution, photorealistic commercial product photography`);
+      const aiGeneratedUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+
       const notice = isQuotaOrCredits
-        ? 'Notice: Your OpenAI API key has 0 credits remaining. We generated a high-converting commercial photography ad visual for this product. Add credits at platform.openai.com to enable direct DALL-E generation.'
-        : `Notice: OpenAI image generation is currently limited (${err?.message || 'Error'}). Generated a commercial photography ad visual for this product.`;
+        ? '✨ Real AI visual generated via Flux engine! (OpenAI API key has $0.00 credits. Add credits at platform.openai.com/billing to switch to DALL-E 3).'
+        : `✨ AI visual generated via Flux engine (${err?.message || 'OpenAI API limit'}).`;
 
       return {
-        image_url: fallbackUrl,
+        image_url: aiGeneratedUrl,
         revised_prompt: dallEPrompt,
-        model: 'curated-commercial-fallback',
+        model: 'flux-ai-engine',
         estimated_cost_usd: 0,
         notice,
       };
