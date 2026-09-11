@@ -355,28 +355,35 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
     let usedModel = 'gpt-image-1';
     try {
       logger.info(`Generating AI ad image via OpenAI for product "${product.title}"`);
-      let response: any;
-      try {
-        response = await this.openai.images.generate({
-          model: 'gpt-image-1',
-          prompt: dallEPrompt,
-          n: 1,
-          size: '1024x1024',
-        });
-      } catch (err1: any) {
-        if (err1?.message?.includes('does not exist') || err1?.code === 'invalid_value') {
-          usedModel = 'dall-e-3';
+      let response;
+      let usedModel = 'gpt-image-1.5';
+
+      const candidateModels = ['gpt-image-1.5', 'gpt-image-1', 'dall-e-3'];
+      let lastErr: any = null;
+
+      for (const m of candidateModels) {
+        try {
+          usedModel = m;
           response = await this.openai.images.generate({
-            model: 'dall-e-3',
+            model: m,
             prompt: dallEPrompt,
             n: 1,
             size: '1024x1024',
-            quality: 'standard',
-            response_format: 'url',
           });
-        } else {
-          throw err1;
+          if (response?.data?.[0]?.url) {
+            break;
+          }
+        } catch (mErr: any) {
+          lastErr = mErr;
+          if (mErr?.message?.includes('does not exist') || mErr?.code === 'invalid_value') {
+            continue; // try next candidate model
+          }
+          throw mErr; // If billing/quota or other fatal error, exit loop
         }
+      }
+
+      if (!response?.data?.[0]?.url) {
+        throw lastErr || new Error('OpenAI returned empty image response.');
       }
 
       const imageUrl = response.data?.[0]?.url;
