@@ -5,10 +5,12 @@ import {
   WhatsAppSendResult,
   WhatsAppWebhookEvent,
 } from './whatsapp.provider';
+import { WatiWhatsAppProvider } from './wati.whatsapp.provider';
 
 export class MockWhatsAppProvider implements IWhatsAppProvider {
   public sentMessages: Array<WhatsAppSendParams & { id: string; sentAt: Date; text?: string }> = [];
   private failNextSend: string | null = null;
+  private watiParser = new WatiWhatsAppProvider();
 
   /**
    * For testing: force the next sendMessage call to reject with an error.
@@ -43,7 +45,7 @@ export class MockWhatsAppProvider implements IWhatsAppProvider {
       };
     }
 
-    if (!params.phoneNumberId || !params.accessToken) {
+    if ((!params.phoneNumberId && !params.apiEndpoint) || !params.accessToken) {
       return {
         success: false,
         error: 'Missing phone number ID or access token.',
@@ -117,7 +119,12 @@ export class MockWhatsAppProvider implements IWhatsAppProvider {
 
   parseWebhook(body: any): WhatsAppWebhookEvent[] {
     const events: WhatsAppWebhookEvent[] = [];
-    if (!body || !Array.isArray(body.entry)) return events;
+    if (!body || typeof body !== 'object') return events;
+
+    // Delegate to WATI parser if payload is not Meta entry structure
+    if (!Array.isArray(body.entry)) {
+      return this.watiParser.parseWebhook(body);
+    }
 
     for (const entry of body.entry) {
       const wabaId = entry.id;

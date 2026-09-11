@@ -1912,14 +1912,33 @@ function setupWhatsAppEventListeners() {
     });
   }
 
-  // Copy Webhook URL button
+  // Copy Webhook URL button (Meta)
   const btnCopyWebhook = document.getElementById('btn-copy-wa-webhook');
   if (btnCopyWebhook) {
     btnCopyWebhook.addEventListener('click', () => {
       const urlInput = document.getElementById('wa-webhook-url');
       if (urlInput && urlInput.value) {
-        copyTextToClipboard(urlInput.value, 'WhatsApp Webhook Callback URL');
+        copyTextToClipboard(urlInput.value, 'Meta Webhook Callback URL');
       }
+    });
+  }
+
+  // Copy Webhook URL button (WATI)
+  const btnCopyWati = document.getElementById('btn-copy-wati-webhook');
+  if (btnCopyWati) {
+    btnCopyWati.addEventListener('click', () => {
+      const urlInput = document.getElementById('wa-wati-webhook-url');
+      if (urlInput && urlInput.value) {
+        copyTextToClipboard(urlInput.value, 'WATI Webhook Callback URL');
+      }
+    });
+  }
+
+  // Provider Select listener
+  const providerSelect = document.getElementById('wa-provider-select');
+  if (providerSelect) {
+    providerSelect.addEventListener('change', () => {
+      updateWhatsAppProviderUI(providerSelect.value);
     });
   }
 
@@ -1932,13 +1951,34 @@ function setupWhatsAppEventListeners() {
   }
 }
 
+function updateWhatsAppProviderUI(provider) {
+  const metaFields = document.getElementById('wa-meta-fields');
+  const watiFields = document.getElementById('wa-wati-fields');
+  const mockFields = document.getElementById('wa-mock-fields');
+
+  if (metaFields) metaFields.classList.toggle('hidden', provider !== 'meta');
+  if (watiFields) watiFields.classList.toggle('hidden', provider !== 'wati');
+  if (mockFields) mockFields.classList.toggle('hidden', provider !== 'mock');
+
+  // Update dynamic WATI webhook URL
+  const watiWebhookUrl = document.getElementById('wa-wati-webhook-url');
+  if (watiWebhookUrl && state.activeStoreId) {
+    const token = document.getElementById('wa-wati-verify-token')?.value || '';
+    watiWebhookUrl.value = `${window.location.origin}/api/v1/webhooks/whatsapp/wati/${state.activeStoreId}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  }
+}
+
 async function loadWhatsAppGrowthData() {
   if (!state.activeStoreId) return;
 
-  // Pre-populate webhook URL with current origin
+  // Pre-populate webhook URLs with current origin
   const webhookUrlInput = document.getElementById('wa-webhook-url');
   if (webhookUrlInput && !webhookUrlInput.value) {
     webhookUrlInput.value = `${window.location.origin}/api/v1/webhooks/whatsapp`;
+  }
+  const watiWebhookUrl = document.getElementById('wa-wati-webhook-url');
+  if (watiWebhookUrl && !watiWebhookUrl.value) {
+    watiWebhookUrl.value = `${window.location.origin}/api/v1/webhooks/whatsapp/wati/${state.activeStoreId}`;
   }
 
   await Promise.all([
@@ -1979,6 +2019,12 @@ async function loadWhatsAppConfig() {
     const { data } = await res.json();
     waState.config = data;
 
+    const providerSelect = document.getElementById('wa-provider-select');
+    if (providerSelect && data.provider) {
+      providerSelect.value = data.provider;
+    }
+    updateWhatsAppProviderUI(data?.provider || 'meta');
+
     const pill = document.getElementById('wa-connection-pill');
     const phoneInput = document.getElementById('wa-phone-number-id');
     const wabaInput = document.getElementById('wa-waba-id');
@@ -1987,21 +2033,19 @@ async function loadWhatsAppConfig() {
     const webhookUrlInput = document.getElementById('wa-webhook-url');
     const accessTokenInput = document.getElementById('wa-access-token');
 
+    // WATI fields
+    const watiEndpointInput = document.getElementById('wa-wati-endpoint');
+    const watiTokenInput = document.getElementById('wa-wati-token');
+    const watiPhoneInput = document.getElementById('wa-wati-phone');
+    const watiVerifyTokenInput = document.getElementById('wa-wati-verify-token');
+    const watiWebhookUrlInput = document.getElementById('wa-wati-webhook-url');
+
     if (data && data.configured) {
       if (pill) {
-        pill.textContent = '● Connected (Live)';
+        pill.textContent = `● Connected (${(data.provider || 'meta').toUpperCase()})`;
         pill.style.background = 'rgba(16, 185, 129, 0.2)';
         pill.style.color = '#34d399';
         pill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-      }
-      if (phoneInput) phoneInput.value = data.phone_number_id || '';
-      if (wabaInput) wabaInput.value = data.waba_id || '';
-      if (displayPhoneInput) displayPhoneInput.value = data.display_phone_number || '';
-      if (verifyTokenInput) verifyTokenInput.value = data.webhook_verify_token || '';
-      if (webhookUrlInput) webhookUrlInput.value = data.webhook_callback_url || `${window.location.origin}/api/v1/webhooks/whatsapp`;
-      if (accessTokenInput) {
-        accessTokenInput.value = '';
-        accessTokenInput.placeholder = '•••••••••••••••••••• (Active)';
       }
     } else {
       if (pill) {
@@ -2010,9 +2054,30 @@ async function loadWhatsAppConfig() {
         pill.style.color = '#f87171';
         pill.style.borderColor = 'rgba(239, 68, 68, 0.4)';
       }
-      if (webhookUrlInput && !webhookUrlInput.value) {
-        webhookUrlInput.value = `${window.location.origin}/api/v1/webhooks/whatsapp`;
-      }
+    }
+
+    // Populate Meta inputs
+    if (phoneInput) phoneInput.value = data?.phone_number_id || '';
+    if (wabaInput) wabaInput.value = data?.waba_id || '';
+    if (displayPhoneInput) displayPhoneInput.value = data?.display_phone_number || '';
+    if (verifyTokenInput) verifyTokenInput.value = data?.webhook_verify_token || '';
+    if (webhookUrlInput) webhookUrlInput.value = `${window.location.origin}/api/v1/webhooks/whatsapp`;
+    if (accessTokenInput) {
+      accessTokenInput.value = '';
+      accessTokenInput.placeholder = data?.has_access_token ? '•••••••••••••••••••• (Active)' : '••••••••••••••••••••';
+    }
+
+    // Populate WATI inputs
+    if (watiEndpointInput) watiEndpointInput.value = data?.wati_api_endpoint || '';
+    if (watiPhoneInput) watiPhoneInput.value = data?.display_phone_number || '';
+    if (watiVerifyTokenInput) watiVerifyTokenInput.value = data?.webhook_verify_token || '';
+    if (watiWebhookUrlInput) {
+      const tokenQuery = data?.webhook_verify_token ? `?token=${encodeURIComponent(data.webhook_verify_token)}` : '';
+      watiWebhookUrlInput.value = `${window.location.origin}/api/v1/webhooks/whatsapp/wati/${state.activeStoreId}${tokenQuery}`;
+    }
+    if (watiTokenInput) {
+      watiTokenInput.value = '';
+      watiTokenInput.placeholder = data?.has_wati_token ? '•••••••••••••••••••• (Active)' : '••••••••••••••••••••';
     }
   } catch (err) {
     console.error('Failed to load WhatsApp config:', err);
@@ -2025,25 +2090,41 @@ async function saveWhatsAppConfig() {
   if (btnSave) btnSave.disabled = true;
 
   try {
-    const phoneNumberId = document.getElementById('wa-phone-number-id')?.value.trim();
-    const wabaId = document.getElementById('wa-waba-id')?.value.trim();
-    const displayPhoneNumber = document.getElementById('wa-display-phone')?.value.trim();
-    const accessToken = document.getElementById('wa-access-token')?.value.trim();
-    const webhookVerifyToken = document.getElementById('wa-verify-token')?.value.trim();
+    const provider = document.getElementById('wa-provider-select')?.value || 'meta';
+    const payload = { provider };
 
-    if (!phoneNumberId) {
-      showToast('Phone Number ID is required', true);
-      return;
-    }
+    if (provider === 'meta') {
+      const phoneNumberId = document.getElementById('wa-phone-number-id')?.value.trim();
+      const wabaId = document.getElementById('wa-waba-id')?.value.trim();
+      const displayPhoneNumber = document.getElementById('wa-display-phone')?.value.trim();
+      const accessToken = document.getElementById('wa-access-token')?.value.trim();
+      const webhookVerifyToken = document.getElementById('wa-verify-token')?.value.trim();
 
-    const payload = {
-      phoneNumberId,
-      wabaId,
-      displayPhoneNumber,
-      webhookVerifyToken
-    };
-    if (accessToken) {
-      payload.accessToken = accessToken;
+      if (!phoneNumberId && !waState.config?.phone_number_id) {
+        showToast('Phone Number ID is required for Meta WhatsApp', true);
+        return;
+      }
+
+      payload.phoneNumberId = phoneNumberId;
+      payload.wabaId = wabaId;
+      payload.displayPhoneNumber = displayPhoneNumber;
+      payload.webhookVerifyToken = webhookVerifyToken;
+      if (accessToken) payload.accessToken = accessToken;
+    } else if (provider === 'wati') {
+      const watiApiEndpoint = document.getElementById('wa-wati-endpoint')?.value.trim();
+      const displayPhoneNumber = document.getElementById('wa-wati-phone')?.value.trim();
+      const watiAccessToken = document.getElementById('wa-wati-token')?.value.trim();
+      const webhookVerifyToken = document.getElementById('wa-wati-verify-token')?.value.trim();
+
+      if (!watiApiEndpoint && !waState.config?.wati_api_endpoint) {
+        showToast('WATI API Endpoint URL is required', true);
+        return;
+      }
+
+      payload.watiApiEndpoint = watiApiEndpoint;
+      payload.displayPhoneNumber = displayPhoneNumber;
+      payload.webhookVerifyToken = webhookVerifyToken;
+      if (watiAccessToken) payload.watiAccessToken = watiAccessToken;
     }
 
     const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/whatsapp/config`, {
@@ -2058,7 +2139,7 @@ async function saveWhatsAppConfig() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to save WhatsApp config');
 
-    showToast('WhatsApp configuration saved successfully!');
+    showToast(`WhatsApp (${provider.toUpperCase()}) configuration saved successfully!`);
     await loadWhatsAppConfig();
   } catch (err) {
     showToast(err.message, true);

@@ -234,16 +234,20 @@ export interface AdCreative {
 }
 
 export type WhatsAppConfigStatus = 'disconnected' | 'connected' | 'error';
+export type WhatsAppProviderType = 'meta' | 'wati' | 'mock';
 
 export interface WhatsAppConfig {
   id: string;
   store_id: string;
+  provider: WhatsAppProviderType;
   phone_number_id: string | null;
   waba_id: string | null;
   encrypted_access_token: string | null;
   webhook_verify_token: string | null;
   app_secret: string | null;
   display_phone_number: string | null;
+  wati_api_endpoint?: string | null;
+  encrypted_wati_token?: string | null;
   status: WhatsAppConfigStatus;
   quality_rating: string | null;
   created_at: Date;

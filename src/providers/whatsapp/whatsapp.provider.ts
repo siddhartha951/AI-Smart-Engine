@@ -29,10 +29,12 @@ export interface WhatsAppTemplateMessage {
 export type WhatsAppOutgoingPayload = WhatsAppTextMessage | WhatsAppTemplateMessage;
 
 export interface WhatsAppSendParams {
-  phoneNumberId: string;
-  accessToken: string;
-  to: string; // Recipient phone number (E.164 format)
+  phoneNumberId?: string; // Meta WhatsApp Phone Number ID
+  apiEndpoint?: string;   // WATI API Endpoint / Server URL
+  accessToken: string;    // Meta system user token or WATI Bearer token
+  to: string;             // Recipient phone number (E.164 format)
   message: WhatsAppOutgoingPayload;
+  channelPhoneNumber?: string; // Optional channel phone number
 }
 
 export interface WhatsAppSendResult {
@@ -53,7 +55,7 @@ export interface WhatsAppParsedMessage {
 
 export interface WhatsAppParsedStatus {
   messageId: string; // wamid
-  recipientId: string;
+  recipientId?: string;
   status: 'sent' | 'delivered' | 'read' | 'failed';
   timestamp: number;
   error?: {

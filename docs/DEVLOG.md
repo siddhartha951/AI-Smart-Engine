@@ -1,6 +1,38 @@
 # Development Log (DEVLOG)
 
-## Entry 2026-09-11 - Phase 12: Final Verification & QA (AI Ad Creative Studio)
+## Entry 2026-09-11 - Phase 13 Extension: Add WATI WhatsApp Provider Integration
+- **Date**: 2026-09-11
+- **Status**: **COMPLETE & VERIFIED**
+- **Objective**: Add WATI (official WhatsApp Business Solution Provider) as a first-class WhatsApp provider alongside Meta WhatsApp Cloud API without breaking existing architecture or provider abstraction.
+- **Components Implemented**:
+  - Database Migration `migrations/018_wati_whatsapp_provider.sql`: Adds `provider`, `wati_api_endpoint`, and `encrypted_wati_token` columns to `whatsapp_configs` with index on `provider`.
+  - Core Provider Abstraction:
+    - Updated `IWhatsAppProvider` and `WhatsAppSendParams` with optional `apiEndpoint` and `channelPhoneNumber`.
+    - Created `WatiWhatsAppProvider` (`src/providers/whatsapp/wati.whatsapp.provider.ts`) implementing session messages (`/api/v1/sendSessionMessage`), template messages (`/api/v1/sendTemplateMessage`), timing-safe signature validation, and normalized webhook parsing (`parseWebhook`) for customer inbound messages and delivery/read receipts.
+    - Provider Factory: `getWhatsAppProvider(type)` with store-level resolution and granular test overrides (`setWhatsAppProviderForType`).
+  - Security & Encryption:
+    - AES-256-GCM authenticated encryption at rest for WATI Bearer tokens (`encrypted_wati_token`).
+    - Plain-text secret tokens never stored in database and never exposed in REST responses (`has_wati_token: boolean`).
+  - Webhook Route:
+    - Added `POST /api/v1/webhooks/whatsapp/wati/:storeId` with verify token authorization, payload deduplication, and normalized ingestion into `WhatsAppService.handleIncomingMessage` and `handleStatusUpdate`.
+  - Frontend Workspace:
+    - Added Provider selection dropdown (`meta`, `wati`, `mock`) with dynamic toggling of credentials, 1-click webhook URL copier, and masked credential state management.
+  - Automated Tests:
+    - Created dedicated integration suite `tests/integration/phase13_wati_extension.test.ts` (28/28 passed).
+    - Verified 0 regression on existing Meta suite `tests/integration/phase13_whatsapp.test.ts` (17/17 passed).
+    - Full regression test suite: 20 test files, 153 tests passed (100% pass rate).
+    - TypeScript (`npm run type-check`), ESLint (`npm run lint`), and production build (`npm run build`) all passing.
+
+---
+
+## Entry 2026-09-11 - Phase 13: WhatsApp Growth Engine
+- **Date**: 2026-09-11
+- **Status**: **COMPLETE & VERIFIED**
+- **Components Built**:
+  - Full WhatsApp Growth Engine with Meta WhatsApp Cloud API integration, conversational AI shopping assistant, abandoned cart recovery, order transactional notifications, consent management (`STOP`/`START`), and multi-tenant isolation.
+  - Verification: 17/17 dedicated tests and 125/125 regression tests passing.
+
+---
 - **Date**: 2026-09-11
 - **Verification Status**: **COMPLETE**
 - **Tests**:

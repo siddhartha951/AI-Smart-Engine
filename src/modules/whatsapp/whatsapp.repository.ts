@@ -32,9 +32,12 @@ export class WhatsAppRepository {
   async findConfigByPhoneNumberId(phoneNumberId: string): Promise<WhatsAppConfig | null> {
     if (!phoneNumberId) return null;
 
+    const altPhone = phoneNumberId.startsWith('+') ? phoneNumberId.substring(1) : `+${phoneNumberId}`;
     const res = await this.db.query<WhatsAppConfig>(
-      `SELECT * FROM whatsapp_configs WHERE phone_number_id = $1 LIMIT 1`,
-      [phoneNumberId]
+      `SELECT * FROM whatsapp_configs 
+       WHERE phone_number_id = $1 OR display_phone_number = $1 OR display_phone_number = $2
+       LIMIT 1`,
+      [phoneNumberId, altPhone]
     );
     return res.rows[0] || null;
   }
@@ -42,12 +45,15 @@ export class WhatsAppRepository {
   async upsertConfig(
     storeId: string,
     data: {
+      provider?: 'meta' | 'wati' | 'mock';
       phoneNumberId?: string | null;
       wabaId?: string | null;
       encryptedAccessToken?: string | null;
       webhookVerifyToken?: string | null;
       appSecret?: string | null;
       displayPhoneNumber?: string | null;
+      watiApiEndpoint?: string | null;
+      encryptedWatiToken?: string | null;
       status?: 'disconnected' | 'connected' | 'error';
       qualityRating?: string | null;
     }
@@ -58,19 +64,22 @@ export class WhatsAppRepository {
     if (!existing) {
       const res = await this.db.query<WhatsAppConfig>(
         `INSERT INTO whatsapp_configs (
-          store_id, phone_number_id, waba_id, encrypted_access_token,
-          webhook_verify_token, app_secret, display_phone_number, status, quality_rating,
-          created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+          store_id, provider, phone_number_id, waba_id, encrypted_access_token,
+          webhook_verify_token, app_secret, display_phone_number, wati_api_endpoint,
+          encrypted_wati_token, status, quality_rating, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
         RETURNING *`,
         [
           storeId,
+          data.provider || 'meta',
           data.phoneNumberId || null,
           data.wabaId || null,
           data.encryptedAccessToken || null,
           data.webhookVerifyToken || null,
           data.appSecret || null,
           data.displayPhoneNumber || null,
+          data.watiApiEndpoint || null,
+          data.encryptedWatiToken || null,
           data.status || 'disconnected',
           data.qualityRating || 'UNKNOWN',
         ]
@@ -80,25 +89,31 @@ export class WhatsAppRepository {
 
     const res = await this.db.query<WhatsAppConfig>(
       `UPDATE whatsapp_configs
-       SET phone_number_id = COALESCE($2, phone_number_id),
-           waba_id = COALESCE($3, waba_id),
-           encrypted_access_token = COALESCE($4, encrypted_access_token),
-           webhook_verify_token = COALESCE($5, webhook_verify_token),
-           app_secret = COALESCE($6, app_secret),
-           display_phone_number = COALESCE($7, display_phone_number),
-           status = COALESCE($8, status),
-           quality_rating = COALESCE($9, quality_rating),
+       SET provider = COALESCE($2, provider),
+           phone_number_id = COALESCE($3, phone_number_id),
+           waba_id = COALESCE($4, waba_id),
+           encrypted_access_token = COALESCE($5, encrypted_access_token),
+           webhook_verify_token = COALESCE($6, webhook_verify_token),
+           app_secret = COALESCE($7, app_secret),
+           display_phone_number = COALESCE($8, display_phone_number),
+           wati_api_endpoint = COALESCE($9, wati_api_endpoint),
+           encrypted_wati_token = COALESCE($10, encrypted_wati_token),
+           status = COALESCE($11, status),
+           quality_rating = COALESCE($12, quality_rating),
            updated_at = NOW()
        WHERE store_id = $1
        RETURNING *`,
       [
         storeId,
+        data.provider !== undefined ? data.provider : existing.provider,
         data.phoneNumberId !== undefined ? data.phoneNumberId : existing.phone_number_id,
         data.wabaId !== undefined ? data.wabaId : existing.waba_id,
         data.encryptedAccessToken !== undefined ? data.encryptedAccessToken : existing.encrypted_access_token,
         data.webhookVerifyToken !== undefined ? data.webhookVerifyToken : existing.webhook_verify_token,
         data.appSecret !== undefined ? data.appSecret : existing.app_secret,
         data.displayPhoneNumber !== undefined ? data.displayPhoneNumber : existing.display_phone_number,
+        data.watiApiEndpoint !== undefined ? data.watiApiEndpoint : (existing as any).wati_api_endpoint,
+        data.encryptedWatiToken !== undefined ? data.encryptedWatiToken : (existing as any).encrypted_wati_token,
         data.status !== undefined ? data.status : existing.status,
         data.qualityRating !== undefined ? data.qualityRating : existing.quality_rating,
       ]
@@ -158,6 +173,11 @@ export class WhatsAppRepository {
     return res.rows[0] || null;
   }
 
+  async hasConsent(storeId: string, phoneNumber: string): Promise<boolean> {
+    const consent = await this.getLatestConsent(storeId, phoneNumber);
+    return Boolean(consent && consent.opted_in);
+  }
+
   async revokeConsent(storeId: string, phoneNumber: string, reason = 'customer_opt_out'): Promise<boolean> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
     const cleanPhone = phoneNumber.trim();
@@ -172,7 +192,7 @@ export class WhatsAppRepository {
     return true;
   }
 
-  async revokeConsentById(storeId: string, consentId: string): Promise<boolean> {
+  async revokeConsentById(storeId: string, consentId: string, _reason?: string): Promise<boolean> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
     const res = await this.db.query(
       `UPDATE whatsapp_consents
@@ -356,14 +376,14 @@ export class WhatsAppRepository {
     return res.rows;
   }
 
-  async updateMessageStatus(wamid: string, status: string): Promise<boolean> {
+  async updateMessageStatus(wamid: string, status: string, errorMessage?: string | null): Promise<boolean> {
     if (!wamid) return false;
 
     const res = await this.db.query(
       `UPDATE whatsapp_messages
-       SET status = $2
+       SET status = $2, error_message = COALESCE($3, error_message)
        WHERE wamid = $1`,
-      [wamid, status]
+      [wamid, status, errorMessage || null]
     );
 
     return (res.rowCount ?? 0) > 0;
@@ -397,7 +417,7 @@ export class WhatsAppRepository {
       RETURNING *`,
       [
         storeId,
-        params.phoneNumber.trim(),
+        (params.phoneNumber || (params as any).phone || '').trim(),
         params.visitorId || null,
         params.cartToken || null,
         params.productId || null,

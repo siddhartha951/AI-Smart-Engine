@@ -986,24 +986,30 @@ const handleSaveWhatsAppConfig = async (req: Request, res: Response, next: any) 
   try {
     const storeId = req.params.storeId as string;
     const {
-      phoneNumberId,
-      wabaId,
-      accessToken,
-      webhookVerifyToken,
-      appSecret,
-      displayPhoneNumber
-    } = req.body || {};
-
-    const db = getDatabaseClient();
-    const service = new WhatsAppService({ db });
-
-    const saved = await service.saveConfig(storeId, {
+      provider,
       phoneNumberId,
       wabaId,
       accessToken,
       webhookVerifyToken,
       appSecret,
       displayPhoneNumber,
+      watiApiEndpoint,
+      watiAccessToken,
+    } = req.body || {};
+
+    const db = getDatabaseClient();
+    const service = new WhatsAppService({ db });
+
+    const saved = await service.saveConfig(storeId, {
+      provider,
+      phoneNumberId,
+      wabaId,
+      accessToken,
+      webhookVerifyToken,
+      appSecret,
+      displayPhoneNumber,
+      watiApiEndpoint,
+      watiAccessToken,
     });
 
     res.json({

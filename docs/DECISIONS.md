@@ -70,3 +70,17 @@
   2. `InMemoryPostgresClient`: uses `pg-mem` to execute the exact identical SQL DDL migration files (`001_initial_schema.sql` and `002_seed_two_stores.sql`) in memory.
 - **Consequences**: All automated tests run on the exact same schema, foreign keys, and indexes in < 5 seconds with zero external database dependencies. Zero risk of environment drift.
 
+---
+
+## ADR-008: WhatsApp Growth Engine Architecture & Dual-Provider Abstraction (Meta Cloud API & WATI BSP)
+- **Context**: Merchants require multi-channel conversational capabilities on WhatsApp for shopping assistance, abandoned cart recovery, and order notifications. Different merchants use direct Meta WhatsApp Cloud API credentials or WhatsApp Business Solution Providers (BSPs) such as WATI.
+- **Decision**:
+  1. Maintain a clean provider abstraction layer via `IWhatsAppProvider` (`sendMessage`, `verifyWebhookChallenge`, `validateSignature`, `parseWebhook`).
+  2. Support Meta WhatsApp Cloud API (`MetaWhatsAppCloudProvider`), official WATI WhatsApp BSP (`WatiWhatsAppProvider`), and mock testing (`MockWhatsAppProvider`).
+  3. Store-level selection: Each merchant configures their chosen provider (`provider: 'meta' | 'wati' | 'mock'`) independently without cross-tenant interference.
+  4. Credential Security: All permanent access tokens and WATI Bearer tokens are encrypted at rest with AES-256-GCM. Secret tokens are never exposed in GET responses (using `has_access_token` / `has_wati_token` booleans).
+  5. Normalized Ingestion: Meta webhooks ingest at `/api/v1/webhooks/whatsapp`, while WATI webhooks ingest at store-scoped endpoints `/api/v1/webhooks/whatsapp/wati/:storeId` with verify token authorization. Both normalize payloads into unified `WhatsAppWebhookEvent` structures.
+  6. Compliance & Opt-out: Strict UK GDPR/PECR compliance. Automatic opt-out on `STOP`/`UNSUBSCRIBE`, reactivation on `START`, and pre-send suppression if purchase already completed.
+- **Consequences**: Complete flexibility for merchants to integrate directly via Meta or via WATI BSP, zero provider lock-in, zero cross-tenant contamination, and robust testability.
+
+

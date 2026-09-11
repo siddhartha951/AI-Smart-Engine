@@ -880,38 +880,90 @@
 
               <form id="wa-config-form">
                 <div class="form-group">
-                  <label for="wa-phone-number-id">Phone Number ID</label>
-                  <input type="text" id="wa-phone-number-id" class="form-control" placeholder="e.g. 104829104810293" required>
-                  <small class="form-hint">From Meta App Dashboard → WhatsApp → API Setup.</small>
+                  <label for="wa-provider-select">WhatsApp Provider</label>
+                  <select id="wa-provider-select" class="form-control" style="font-weight: 500;">
+                    <option value="meta">Meta WhatsApp Cloud API (Direct)</option>
+                    <option value="wati">WATI (Official WhatsApp BSP)</option>
+                    <option value="mock">Mock / Development Mode</option>
+                  </select>
+                  <small class="form-hint">Choose between Direct Meta Cloud API, WATI BSP, or Mock mode.</small>
                 </div>
 
-                <div class="form-group">
-                  <label for="wa-waba-id">WhatsApp Business Account ID (WABA ID)</label>
-                  <input type="text" id="wa-waba-id" class="form-control" placeholder="e.g. 109283746192834">
-                </div>
-
-                <div class="form-group">
-                  <label for="wa-display-phone">Display Phone Number</label>
-                  <input type="text" id="wa-display-phone" class="form-control" placeholder="e.g. +44 7123 456789">
-                </div>
-
-                <div class="form-group">
-                  <label for="wa-access-token">Permanent System User Token</label>
-                  <input type="password" id="wa-access-token" class="form-control" placeholder="••••••••••••••••••••">
-                  <small class="form-hint">Encrypted with AES-256-GCM. Never shown in plain text.</small>
-                </div>
-
-                <div class="form-group">
-                  <label for="wa-verify-token">Webhook Verification Token</label>
-                  <input type="text" id="wa-verify-token" class="form-control" placeholder="Custom secret token for Meta webhook">
-                </div>
-
-                <div class="form-group">
-                  <label>Webhook Callback URL (for Meta Dashboard)</label>
-                  <div style="display: flex; gap: 8px;">
-                    <input type="text" id="wa-webhook-url" class="form-control" readonly style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 12px;" value="">
-                    <button type="button" id="btn-copy-wa-webhook" class="btn-secondary" style="white-space: nowrap;">📋 Copy</button>
+                <!-- Meta WhatsApp Fields -->
+                <div id="wa-meta-fields">
+                  <div class="form-group">
+                    <label for="wa-phone-number-id">Phone Number ID</label>
+                    <input type="text" id="wa-phone-number-id" class="form-control" placeholder="e.g. 104829104810293">
+                    <small class="form-hint">From Meta App Dashboard → WhatsApp → API Setup.</small>
                   </div>
+
+                  <div class="form-group">
+                    <label for="wa-waba-id">WhatsApp Business Account ID (WABA ID)</label>
+                    <input type="text" id="wa-waba-id" class="form-control" placeholder="e.g. 109283746192834">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="wa-display-phone">Display Phone Number</label>
+                    <input type="text" id="wa-display-phone" class="form-control" placeholder="e.g. +44 7123 456789">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="wa-access-token">Permanent System User Token</label>
+                    <input type="password" id="wa-access-token" class="form-control" placeholder="••••••••••••••••••••">
+                    <small class="form-hint">Encrypted with AES-256-GCM. Never shown in plain text.</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="wa-verify-token">Webhook Verification Token</label>
+                    <input type="text" id="wa-verify-token" class="form-control" placeholder="Custom secret token for Meta webhook">
+                  </div>
+
+                  <div class="form-group">
+                    <label>Meta Webhook Callback URL</label>
+                    <div style="display: flex; gap: 8px;">
+                      <input type="text" id="wa-webhook-url" class="form-control" readonly style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 12px;" value="">
+                      <button type="button" id="btn-copy-wa-webhook" class="btn-secondary" style="white-space: nowrap;">📋 Copy</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- WATI WhatsApp Fields -->
+                <div id="wa-wati-fields" class="hidden">
+                  <div class="form-group">
+                    <label for="wa-wati-endpoint">WATI API Endpoint / Server URL</label>
+                    <input type="text" id="wa-wati-endpoint" class="form-control" placeholder="e.g. https://live-server-12345.wati.io">
+                    <small class="form-hint">Found in WATI Dashboard → Settings → API Docs.</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="wa-wati-token">WATI Access Token (Bearer Token)</label>
+                    <input type="password" id="wa-wati-token" class="form-control" placeholder="••••••••••••••••••••">
+                    <small class="form-hint">Encrypted with AES-256-GCM. Never shown in plain text.</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="wa-wati-phone">Channel / Display Phone Number</label>
+                    <input type="text" id="wa-wati-phone" class="form-control" placeholder="e.g. +44 7123 456789">
+                  </div>
+
+                  <div class="form-group">
+                    <label for="wa-wati-verify-token">Webhook Secret / Verify Token</label>
+                    <input type="text" id="wa-wati-verify-token" class="form-control" placeholder="Custom secret token for WATI webhook">
+                  </div>
+
+                  <div class="form-group">
+                    <label>WATI Webhook Callback URL</label>
+                    <div style="display: flex; gap: 8px;">
+                      <input type="text" id="wa-wati-webhook-url" class="form-control" readonly style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 12px;" value="">
+                      <button type="button" id="btn-copy-wati-webhook" class="btn-secondary" style="white-space: nowrap;">📋 Copy</button>
+                    </div>
+                    <small class="form-hint">Enter this URL in WATI Dashboard → Connectors → Webhooks.</small>
+                  </div>
+                </div>
+
+                <!-- Mock Fields Note -->
+                <div id="wa-mock-fields" class="hidden" style="padding: 12px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; margin-bottom: 16px;">
+                  <span style="font-size: 13px; color: #93c5fd;">🧪 <strong>Development Mode:</strong> Simulated in-memory provider. No external API credentials required.</span>
                 </div>
 
                 <div class="studio-action-row" style="margin-top: 20px;">

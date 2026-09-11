@@ -3,6 +3,7 @@ import { WhatsAppRepository } from './whatsapp.repository';
 import {
   getWhatsAppProvider,
   IWhatsAppProvider,
+  WhatsAppProviderType,
 } from '../../providers/whatsapp';
 import { getAiProvider, IAiProvider, BudgetGuard, ChatMessage } from '../../providers/ai';
 import { getShopifyAdapter, IShopifyCatalogAdapter } from '../../providers/shopify';
@@ -11,11 +12,12 @@ import { MerchantRepository } from '../merchant/merchant.repository';
 import { VisitorRepository } from '../visitor/visitor.repository';
 import { EventRepository } from '../events/event.repository';
 import { encryptString, decryptString } from '../../utils/crypto';
+import { WhatsAppConfig } from '../../database/types';
 
 export class WhatsAppService {
   private db: IDatabaseClient;
   private repo: WhatsAppRepository;
-  private whatsappProvider: IWhatsAppProvider;
+  private explicitProvider: IWhatsAppProvider | null = null;
   private aiProvider: IAiProvider;
   private shopifyAdapter: IShopifyCatalogAdapter;
   private purchaseAdapter: IPurchaseAdapter;
@@ -38,7 +40,7 @@ export class WhatsAppService {
   }) {
     this.db = opts?.db || getDatabaseClient();
     this.repo = opts?.repo || new WhatsAppRepository(this.db);
-    this.whatsappProvider = opts?.whatsappProvider || getWhatsAppProvider();
+    this.explicitProvider = opts?.whatsappProvider || null;
     this.aiProvider = opts?.aiProvider || getAiProvider();
     this.shopifyAdapter = opts?.shopifyAdapter || getShopifyAdapter();
     this.purchaseAdapter = opts?.purchaseAdapter || getPurchaseAdapter();
@@ -48,6 +50,27 @@ export class WhatsAppService {
     this.budgetGuard = opts?.budgetGuard || new BudgetGuard(this.db);
   }
 
+  /**
+   * Resolves the appropriate provider based on store configuration or test override.
+   */
+  getProviderForConfig(config?: WhatsAppConfig | null): IWhatsAppProvider {
+    if (this.explicitProvider) {
+      return this.explicitProvider;
+    }
+    const type = (config?.provider || 'meta') as WhatsAppProviderType;
+    return getWhatsAppProvider(type);
+  }
+
+  /**
+   * Decrypts the active access token for the given store configuration.
+   */
+  private getDecryptedToken(config: WhatsAppConfig): string {
+    if (config.provider === 'wati') {
+      return config.encrypted_wati_token ? this.decryptToken(config.encrypted_wati_token) : '';
+    }
+    return config.encrypted_access_token ? this.decryptToken(config.encrypted_access_token) : '';
+  }
+
   // ==========================================
   // 1. Merchant Configuration & Security
   // ==========================================
@@ -55,12 +78,15 @@ export class WhatsAppService {
   async saveConfig(
     storeId: string,
     params: {
+      provider?: WhatsAppProviderType;
       phoneNumberId?: string | null;
       wabaId?: string | null;
       accessToken?: string | null;
       webhookVerifyToken?: string | null;
       appSecret?: string | null;
       displayPhoneNumber?: string | null;
+      watiApiEndpoint?: string | null;
+      watiAccessToken?: string | null;
     }
   ) {
     let encryptedToken: string | undefined;
@@ -69,14 +95,40 @@ export class WhatsAppService {
       encryptedToken = encrypted.encryptedString;
     }
 
+    let encryptedWatiToken: string | undefined;
+    if (params.watiAccessToken) {
+      const encrypted = encryptString(params.watiAccessToken.trim());
+      encryptedWatiToken = encrypted.encryptedString;
+    }
+
+    const provider = params.provider || 'meta';
+    const existing = await this.repo.getConfig(storeId);
+
+    // Determine connection status based on provider
+    let isConnected = false;
+    if (provider === 'meta') {
+      const hasPhone = params.phoneNumberId || existing?.phone_number_id;
+      const hasToken = encryptedToken || existing?.encrypted_access_token;
+      isConnected = Boolean(hasPhone && hasToken);
+    } else if (provider === 'wati') {
+      const hasEndpoint = params.watiApiEndpoint || existing?.wati_api_endpoint;
+      const hasToken = encryptedWatiToken || existing?.encrypted_wati_token;
+      isConnected = Boolean(hasEndpoint && hasToken);
+    } else if (provider === 'mock') {
+      isConnected = true;
+    }
+
     const config = await this.repo.upsertConfig(storeId, {
-      phoneNumberId: params.phoneNumberId ? params.phoneNumberId.trim() : undefined,
-      wabaId: params.wabaId ? params.wabaId.trim() : undefined,
+      provider,
+      phoneNumberId: params.phoneNumberId !== undefined ? (params.phoneNumberId ? params.phoneNumberId.trim() : null) : undefined,
+      wabaId: params.wabaId !== undefined ? (params.wabaId ? params.wabaId.trim() : null) : undefined,
       encryptedAccessToken: encryptedToken,
       webhookVerifyToken: params.webhookVerifyToken ? params.webhookVerifyToken.trim() : undefined,
       appSecret: params.appSecret ? params.appSecret.trim() : undefined,
-      displayPhoneNumber: params.displayPhoneNumber ? params.displayPhoneNumber.trim() : undefined,
-      status: (params.phoneNumberId && (encryptedToken || params.accessToken)) ? 'connected' : 'disconnected',
+      displayPhoneNumber: params.displayPhoneNumber !== undefined ? (params.displayPhoneNumber ? params.displayPhoneNumber.trim() : null) : undefined,
+      watiApiEndpoint: params.watiApiEndpoint !== undefined ? (params.watiApiEndpoint ? params.watiApiEndpoint.trim() : null) : undefined,
+      encryptedWatiToken,
+      status: isConnected ? 'connected' : 'disconnected',
     });
 
     return this.sanitizeConfig(config);
@@ -87,11 +139,14 @@ export class WhatsAppService {
     return config ? this.sanitizeConfig(config) : {
       configured: false,
       status: 'disconnected',
+      provider: 'meta',
       phone_number_id: null,
       waba_id: null,
       display_phone_number: null,
       webhook_verify_token: null,
       has_access_token: false,
+      wati_api_endpoint: null,
+      has_wati_token: false,
     };
   }
 
@@ -99,17 +154,27 @@ export class WhatsAppService {
    * Sanitizes configuration by masking secret access tokens.
    */
   private sanitizeConfig(config: any) {
+    const provider = config.provider || 'meta';
+    const isConfigured = provider === 'wati'
+      ? Boolean(config.wati_api_endpoint && config.encrypted_wati_token)
+      : provider === 'mock'
+      ? true
+      : Boolean(config.phone_number_id && config.encrypted_access_token);
+
     return {
       id: config.id,
       store_id: config.store_id,
+      provider,
       phone_number_id: config.phone_number_id,
       waba_id: config.waba_id,
       display_phone_number: config.display_phone_number,
       webhook_verify_token: config.webhook_verify_token,
       app_secret: config.app_secret ? '••••••••' : null,
       has_access_token: Boolean(config.encrypted_access_token),
+      wati_api_endpoint: config.wati_api_endpoint || null,
+      has_wati_token: Boolean(config.encrypted_wati_token),
       status: config.status,
-      configured: Boolean(config.phone_number_id && config.encrypted_access_token),
+      configured: isConfigured,
       quality_rating: config.quality_rating,
       created_at: config.created_at,
       updated_at: config.updated_at,
@@ -126,28 +191,44 @@ export class WhatsAppService {
 
   async sendTestMessage(storeId: string, toPhone: string) {
     const config = await this.repo.getConfig(storeId);
-    if (!config || !config.phone_number_id || !config.encrypted_access_token) {
-      throw new Error('WhatsApp is not fully configured for this store. Please save your Phone Number ID and Access Token.');
+    if (!config || config.status !== 'connected') {
+      throw new Error('WhatsApp is not configured or connected for this store.');
     }
 
-    const token = this.decryptToken(config.encrypted_access_token);
+    const provider = this.getProviderForConfig(config);
     const store = await this.merchantRepo.getStoreById(storeId);
     const brandName = store?.brand_name || 'Our Store';
 
-    const result = await this.whatsappProvider.sendMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken: token,
+    let accessToken = '';
+    if (config.provider === 'wati') {
+      if (!config.encrypted_wati_token || !config.wati_api_endpoint) {
+        throw new Error('WATI is not fully configured for this store. Please save your API Endpoint and Access Token.');
+      }
+      accessToken = this.decryptToken(config.encrypted_wati_token);
+    } else if (config.provider === 'meta') {
+      if (!config.encrypted_access_token || !config.phone_number_id) {
+        throw new Error('WhatsApp is not fully configured for this store. Please save your Phone Number ID and Access Token.');
+      }
+      accessToken = this.decryptToken(config.encrypted_access_token);
+    }
+
+    const providerLabel = (config.provider || 'meta').toUpperCase();
+    const result = await provider.sendMessage({
+      phoneNumberId: config.phone_number_id || undefined,
+      apiEndpoint: config.wati_api_endpoint || undefined,
+      channelPhoneNumber: config.display_phone_number || undefined,
+      accessToken,
       to: toPhone.trim(),
       message: {
         type: 'text',
         text: {
-          body: `✨ Hi from ${brandName}! Your WhatsApp Growth Engine integration is successfully connected and operational.`,
+          body: `✨ Hi from ${brandName}! Your WhatsApp Growth Engine integration (${providerLabel}) is successfully connected and operational.`,
         },
       },
     });
 
     if (!result.success) {
-      throw new Error(result.error || 'Failed to dispatch test message via WhatsApp Cloud API');
+      throw new Error(result.error || `Failed to dispatch test message via ${providerLabel}`);
     }
 
     return {
@@ -161,6 +242,7 @@ export class WhatsAppService {
   // ==========================================
 
   async handleIncomingMessage(params: {
+    storeId?: string;
     phoneNumberId?: string;
     from: string;
     customerName?: string;
@@ -169,7 +251,7 @@ export class WhatsAppService {
     timestamp: number;
     wabaId?: string;
   }): Promise<{ handled: boolean; replySent: boolean; optOut?: boolean }> {
-    const { phoneNumberId, from, customerName, text, messageId } = params;
+    const { storeId: explicitStoreId, phoneNumberId, from, customerName, text, messageId } = params;
 
     // Deduplication check
     const alreadyProcessed = await this.repo.isWebhookEventProcessed(messageId);
@@ -177,17 +259,25 @@ export class WhatsAppService {
       return { handled: true, replySent: false };
     }
 
-    // Resolve store by phoneNumberId
-    if (!phoneNumberId) {
-      return { handled: false, replySent: false };
+    // Resolve store configuration: by explicit storeId or by phoneNumberId
+    let config: WhatsAppConfig | null = null;
+    if (explicitStoreId) {
+      config = await this.repo.getConfig(explicitStoreId);
+    } else if (phoneNumberId) {
+      config = await this.repo.findConfigByPhoneNumberId(phoneNumberId);
     }
 
-    const config = await this.repo.findConfigByPhoneNumberId(phoneNumberId);
-    if (!config || !config.encrypted_access_token) {
+    if (!config) {
       return { handled: false, replySent: false };
     }
 
     const storeId = config.store_id;
+    const provider = this.getProviderForConfig(config);
+    const accessToken = this.getDecryptedToken(config);
+
+    if (!accessToken && config.provider !== 'mock') {
+      return { handled: false, replySent: false };
+    }
 
     // Record webhook event for idempotency
     await this.repo.recordWebhookEvent(storeId, messageId, 'message', params);
@@ -224,9 +314,9 @@ export class WhatsAppService {
       phone: cleanPhone,
       message_id: messageId,
       content: cleanText,
+      provider: config.provider,
     });
 
-    const accessToken = this.decryptToken(config.encrypted_access_token);
     const store = await this.merchantRepo.getStoreById(storeId);
     const brandName = store?.brand_name || 'Our Store';
 
@@ -238,12 +328,15 @@ export class WhatsAppService {
       await this.eventRepo.recordEvent(storeId, visitor.id, 'whatsapp_opt_out', {
         phone: cleanPhone,
         keyword: upperText,
+        provider: config.provider,
       });
 
       const optOutReply = `You have been unsubscribed from WhatsApp notifications by ${brandName}. You will not receive marketing messages. Reply START at any time to re-subscribe.`;
       
-      const sendRes = await this.whatsappProvider.sendMessage({
-        phoneNumberId: config.phone_number_id!,
+      const sendRes = await provider.sendMessage({
+        phoneNumberId: config.phone_number_id || undefined,
+        apiEndpoint: config.wati_api_endpoint || undefined,
+        channelPhoneNumber: config.display_phone_number || undefined,
         accessToken,
         to: cleanPhone,
         message: {
@@ -279,12 +372,15 @@ export class WhatsAppService {
       await this.eventRepo.recordEvent(storeId, visitor.id, 'whatsapp_opt_in', {
         phone: cleanPhone,
         keyword: upperText,
+        provider: config.provider,
       });
 
       const optInReply = `Welcome to ${brandName} on WhatsApp! 🎉 You're all set to receive product updates, personalized recommendations, and exclusive drops. How can we help you today?`;
 
-      const sendRes = await this.whatsappProvider.sendMessage({
-        phoneNumberId: config.phone_number_id!,
+      const sendRes = await provider.sendMessage({
+        phoneNumberId: config.phone_number_id || undefined,
+        apiEndpoint: config.wati_api_endpoint || undefined,
+        channelPhoneNumber: config.display_phone_number || undefined,
         accessToken,
         to: cleanPhone,
         message: {
@@ -310,8 +406,10 @@ export class WhatsAppService {
     const isBudgetExceeded = await this.budgetGuard.isBudgetExceeded(storeId);
     if (isBudgetExceeded) {
       const budgetMsg = `Thank you for reaching out to ${brandName}! Our automated assistant is currently experiencing high demand. Please visit our store directly or contact support.`;
-      await this.whatsappProvider.sendMessage({
-        phoneNumberId: config.phone_number_id!,
+      await provider.sendMessage({
+        phoneNumberId: config.phone_number_id || undefined,
+        apiEndpoint: config.wati_api_endpoint || undefined,
+        channelPhoneNumber: config.display_phone_number || undefined,
         accessToken,
         to: cleanPhone,
         message: {
@@ -371,8 +469,10 @@ export class WhatsAppService {
     );
 
     // Send AI reply via WhatsApp
-    const sendResult = await this.whatsappProvider.sendMessage({
-      phoneNumberId: config.phone_number_id!,
+    const sendResult = await provider.sendMessage({
+      phoneNumberId: config.phone_number_id || undefined,
+      apiEndpoint: config.wati_api_endpoint || undefined,
+      channelPhoneNumber: config.display_phone_number || undefined,
       accessToken,
       to: cleanPhone,
       message: {
@@ -396,11 +496,13 @@ export class WhatsAppService {
       await this.eventRepo.recordEvent(storeId, visitor.id, 'whatsapp_ai_response', {
         phone: cleanPhone,
         recommended_ids: aiResponse.recommended_product_ids,
+        provider: config.provider,
       });
 
       await this.eventRepo.recordEvent(storeId, visitor.id, 'whatsapp_message_sent', {
         phone: cleanPhone,
         message_id: sendResult.messageId,
+        provider: config.provider,
       });
     }
 
@@ -408,16 +510,16 @@ export class WhatsAppService {
   }
 
   // ==========================================
-  // 4. Status Webhook Updates
+  // 4. Status Updates Ingestion
   // ==========================================
 
   async handleStatusUpdate(params: {
     messageId: string;
     status: 'sent' | 'delivered' | 'read' | 'failed';
     recipientId?: string;
+    error?: any;
   }) {
-    const { messageId, status } = params;
-    await this.repo.updateMessageStatus(messageId, status);
+    await this.repo.updateMessageStatus(params.messageId, params.status, params.error ? JSON.stringify(params.error) : undefined);
   }
 
   // ==========================================
@@ -434,22 +536,29 @@ export class WhatsAppService {
       price?: number;
       currency?: string;
       checkoutUrl?: string;
-      visitorId?: string;
-      cartItems?: Array<{ title?: string; price?: number; quantity?: number }>;
+      cartItems?: any[];
+      visitorId?: string | null;
     }
-  ) {
+  ): Promise<{ scheduled: boolean; skipped?: boolean; reason?: string; id?: string }> {
     const cleanPhone = params.phone.trim();
-    const idempotencyKey = `wa_rec_${storeId}_${params.cartToken || params.productId || Date.now()}_${cleanPhone}`;
-
-    // Check duplicate
-    const alreadyUsed = await this.repo.isRecoveryIdempotencyKeyUsed(storeId, idempotencyKey);
-    if (alreadyUsed) {
-      return { scheduled: false, reason: 'Duplicate recovery job already exists' };
+    if (!cleanPhone) {
+      return { scheduled: false, skipped: true, reason: 'Missing customer phone number' };
     }
 
-    const firstItem = params.cartItems && params.cartItems[0];
-    const resolvedProductTitle = params.productTitle || firstItem?.title || 'Selected Items';
-    const resolvedPrice = params.price !== undefined ? params.price : (firstItem?.price !== undefined ? firstItem.price : null);
+    // 2. Resolve Product Details
+    let resolvedProductTitle = params.productTitle;
+    let resolvedPrice = params.price;
+
+    if (!resolvedProductTitle && params.productId) {
+      const product = await this.shopifyAdapter.getProductDetails(storeId, params.productId);
+      if (product) {
+        resolvedProductTitle = product.title;
+        resolvedPrice = product.price;
+      }
+    }
+
+    // 3. Prevent duplicate scheduling via idempotency key
+    const idempotencyKey = `${storeId}:${params.cartToken || cleanPhone}:${params.productId || 'cart'}`;
 
     const job = await this.repo.scheduleRecoveryJob(storeId, {
       phoneNumber: cleanPhone,
@@ -468,35 +577,58 @@ export class WhatsAppService {
 
   async processRecoveryJob(storeId: string, jobId: string): Promise<{ success: boolean; status?: string; skipped_reason?: string; reason?: string }> {
     const config = await this.repo.getConfig(storeId);
-    if (!config || config.status !== 'connected' || !config.phone_number_id || !config.encrypted_access_token) {
+    if (!config || config.status !== 'connected') {
       await this.repo.updateRecoveryJobStatus(storeId, jobId, 'cancelled', 'WhatsApp channel disconnected');
       return { success: false, reason: 'WhatsApp channel disconnected' };
+    }
+
+    const token = this.getDecryptedToken(config);
+    if (!token && config.provider !== 'mock') {
+      await this.repo.updateRecoveryJobStatus(storeId, jobId, 'cancelled', 'Missing credentials');
+      return { success: false, reason: 'Missing credentials' };
     }
 
     const jobs = await this.repo.getPendingRecoveryJobs(storeId, 50);
     const job = jobs.find(j => j.id === jobId);
     if (!job) {
-      return { success: true, status: 'skipped', skipped_reason: 'Job not found or already processed' };
+      return { success: false, reason: 'Recovery job not found or already processed' };
     }
 
-    // 1. Consent Verification (strictly required)
-    const consent = await this.repo.getLatestConsent(storeId, job.phone_number);
-    if (!consent || !consent.opted_in || consent.revoked_at !== null) {
+    // 1. Verify consent is still active
+    const hasConsent = await this.repo.hasConsent(storeId, job.phone_number);
+    if (!hasConsent) {
       await this.repo.updateRecoveryJobStatus(storeId, jobId, 'cancelled', 'No active opt-in consent');
       return { success: true, status: 'skipped', skipped_reason: 'No active opt-in consent' };
     }
 
-    // 2. Purchase Verification
-    let hasPurchased = await this.purchaseAdapter.hasPurchasedSince(storeId, job.phone_number, job.created_at);
-    if (!hasPurchased) {
-      const evRes = await this.db.query(
+    // 2. Check if customer completed purchase
+    let hasPurchased = false;
+    if (job.visitor_id) {
+      if (typeof (this.purchaseAdapter as any)?.hasVisitorPurchased === 'function') {
+        hasPurchased = await (this.purchaseAdapter as any).hasVisitorPurchased(storeId, job.visitor_id, 24 * 60 * 60 * 1000);
+      }
+      if (!hasPurchased) {
+        const purchaseEvents = await this.db.query(
+          `SELECT id FROM events 
+           WHERE store_id = $1 AND visitor_id = $2 AND type = 'purchase_completed'
+           AND created_at >= NOW() - INTERVAL '24 hours'
+           LIMIT 1`,
+          [storeId, job.visitor_id]
+        );
+        if (purchaseEvents.rows.length > 0) {
+          hasPurchased = true;
+        }
+      }
+    }
+    if (!hasPurchased && job.cart_token) {
+      const orderMatch = await this.db.query(
         `SELECT id FROM events 
          WHERE store_id = $1 AND type = 'purchase_completed' 
-           AND (payload->>'phone' = $2 OR payload->>'checkout_token' = $3)
+         AND (payload::text LIKE $2 OR (payload->>'phone') = $3)
          LIMIT 1`,
-        [storeId, job.phone_number, job.cart_token || '']
+        [storeId, `%${job.cart_token}%`, job.phone_number]
       );
-      if (evRes.rows.length > 0) {
+      if (orderMatch.rows.length > 0) {
         hasPurchased = true;
       }
     }
@@ -515,9 +647,11 @@ export class WhatsAppService {
     const linkPart = job.checkout_url ? `\n\nComplete your order here: ${job.checkout_url}` : '';
     const recoveryText = `Hi there! 👋 We noticed you left ${itemDesc} in your cart at ${brandName}. They're still reserved for you.${linkPart}\n\nReply to this message if you have any questions before ordering!`;
 
-    const token = this.decryptToken(config.encrypted_access_token);
-    const sendResult = await this.whatsappProvider.sendMessage({
-      phoneNumberId: config.phone_number_id,
+    const provider = this.getProviderForConfig(config);
+    const sendResult = await provider.sendMessage({
+      phoneNumberId: config.phone_number_id || undefined,
+      apiEndpoint: config.wati_api_endpoint || undefined,
+      channelPhoneNumber: config.display_phone_number || undefined,
       accessToken: token,
       to: job.phone_number,
       message: {
@@ -550,6 +684,7 @@ export class WhatsAppService {
         job_id: job.id,
         phone: job.phone_number,
         product_id: job.product_id,
+        provider: config.provider,
       });
     }
 
@@ -574,8 +709,13 @@ export class WhatsAppService {
     }
   ): Promise<{ success: boolean; reason?: string }> {
     const config = await this.repo.getConfig(storeId);
-    if (!config || config.status !== 'connected' || !config.phone_number_id || !config.encrypted_access_token) {
+    if (!config || config.status !== 'connected') {
       return { success: false, reason: 'WhatsApp channel not configured or disconnected' };
+    }
+
+    const token = this.getDecryptedToken(config);
+    if (!token && config.provider !== 'mock') {
+      return { success: false, reason: 'WhatsApp credentials missing' };
     }
 
     if (!params.phone) {
@@ -596,9 +736,11 @@ export class WhatsAppService {
       notificationText = `${nameGreeting} 🎉 Thank you for your order ${displayOrderNum} at ${brandName}! Total: ${currency} ${params.totalPrice}.\n\nWe'll notify you as soon as your package ships.`;
     }
 
-    const token = this.decryptToken(config.encrypted_access_token);
-    const sendRes = await this.whatsappProvider.sendMessage({
-      phoneNumberId: config.phone_number_id,
+    const provider = this.getProviderForConfig(config);
+    const sendRes = await provider.sendMessage({
+      phoneNumberId: config.phone_number_id || undefined,
+      apiEndpoint: config.wati_api_endpoint || undefined,
+      channelPhoneNumber: config.display_phone_number || undefined,
       accessToken: token,
       to: params.phone.trim(),
       message: {
@@ -622,27 +764,27 @@ export class WhatsAppService {
   }
 
   // ==========================================
-  // 7. Dashboard Visibility & Management
+  // 7. Dashboard Analytics & Data Retrieval
   // ==========================================
 
   async getConversations(storeId: string, limit = 50, offset = 0) {
     return this.repo.getConversations(storeId, limit, offset);
   }
 
-  async getConversationMessages(storeId: string, conversationId: string) {
-    return this.repo.getMessages(storeId, conversationId);
+  async getConversationMessages(storeId: string, conversationId: string, limit = 100) {
+    return this.repo.getMessages(storeId, conversationId, limit);
   }
 
   async getConsents(storeId: string, limit = 50, offset = 0) {
     return this.repo.getConsents(storeId, limit, offset);
   }
 
-  async revokeConsent(storeId: string, phone: string) {
-    return this.repo.revokeConsent(storeId, phone, 'merchant_dashboard');
+  async revokeConsent(storeId: string, phone: string, reason = 'merchant_dashboard_revocation') {
+    return this.repo.revokeConsent(storeId, phone, reason);
   }
 
-  async revokeConsentById(storeId: string, consentId: string) {
-    return this.repo.revokeConsentById(storeId, consentId);
+  async revokeConsentById(storeId: string, consentId: string, reason = 'merchant_dashboard_revocation') {
+    return this.repo.revokeConsentById(storeId, consentId, reason);
   }
 
   async getAnalytics(storeId: string) {

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDatabaseClient } from '../../database/client';
 import { getWhatsAppProvider } from '../../providers/whatsapp';
 import { WhatsAppService } from '../../modules/whatsapp/whatsapp.service';
+import { WhatsAppRepository } from '../../modules/whatsapp/whatsapp.repository';
 
 const router = Router();
 
@@ -78,6 +79,63 @@ router.post('/', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[WhatsAppWebhook] Error handling webhook payload:', err);
     res.status(200).json({ status: 'received', error: (err as any).message });
+  }
+});
+
+/**
+ * POST /api/v1/webhooks/whatsapp/wati/:storeId
+ * Ingests incoming WATI messages and delivery statuses for a specific store.
+ */
+router.post('/wati/:storeId', async (req: Request, res: Response) => {
+  const storeId = req.params.storeId as string;
+  const token = (req.query.token as string) || (req.headers['x-wati-token'] as string);
+
+  const db = getDatabaseClient();
+  const repo = new WhatsAppRepository(db);
+  const config = await repo.getConfig(storeId);
+
+  if (!config || config.status !== 'connected' || (config.provider !== 'wati' && config.provider !== 'mock')) {
+    res.status(403).json({ error: 'Forbidden: Store not found or WATI not connected' });
+    return;
+  }
+
+  // Verify webhook token if configured
+  if (config.webhook_verify_token) {
+    if (!token || token !== config.webhook_verify_token) {
+      res.status(403).json({ error: 'Forbidden: Invalid WATI webhook token' });
+      return;
+    }
+  }
+
+  try {
+    const service = new WhatsAppService({ db });
+    const provider = service.getProviderForConfig(config);
+    const events = provider.parseWebhook(req.body);
+
+    for (const evt of events) {
+      if (evt.message) {
+        await service.handleIncomingMessage({
+          storeId,
+          phoneNumberId: evt.phoneNumberId || config.display_phone_number || undefined,
+          from: evt.message.from,
+          customerName: evt.customerName,
+          text: evt.message.text || evt.message.buttonPayload,
+          messageId: evt.message.messageId,
+          timestamp: evt.message.timestamp,
+        });
+      } else if (evt.status) {
+        await service.handleStatusUpdate({
+          messageId: evt.status.messageId,
+          status: evt.status.status,
+          recipientId: evt.status.recipientId,
+        });
+      }
+    }
+
+    res.status(200).json({ status: 'received' });
+  } catch (err: any) {
+    console.error('[WATIWebhook] Error processing webhook payload:', err);
+    res.status(200).json({ status: 'received', error: err.message });
   }
 });
 
