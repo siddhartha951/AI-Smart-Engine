@@ -1,6 +1,6 @@
 import { IDatabaseClient, getDatabaseClient } from '../../database/client';
 import { AdCreative, AdObjective, AdPlatform } from '../../database/types';
-import { getAiProvider, BudgetGuard, IAiProvider, AdCreativeVariation } from '../../providers/ai';
+import { getAiProvider, BudgetGuard, IAiProvider, AdCreativeVariation, AdImageContext, AdImageGenerationResult } from '../../providers/ai';
 import { getShopifyAdapter, IShopifyCatalogAdapter, ShopifyProduct } from '../../providers/shopify';
 import { AdCreativeRepository, CreateAdCreativeInput } from './ad_creative.repository';
 
@@ -24,6 +24,15 @@ export interface GenerateAdCreativeParams {
   productId: string;
   platform: AdPlatform;
   objective: AdObjective;
+}
+
+export interface GenerateAdImageParams {
+  productId: string;
+  prompt?: string;
+  hook?: string;
+  headline?: string;
+  platform?: 'facebook' | 'instagram';
+  style?: 'commercial_studio' | 'lifestyle' | 'vibrant_gradient' | 'minimalist_luxury';
 }
 
 export class AdCreativeService {
@@ -192,6 +201,69 @@ export class AdCreativeService {
       product,
       model: genResult.model,
       estimated_cost_usd: genResult.estimated_cost_usd,
+    };
+  }
+
+  /**
+   * Generates a high-converting AI commercial ad visual using OpenAI DALL-E 3
+   * respecting store scoping and BudgetGuard.
+   */
+  async generateAdImage(
+    storeId: string,
+    params: GenerateAdImageParams
+  ): Promise<{
+    image_url: string;
+    revised_prompt?: string;
+    model: string;
+    estimated_cost_usd: number;
+    product: ShopifyProduct;
+  }> {
+    // 1. Enforce BudgetGuard
+    const isExceeded = await this.budgetGuard.isBudgetExceeded(storeId);
+    if (isExceeded) {
+      throw new BudgetExceededError();
+    }
+
+    // 2. Resolve product within store catalogue (prevents cross-tenant product access)
+    const product = await this.getProductForStore(storeId, params.productId);
+    if (!product) {
+      throw new ProductNotFoundError(`Product '${params.productId}' not found in store catalogue.`);
+    }
+
+    // 3. Generate image via IAiProvider
+    const genResult = await this.aiProvider.generateAdImage({
+      storeId,
+      product: {
+        id: product.id,
+        title: product.title,
+        price: product.price,
+        currency: product.currency,
+        category: product.category,
+        handle: product.handle,
+      },
+      prompt: params.prompt,
+      hook: params.hook,
+      headline: params.headline,
+      platform: params.platform,
+      style: params.style,
+    });
+
+    // 4. Record usage in ai_usage_ledger
+    await this.budgetGuard.recordUsage(
+      storeId,
+      null,
+      genResult.model,
+      0,
+      0,
+      genResult.estimated_cost_usd
+    );
+
+    return {
+      image_url: genResult.image_url,
+      revised_prompt: genResult.revised_prompt,
+      model: genResult.model,
+      estimated_cost_usd: genResult.estimated_cost_usd,
+      product,
     };
   }
 

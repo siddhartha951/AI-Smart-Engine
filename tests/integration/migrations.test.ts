@@ -13,6 +13,8 @@ describe('Database Migrations & Seed Verification', () => {
     expect(result.applied).toContain('016_ad_creative_studio.sql');
     expect(result.applied).toContain('017_whatsapp_growth_engine.sql');
     expect(result.applied).toContain('018_wati_whatsapp_provider.sql');
+    expect(result.applied).toContain('019_expand_whatsapp_config_fields.sql');
+    expect(result.applied).toContain('020_add_image_url_to_ad_creatives.sql');
 
     // Verify stores were seeded
     const storesRes = await db.query('SELECT * FROM stores ORDER BY brand_name ASC');

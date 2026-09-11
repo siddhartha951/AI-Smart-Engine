@@ -756,6 +756,15 @@
 
                   <!-- Media Box -->
                   <div class="ad-media-box" id="ad-media-box">
+                    <div id="ad-media-badge" class="ad-media-badge hidden">
+                      <span id="ad-media-badge-icon">📸</span>
+                      <span id="ad-media-badge-text">Catalogue Image</span>
+                    </div>
+                    <div id="ad-media-generating-overlay" class="ad-media-overlay hidden">
+                      <div class="spinner"></div>
+                      <div style="font-weight: 600;">Generating AI Ad Visual with OpenAI DALL-E 3...</div>
+                      <div style="font-size: 11px; opacity: 0.8;">Creating studio commercial photography for your product</div>
+                    </div>
                     <img id="ad-mockup-img" src="" alt="Product Creative" class="ad-creative-img">
                     <div id="ad-media-fallback" class="ad-media-fallback">
                       <span class="fallback-icon">🛍️</span>
@@ -775,8 +784,26 @@
                   </div>
                 </div>
 
+                <!-- AI Ad Image Generator Panel -->
+                <div class="ai-image-generator-panel">
+                  <div class="panel-left">
+                    <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">🎨 Visual Style:</span>
+                    <select id="ad-ai-image-style" class="ai-style-select">
+                      <option value="commercial_studio">✨ Commercial Studio</option>
+                      <option value="lifestyle">🏡 Lifestyle Setting</option>
+                      <option value="vibrant_gradient">⚡ Vibrant Gradient Banner</option>
+                      <option value="minimalist_luxury">💎 Minimalist Luxury</option>
+                    </select>
+                  </div>
+                  <div class="panel-right">
+                    <button id="btn-generate-ai-image" class="btn-generate-ai-image">
+                      <span>✨</span> Generate AI Ad Image (OpenAI)
+                    </button>
+                  </div>
+                </div>
+
                 <!-- Ad Action Controls Bar -->
-                <div class="ad-actions-toolbar">
+                <div class="ad-actions-toolbar" style="margin-top: 1rem;">
                   <button id="btn-copy-full-ad" class="btn-secondary">
                     <span>📋</span> Copy Full Ad
                   </button>
@@ -784,7 +811,7 @@
                     <span>💾</span> Save Creative
                   </button>
                   <button id="btn-regenerate-ad" class="btn-secondary outline">
-                    <span>🔄</span> Regenerate
+                    <span>🔄</span> Regenerate Copy
                   </button>
                 </div>
               </div>
@@ -807,6 +834,7 @@
               <table class="data-table" id="saved-creatives-table">
                 <thead>
                   <tr>
+                    <th>Media</th>
                     <th>Product</th>
                     <th>Platform</th>
                     <th>Objective</th>
@@ -818,7 +846,7 @@
                 </thead>
                 <tbody id="saved-creatives-tbody">
                   <tr>
-                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="8" style="text-align: center; padding: 25px; color: var(--text-muted);">
                       No saved creatives yet. Generate ad copy above and click "Save Creative" to build your library.
                     </td>
                   </tr>

@@ -318,7 +318,7 @@ router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, r
             currency = EXCLUDED.currency,
             in_stock = EXCLUDED.in_stock,
             category = EXCLUDED.category,
-            image_url = EXCLUDED.image_url,
+            image_url = CASE WHEN EXCLUDED.image_url IS NOT NULL AND EXCLUDED.image_url != '' THEN EXCLUDED.image_url ELSE products.image_url END,
             product_url = EXCLUDED.product_url,
             synced_at = NOW(),
             updated_at = NOW()
@@ -859,11 +859,51 @@ router.post('/:storeId/ad-creatives/generate', enforceStoreAccess, async (req: R
   }
 });
 
+// 8.2b Generate AI Ad Creative Image via OpenAI DALL-E
+router.post('/:storeId/ad-creatives/generate-image', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { productId, prompt, hook, headline, platform, style } = req.body || {};
+
+    if (!productId || typeof productId !== 'string') {
+      res.status(400).json({ success: false, error: 'Product ID is required.' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const service = new AdCreativeService({ db });
+
+    const result = await service.generateAdImage(storeId, {
+      productId: productId.trim(),
+      prompt: prompt ? String(prompt).trim() : undefined,
+      hook: hook ? String(hook).trim() : undefined,
+      headline: headline ? String(headline).trim() : undefined,
+      platform: platform === 'instagram' ? 'instagram' : 'facebook',
+      style: style || 'commercial_studio',
+    });
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err: any) {
+    if (err instanceof BudgetExceededError) {
+      res.status(403).json({ success: false, error: err.message, code: 'BUDGET_EXCEEDED' });
+      return;
+    }
+    if (err instanceof ProductNotFoundError) {
+      res.status(404).json({ success: false, error: err.message });
+      return;
+    }
+    next(err);
+  }
+});
+
 // 8.3 Save an Ad Creative Variation
 router.post('/:storeId/ad-creatives/save', enforceStoreAccess, async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
-    const { productId, productTitle, platform, objective, hook, primaryText, headline, cta, metadata } = req.body || {};
+    const { productId, productTitle, platform, objective, hook, primaryText, headline, cta, imageUrl, metadata } = req.body || {};
 
     if (!productId || !productTitle || !platform || !objective || !hook || !primaryText || !headline || !cta) {
       res.status(400).json({ success: false, error: 'Missing required creative fields.' });
@@ -894,6 +934,7 @@ router.post('/:storeId/ad-creatives/save', enforceStoreAccess, async (req: Reque
       primaryText: String(primaryText).trim(),
       headline: String(headline).trim(),
       cta: String(cta).trim(),
+      imageUrl: imageUrl ? String(imageUrl).trim() : '',
       metadata,
     });
 

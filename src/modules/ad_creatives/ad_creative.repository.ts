@@ -10,6 +10,7 @@ export interface CreateAdCreativeInput {
   primaryText: string;
   headline: string;
   cta: string;
+  imageUrl?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -29,9 +30,9 @@ export class AdCreativeRepository {
   ): Promise<AdCreative> {
     const res = await this.db.query<AdCreative>(
       `INSERT INTO ad_creatives (
-        store_id, product_id, product_title, platform, objective, hook, primary_text, headline, cta, metadata, created_at, updated_at
+        store_id, product_id, product_title, platform, objective, hook, primary_text, headline, cta, image_url, metadata, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()
       ) RETURNING *`,
       [
         storeId,
@@ -43,6 +44,7 @@ export class AdCreativeRepository {
         input.primaryText,
         input.headline,
         input.cta,
+        input.imageUrl || '',
         JSON.stringify(input.metadata || {}),
       ]
     );

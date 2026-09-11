@@ -331,6 +331,9 @@ describe('Phase 12: AI Ad Creative Studio & Multi-Tenant Isolation', () => {
       },
       async generateAdCreatives() {
         throw new Error('Malformed AI creative output: hook is required');
+      },
+      async generateAdImage() {
+        throw new Error('Malformed AI image output');
       }
     };
 
@@ -355,5 +358,81 @@ describe('Phase 12: AI Ad Creative Studio & Multi-Tenant Isolation', () => {
 
     // Store A accessing non-owned store should be 403
     expect(res.status).toBe(403);
+  });
+
+  // 13. AI Ad Image Generation
+  it('13. generates AI ad image visual using OpenAI DALL-E 3 with grounding and usage recording', async () => {
+    const res = await request(app)
+      .post(`/api/v1/dashboard/${STORE_A_ID}/ad-creatives/generate-image`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        productId: 'prod_a_1',
+        platform: 'instagram',
+        style: 'commercial_studio',
+        hook: '⚡ Elevate your listening experience',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.image_url).toBeDefined();
+    expect(res.body.data.image_url).toContain('https://');
+    expect(res.body.data.model).toBeDefined();
+    expect(res.body.data.product.title).toBe('Wireless Earbuds');
+
+    // Verify usage recorded in ai_usage_ledger
+    const ledger = await db.query(
+      `SELECT * FROM ai_usage_ledger WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [STORE_A_ID]
+    );
+    expect(ledger.rows.length).toBeGreaterThan(0);
+    expect(Number(ledger.rows[0].estimated_cost_usd)).toBeGreaterThan(0);
+  });
+
+  // 14. Cross-Tenant Product Access Blocked for Image Generation
+  it('14. blocks Merchant A from generating AI images using Merchant B product ID', async () => {
+    const res = await request(app)
+      .post(`/api/v1/dashboard/${STORE_A_ID}/ad-creatives/generate-image`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        productId: 'prod_b_1', // Store B product
+        platform: 'facebook',
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toContain('not found in store catalogue');
+  });
+
+  // 15. Saved Creative Persists Image URL
+  it('15. persists AI image URL when saving ad creative variation', async () => {
+    const testImageUrl = 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=1024';
+    const res = await request(app)
+      .post(`/api/v1/dashboard/${STORE_A_ID}/ad-creatives/save`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        productId: 'prod_a_1',
+        productTitle: 'Wireless Earbuds',
+        platform: 'instagram',
+        objective: 'product_sales',
+        hook: 'Best earbuds of the year',
+        primaryText: 'Studio sound quality with noise cancellation.',
+        headline: 'Save 20% Today',
+        cta: 'Shop Now',
+        imageUrl: testImageUrl,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.image_url).toBe(testImageUrl);
+
+    // Retrieve saved creative and verify image_url is returned
+    const listRes = await request(app)
+      .get(`/api/v1/dashboard/${STORE_A_ID}/ad-creatives/saved`)
+      .set('Authorization', `Bearer ${tokenA}`);
+
+    expect(listRes.status).toBe(200);
+    const savedItem = listRes.body.data.creatives.find((c: any) => c.id === res.body.data.id);
+    expect(savedItem).toBeDefined();
+    expect(savedItem.image_url).toBe(testImageUrl);
   });
 });

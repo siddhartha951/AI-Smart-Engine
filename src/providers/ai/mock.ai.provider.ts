@@ -2,6 +2,8 @@ import {
   AdCreativeContext,
   AdCreativeGenerationResult,
   AdCreativeVariation,
+  AdImageContext,
+  AdImageGenerationResult,
   AiRequestContext,
   AiResponse,
   ChatMessage,
@@ -89,6 +91,29 @@ export class MockAiProvider implements IAiProvider {
       output_tokens: 150,
       estimated_cost_usd: 0.0002,
       model: 'mock-gpt-4o-mini',
+    };
+  }
+
+  async generateAdImage(
+    context: AdImageContext
+  ): Promise<AdImageGenerationResult> {
+    const { product } = context;
+    const cat = (product.category || '').toLowerCase();
+
+    let mockUrl = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1024&auto=format&fit=crop&q=80'; // Watch
+    if (cat.includes('audio') || cat.includes('earbud') || cat.includes('headphone')) {
+      mockUrl = 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=1024&auto=format&fit=crop&q=80';
+    } else if (cat.includes('decor') || cat.includes('vase') || cat.includes('home')) {
+      mockUrl = 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=1024&auto=format&fit=crop&q=80';
+    } else if (cat.includes('bed') || cat.includes('blanket')) {
+      mockUrl = 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=1024&auto=format&fit=crop&q=80';
+    }
+
+    return {
+      image_url: mockUrl,
+      revised_prompt: `Commercial product advertising studio shot for ${product.title} (${product.category || 'General'})`,
+      model: 'mock-dall-e-3',
+      estimated_cost_usd: 0.040,
     };
   }
 }

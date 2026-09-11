@@ -228,6 +228,7 @@ export interface AdCreative {
   primary_text: string;
   headline: string;
   cta: string;
+  image_url?: string;
   metadata?: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;

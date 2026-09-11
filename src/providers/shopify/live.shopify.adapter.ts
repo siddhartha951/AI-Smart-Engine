@@ -181,7 +181,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                     }
                   }
                 }
-                images(first: 1) {
+                featuredImage {
+                  url
+                }
+                images(first: 5) {
                   edges {
                     node {
                       url
@@ -228,7 +231,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           currency: variant?.price?.currencyCode || 'INR',
           in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',
-          image_url: node.images?.edges[0]?.node?.url || '',
+          image_url: node.featuredImage?.url || node.images?.edges[0]?.node?.url || '',
           product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`
         };
       });
@@ -474,7 +477,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
     for (const p of rawProducts) {
       const variant = p.variants?.[0];
-      const imgUrl = p.image?.src || p.images?.[0]?.src || '';
+      const imgUrl = p.image?.src || p.image?.url || p.images?.[0]?.src || p.images?.[0]?.url || (typeof p.featured_image === 'string' ? p.featured_image : p.featured_image?.src) || '';
       const rawVarId = variant ? String(variant.id) : '';
       const numericVarId = rawVarId.split('/').pop() || rawVarId;
 
@@ -526,7 +529,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                     }
                   }
                 }
-                images(first: 1) {
+                featuredImage {
+                  url
+                }
+                images(first: 5) {
                   edges {
                     node {
                       url
@@ -572,7 +578,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           currency: variant?.price?.currencyCode || 'INR',
           in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',
-          image_url: node.images?.edges[0]?.node?.url || '',
+          image_url: node.featuredImage?.url || node.images?.edges[0]?.node?.url || '',
           product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`,
         });
       }

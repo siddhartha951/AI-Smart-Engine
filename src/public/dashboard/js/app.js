@@ -65,7 +65,8 @@ let adStudioState = {
   activeVariationIndex: 0,
   platform: 'facebook',
   objective: 'product_sales',
-  savedCreatives: []
+  savedCreatives: [],
+  generatedImageUrl: null,
 };
 
 let liveAnalyticsTimer = null;
@@ -900,6 +901,37 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function getProductFallbackBadgeHtml(category = '') {
+  const cat = (category || '').toLowerCase();
+  let icon = '🛍️';
+  let gradient = 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(147, 51, 234, 0.25))';
+  let borderColor = 'rgba(147, 51, 234, 0.35)';
+
+  if (cat.includes('audio') || cat.includes('earbud') || cat.includes('headphone')) {
+    icon = '🎧';
+    gradient = 'linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(139, 92, 246, 0.25))';
+    borderColor = 'rgba(236, 72, 153, 0.35)';
+  } else if (cat.includes('wearable') || cat.includes('watch')) {
+    icon = '⌚';
+    gradient = 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(6, 182, 212, 0.25))';
+    borderColor = 'rgba(16, 185, 129, 0.35)';
+  } else if (cat.includes('decor') || cat.includes('vase') || cat.includes('home')) {
+    icon = '🏺';
+    gradient = 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(239, 68, 68, 0.25))';
+    borderColor = 'rgba(245, 158, 11, 0.35)';
+  } else if (cat.includes('bed') || cat.includes('blanket')) {
+    icon = '🛏️';
+    gradient = 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))';
+    borderColor = 'rgba(99, 102, 241, 0.35)';
+  } else if (cat.includes('apparel') || cat.includes('cloth') || cat.includes('fashion')) {
+    icon = '👕';
+    gradient = 'linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(99, 102, 241, 0.25))';
+    borderColor = 'rgba(14, 165, 233, 0.35)';
+  }
+
+  return `<div class="product-cat-badge" style="background: ${gradient}; border-color: ${borderColor};">${icon}</div>`;
+}
+
 async function loadProductsTable(search = '') {
   if (!state.activeStoreId) return;
   const tbody = document.getElementById('products-table-body');
@@ -941,9 +973,10 @@ async function loadProductsTable(search = '') {
         ? `<span class="badge success">In Stock</span>`
         : `<span class="badge danger">Out of Stock</span>`;
 
+      const fallbackBadge = getProductFallbackBadgeHtml(p.category);
       const imgHtml = p.image_url
-        ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #1e293b;">`
-        : `<div style="width: 44px; height: 44px; border-radius: 6px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted);">No Img</div>`;
+        ? `<img src="${escapeHtml(p.image_url)}" alt="${escapeHtml(p.title)}" onerror="this.onerror=null; this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: #1e293b;"><div style="display: none;">${fallbackBadge}</div>`
+        : fallbackBadge;
 
       const linkHtml = p.product_url
         ? `<a href="${escapeHtml(p.product_url)}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: none; font-size: 12px; font-weight: 500;">View ↗</a>`
@@ -1519,6 +1552,12 @@ function setupAdStudioEventListeners() {
   if (btnRegen) {
     btnRegen.addEventListener('click', generateAdCreativesAction);
   }
+
+  // Generate AI Image button
+  const btnGenImg = document.getElementById('btn-generate-ai-image');
+  if (btnGenImg) {
+    btnGenImg.addEventListener('click', generateAiAdImageAction);
+  }
 }
 
 async function loadAdStudioProducts() {
@@ -1572,7 +1611,11 @@ function onAdProductSelected(e) {
   const pId = e.target.value;
   const product = adStudioState.products.find(p => p.id === pId) || null;
   adStudioState.selectedProduct = product;
+  adStudioState.generatedImageUrl = null;
   updateSelectedProductPreview(product);
+  if (adStudioState.variations.length > 0) {
+    renderActiveAdVariation();
+  }
 }
 
 function updateSelectedProductPreview(product) {
@@ -1608,6 +1651,10 @@ function updateSelectedProductPreview(product) {
     thumbEl.src = product.image_url;
     thumbEl.style.display = 'block';
     noThumbEl.style.display = 'none';
+    thumbEl.onerror = () => {
+      thumbEl.style.display = 'none';
+      noThumbEl.style.display = 'flex';
+    };
   } else if (thumbEl && noThumbEl) {
     thumbEl.style.display = 'none';
     noThumbEl.style.display = 'flex';
@@ -1699,6 +1746,10 @@ function renderActiveAdVariation() {
   const fallbackEl = document.getElementById('ad-media-fallback');
   const fallbackTitleEl = document.getElementById('ad-media-fallback-title');
 
+  const badgeElMedia = document.getElementById('ad-media-badge');
+  const badgeIcon = document.getElementById('ad-media-badge-icon');
+  const badgeText = document.getElementById('ad-media-badge-text');
+
   if (hookEl) hookEl.textContent = current.hook;
   if (primaryEl) primaryEl.textContent = current.primary_text;
   if (headlineEl) headlineEl.textContent = current.headline;
@@ -1720,16 +1771,96 @@ function renderActiveAdVariation() {
   const domain = (currentStore?.shop_domain || 'shop.myshopify.com').replace(/^https?:\/\//, '').toUpperCase();
   if (domainEl) domainEl.textContent = domain;
 
-  // Product media
+  // Product media handling
   const prod = adStudioState.selectedProduct;
-  if (prod && prod.image_url && imgEl && fallbackEl) {
-    imgEl.src = prod.image_url;
+  const activeMediaUrl = adStudioState.generatedImageUrl || prod?.image_url;
+  const isAiGenerated = Boolean(adStudioState.generatedImageUrl);
+
+  if (badgeElMedia && activeMediaUrl) {
+    badgeElMedia.classList.remove('hidden');
+    if (isAiGenerated) {
+      badgeElMedia.className = 'ad-media-badge ai-badge';
+      if (badgeIcon) badgeIcon.textContent = '✨';
+      if (badgeText) badgeText.textContent = 'OpenAI DALL-E 3';
+    } else {
+      badgeElMedia.className = 'ad-media-badge';
+      if (badgeIcon) badgeIcon.textContent = '📸';
+      if (badgeText) badgeText.textContent = 'Catalogue Image';
+    }
+  } else if (badgeElMedia) {
+    badgeElMedia.classList.add('hidden');
+  }
+
+  if (activeMediaUrl && imgEl && fallbackEl) {
+    imgEl.src = activeMediaUrl;
     imgEl.style.display = 'block';
     fallbackEl.style.display = 'none';
+    imgEl.onerror = () => {
+      imgEl.style.display = 'none';
+      fallbackEl.style.display = 'flex';
+      if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
+      if (badgeElMedia) badgeElMedia.classList.add('hidden');
+    };
   } else if (imgEl && fallbackEl) {
     imgEl.style.display = 'none';
     fallbackEl.style.display = 'flex';
     if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
+    if (badgeElMedia) badgeElMedia.classList.add('hidden');
+  }
+}
+
+async function generateAiAdImageAction() {
+  if (!adStudioState.selectedProduct) {
+    showToast('Please choose a product from the catalogue first.', true);
+    return;
+  }
+
+  const prod = adStudioState.selectedProduct;
+  const currentVariation = adStudioState.variations[adStudioState.activeVariationIndex] || {};
+  const styleSelect = document.getElementById('ad-ai-image-style');
+  const selectedStyle = styleSelect ? styleSelect.value : 'commercial_studio';
+
+  const overlay = document.getElementById('ad-media-generating-overlay');
+  const btnGen = document.getElementById('btn-generate-ai-image');
+
+  if (overlay) overlay.classList.remove('hidden');
+  if (btnGen) btnGen.disabled = true;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ad-creatives/generate-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({
+        productId: prod.id,
+        platform: adStudioState.platform,
+        style: selectedStyle,
+        hook: currentVariation.hook,
+        headline: currentVariation.headline,
+      })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(getErrorMessage(data, 'AI ad image generation failed'));
+    }
+
+    const imageUrl = data.data?.image_url;
+    if (!imageUrl) {
+      throw new Error('No image URL returned by AI generator');
+    }
+
+    adStudioState.generatedImageUrl = imageUrl;
+    renderActiveAdVariation();
+    showToast('✨ AI Ad visual generated via OpenAI DALL-E 3!');
+  } catch (err) {
+    console.error('Failed to generate AI ad image:', err);
+    showToast(err.message || 'Image generation failed', true);
+  } finally {
+    if (overlay) overlay.classList.add('hidden');
+    if (btnGen) btnGen.disabled = false;
   }
 }
 
@@ -1802,9 +1933,11 @@ async function saveCurrentCreativeAction() {
         primaryText: current.primary_text,
         headline: current.headline,
         cta: current.cta,
+        imageUrl: adStudioState.generatedImageUrl || prod.image_url || '',
         metadata: {
           variation_index: adStudioState.activeVariationIndex,
-          model: adStudioState.model || 'gpt-4o-mini'
+          model: adStudioState.model || 'gpt-4o-mini',
+          ai_generated_image: Boolean(adStudioState.generatedImageUrl)
         }
       })
     });
@@ -1842,7 +1975,7 @@ async function loadSavedCreativesTable() {
     if (creatives.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+          <td colspan="8" style="text-align: center; padding: 25px; color: var(--text-muted);">
             No saved creatives yet. Generate ad copy above and click "Save Creative" to build your library.
           </td>
         </tr>
@@ -1864,14 +1997,19 @@ async function loadSavedCreativesTable() {
 
       const objLabel = c.objective.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
+      const mediaHtml = c.image_url
+        ? `<img src="${escapeHtml(c.image_url)}" alt="${escapeHtml(c.product_title)}" class="saved-creative-thumb" onerror="this.onerror=null; this.outerHTML='<div class=\\'product-cat-badge\\' style=\\'width:44px;height:44px;font-size:18px;\\'>🛍️</div>';">`
+        : `<div class="product-cat-badge" style="width:44px;height:44px;font-size:18px;">🛍️</div>`;
+
       return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-          <td style="padding: 12px; font-weight: 600; color: var(--text-main); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <td style="padding: 10px;">${mediaHtml}</td>
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main); max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             ${escapeHtml(c.product_title)}
           </td>
           <td style="padding: 12px;">${platformPill}</td>
           <td style="padding: 12px; font-size: 12px; color: var(--text-muted); text-transform: capitalize;">${escapeHtml(objLabel)}</td>
-          <td style="padding: 12px; max-width: 320px;">
+          <td style="padding: 12px; max-width: 300px;">
             <div style="font-weight: 500; font-size: 13px; color: var(--text-main); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.headline)}</div>
             <div style="font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.hook)}</div>
           </td>

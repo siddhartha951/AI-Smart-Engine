@@ -63,6 +63,30 @@ export interface AdCreativeGenerationResult {
   model: string;
 }
 
+export interface AdImageContext {
+  storeId: string;
+  product: {
+    id: string;
+    title: string;
+    price: number;
+    currency: string;
+    category?: string;
+    handle?: string;
+  };
+  prompt?: string;
+  hook?: string;
+  headline?: string;
+  platform?: 'facebook' | 'instagram';
+  style?: 'commercial_studio' | 'lifestyle' | 'vibrant_gradient' | 'minimalist_luxury';
+}
+
+export interface AdImageGenerationResult {
+  image_url: string;
+  revised_prompt?: string;
+  model: string;
+  estimated_cost_usd: number;
+}
+
 export interface IAiProvider {
   generateResponse(
     chatHistory: ChatMessage[],
@@ -72,4 +96,9 @@ export interface IAiProvider {
   generateAdCreatives(
     context: AdCreativeContext
   ): Promise<AdCreativeGenerationResult>;
+
+  generateAdImage(
+    context: AdImageContext
+  ): Promise<AdImageGenerationResult>;
 }
+

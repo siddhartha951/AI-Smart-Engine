@@ -3,12 +3,15 @@ import { z } from 'zod';
 import {
   AdCreativeContext,
   AdCreativeGenerationResult,
+  AdImageContext,
+  AdImageGenerationResult,
   AiRequestContext,
   AiResponse,
   ChatMessage,
   IAiProvider,
 } from './ai.provider';
 import { getEnvConfig } from '../../config/env';
+import { logger } from '../../utils/logger';
 
 export class OpenAiProvider implements IAiProvider {
   private openai: OpenAI;
@@ -324,4 +327,83 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
       throw err;
     }
   }
+
+  async generateAdImage(
+    context: AdImageContext
+  ): Promise<AdImageGenerationResult> {
+    const { product, platform, style, prompt: userPrompt, hook, headline } = context;
+    const platformLabel = platform === 'instagram' ? 'Instagram Feed & Story' : 'Meta / Facebook Ads';
+
+    let styleDescription = 'High-end commercial studio product photography with clean lighting, elegant studio backdrop, and soft ambient reflections.';
+    if (style === 'lifestyle') {
+      styleDescription = 'Aesthetic contemporary lifestyle product photography in a bright modern home setting with natural warm sunlight and organic textures.';
+    } else if (style === 'vibrant_gradient') {
+      styleDescription = 'Eye-catching modern commercial banner with vibrant colorful gradient lighting, high energy, and sleek direct-response aesthetic.';
+    } else if (style === 'minimalist_luxury') {
+      styleDescription = 'Editorial minimalist luxury product composition with architectural geometric shadows, muted tones, and ultra-clean styling.';
+    }
+
+    const customContext = userPrompt?.trim()
+      ? `Merchant Direction: ${userPrompt.trim()}.`
+      : (hook ? `Marketing Angle / Hook: "${hook}".` : '');
+
+    const headlineContext = headline ? `Headline Theme: "${headline}".` : '';
+
+    const dallEPrompt = `Commercial advertisement product photography for an e-commerce store. Product: "${product.title}" (${product.category || 'Quality Goods'}). ${styleDescription} ${customContext} ${headlineContext} Designed for ${platformLabel} sponsored advertisement. Ultra-sharp focus on the product, photorealistic textures, 8k resolution, masterwork commercial advertising visual, professional color grading. Strictly NO text, NO typography, NO watermark, NO logo overlay, clean centered composition.`.trim();
+
+    try {
+      logger.info(`Generating AI ad image via OpenAI DALL-E 3 for product "${product.title}"`);
+      const response = await this.openai.images.generate({
+        model: 'dall-e-3',
+        prompt: dallEPrompt,
+        n: 1,
+        size: '1024x1024',
+        quality: 'standard',
+        response_format: 'url',
+      });
+
+      const imageUrl = response.data?.[0]?.url;
+      if (!imageUrl) {
+        throw new Error('OpenAI returned empty image response.');
+      }
+
+      return {
+        image_url: imageUrl,
+        revised_prompt: response.data?.[0]?.revised_prompt || dallEPrompt,
+        model: 'dall-e-3',
+        estimated_cost_usd: 0.040,
+      };
+    } catch (err: any) {
+      logger.warn(`OpenAI image generation failed or quota limited: ${err?.message || err}. Applying fallback visual.`);
+      if (
+        err?.status === 429 ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('credits') ||
+        err?.message?.includes('quota') ||
+        err?.message?.includes('billing') ||
+        err?.message?.includes('API key')
+      ) {
+        const categoryKey = (product.category || '').toLowerCase();
+        let fallbackUrl = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=1024&auto=format&fit=crop&q=80';
+        if (categoryKey.includes('audio') || categoryKey.includes('earbud') || categoryKey.includes('headphone')) {
+          fallbackUrl = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=1024&auto=format&fit=crop&q=80';
+        } else if (categoryKey.includes('decor') || categoryKey.includes('vase') || categoryKey.includes('home')) {
+          fallbackUrl = 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=1024&auto=format&fit=crop&q=80';
+        } else if (categoryKey.includes('bed') || categoryKey.includes('blanket') || categoryKey.includes('textile')) {
+          fallbackUrl = 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=1024&auto=format&fit=crop&q=80';
+        } else if (categoryKey.includes('apparel') || categoryKey.includes('cloth')) {
+          fallbackUrl = 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=1024&auto=format&fit=crop&q=80';
+        }
+
+        return {
+          image_url: fallbackUrl,
+          revised_prompt: `Curated commercial creative fallback for ${product.title} (${err?.message || 'OpenAI quota limits'})`,
+          model: 'fallback-curated-visual',
+          estimated_cost_usd: 0,
+        };
+      }
+      throw err;
+    }
+  }
 }
+

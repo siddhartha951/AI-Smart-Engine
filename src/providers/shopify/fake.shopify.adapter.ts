@@ -13,7 +13,7 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
         currency: 'GBP',
         in_stock: true,
         category: 'audio',
-        image_url: 'https://example.com/earbuds.jpg',
+        image_url: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&auto=format&fit=crop&q=80',
         product_url: 'https://store-a.com/products/wireless-earbuds'
       },
       {
@@ -24,7 +24,7 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
         currency: 'GBP',
         in_stock: true,
         category: 'wearable',
-        image_url: 'https://example.com/watch.jpg',
+        image_url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80',
         product_url: 'https://store-a.com/products/smart-watch'
       },
       {
@@ -35,7 +35,7 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
         currency: 'GBP',
         in_stock: false, // Out of stock to test filtering
         category: 'audio',
-        image_url: 'https://example.com/headphones.jpg',
+        image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop&q=80',
         product_url: 'https://store-a.com/products/headphones'
       }
     ],
@@ -49,7 +49,7 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
         currency: 'GBP',
         in_stock: true,
         category: 'decor',
-        image_url: 'https://example.com/vase.jpg',
+        image_url: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=600&auto=format&fit=crop&q=80',
         product_url: 'https://store-b.com/products/ceramic-vase'
       },
       {
@@ -60,7 +60,7 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
         currency: 'GBP',
         in_stock: true,
         category: 'bedding',
-        image_url: 'https://example.com/blanket.jpg',
+        image_url: 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=600&auto=format&fit=crop&q=80',
         product_url: 'https://store-b.com/products/wool-blanket'
       }
     ]
