@@ -109,10 +109,48 @@ export class WebhookService {
         noteSessionId
       );
 
+      // Cancel any pending recovery jobs for this customer (email & whatsapp)
+      try {
+        if (visitorId) {
+          await db.query(
+            `UPDATE email_campaign_events 
+             SET status = 'cancelled', cancel_reason = 'purchased', updated_at = NOW()
+             WHERE store_id = $1 AND visitor_id = $2 AND status = 'pending'`,
+            [storeId, visitorId]
+          );
+          await db.query(
+            `UPDATE whatsapp_recovery_jobs
+             SET status = 'cancelled', cancel_reason = 'purchased', updated_at = NOW()
+             WHERE store_id = $1 AND visitor_id = $2 AND status = 'pending'`,
+            [storeId, visitorId]
+          );
+        }
+        if (customerEmail) {
+          await db.query(
+            `UPDATE email_campaign_events
+             SET status = 'cancelled', cancel_reason = 'purchased', updated_at = NOW()
+             WHERE store_id = $1 AND status = 'pending' AND visitor_id IN (
+               SELECT id FROM visitors WHERE store_id = $1 AND email = $2
+             )`,
+            [storeId, customerEmail]
+          );
+        }
+      } catch (cancErr) {
+        logger.warn(`Failed to cancel recovery jobs for completed order in store ${storeId}: ${cancErr}`);
+      }
+
       // WhatsApp Order Notification (if customer phone available)
       const customerPhone = orderData.phone || orderData.customer?.phone || orderData.shipping_address?.phone || orderData.billing_address?.phone;
       if (customerPhone) {
         try {
+          // Also cancel pending WhatsApp recovery jobs matching this phone
+          await db.query(
+            `UPDATE whatsapp_recovery_jobs
+             SET status = 'cancelled', cancel_reason = 'purchased', updated_at = NOW()
+             WHERE store_id = $1 AND phone_number = $2 AND status = 'pending'`,
+            [storeId, customerPhone]
+          );
+
           const { WhatsAppService } = await import('../whatsapp/whatsapp.service');
           const waService = new WhatsAppService({ db });
           await waService.processOrderNotification(storeId, {
@@ -124,9 +162,10 @@ export class WebhookService {
             itemsCount: orderData.line_items?.length || 1,
           });
         } catch (waErr) {
-          logger.warn(`Failed to dispatch WhatsApp order notification for store ${storeId}: ${waErr}`);
+          logger.warn(`Failed to process WhatsApp order handling for store ${storeId}: ${waErr}`);
         }
       }
+
 
       // Auto Replenishment & Reorder Engine (Phase 14)
       try {

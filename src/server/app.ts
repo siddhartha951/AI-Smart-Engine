@@ -13,6 +13,7 @@ import { validateStoreOrigin } from './middlewares/cors.middleware';
 import { errorHandler } from './middlewares/error.middleware';
 import { ValidationError, TenantIsolationError } from '../utils/errors';
 import path from 'path';
+import fs from 'fs';
 import { getShopifyAdapter } from '../providers/shopify';
 import { getAiProvider, BudgetGuard } from '../providers/ai';
 import authRoutes from './routes/auth.routes';
@@ -66,7 +67,11 @@ export function createApp(deps: AppDependencies = {}): Express {
       req.rawBody = buf;
     }
   }));
-  app.use(express.static(path.join(process.cwd(), 'src/public'), {
+  const publicDir = fs.existsSync(path.join(process.cwd(), 'src/public'))
+    ? path.join(process.cwd(), 'src/public')
+    : path.join(__dirname, '../../src/public');
+
+  app.use(express.static(publicDir, {
     setHeaders: (res) => {
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       res.setHeader('Access-Control-Allow-Origin', '*');
@@ -76,12 +81,30 @@ export function createApp(deps: AppDependencies = {}): Express {
   // Health-check endpoint
   app.get(['/health', '/api/v1/health'], async (_req: Request, res: Response) => {
     const isDbHealthy = await db.isHealthy();
+    const env = getEnvConfig();
     const statusCode = isDbHealthy ? 200 : 503;
     res.status(statusCode).json({
       status: isDbHealthy ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       database: isDbHealthy ? 'connected' : 'disconnected',
+      dependencies: {
+        ai: {
+          configured: Boolean(process.env.OPENAI_API_KEY || env.AI_PROVIDER === 'mock'),
+          provider: env.AI_PROVIDER,
+        },
+        email: {
+          configured: Boolean(process.env.RESEND_API_KEY || env.EMAIL_API_KEY || env.EMAIL_PROVIDER_MODE === 'fake'),
+          mode: env.EMAIL_PROVIDER_MODE,
+        },
+        whatsapp: {
+          configured: Boolean(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN),
+          provider: process.env.WHATSAPP_PROVIDER_MODE || 'meta',
+        },
+        shopify: {
+          mode: env.SHOPIFY_ADAPTER_MODE,
+        },
+      },
     });
   });
 

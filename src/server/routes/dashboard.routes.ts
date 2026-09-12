@@ -13,6 +13,7 @@ import { logger } from '../../utils/logger';
 import { resolveProductImageUrl } from '../../providers/shopify/shopify.utils';
 import { replenishmentRouter } from './replenishment.routes';
 import { attributionRouter } from './attribution.routes';
+import { growthRouter } from './growth.routes';
 
 const router = Router();
 
@@ -1341,6 +1342,9 @@ router.use('/:storeId/replenishment', enforceStoreAccess, replenishmentRouter);
 
 // 11. Multi-Touch Ad Intelligence & Attribution Engine
 router.use('/:storeId/attribution', enforceStoreAccess, attributionRouter);
+
+// 12. AI Merchant Growth Copilot & Action Center
+router.use('/:storeId/growth', enforceStoreAccess, growthRouter);
 
 export default router;
 

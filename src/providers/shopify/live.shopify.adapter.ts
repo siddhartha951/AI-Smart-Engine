@@ -81,7 +81,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
   async registerWebhooks(storeId: string): Promise<void> {
     try {
       const { adminToken, shopDomain } = await this.getCredentials(storeId);
-      const appUrl = process.env.APP_URL || 'https://example.com';
+      const appUrl = process.env.BASE_URL || process.env.APP_URL || 'https://example.com';
       
       const webhooks = [
         { topic: 'orders/create', address: `${appUrl}/api/v1/shopify/webhooks/orders` },

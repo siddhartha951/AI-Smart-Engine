@@ -68,6 +68,75 @@ router.post('/events', (req, res, next) => createStoreAuthMiddleware()(req, res,
     const eventRepo = new EventRepository();
     await eventRepo.recordEvent(storeId, input.visitor_id, input.type, input.payload || {}, input.session_id);
 
+    // Auto-schedule recovery sequence for abandoned cart if visitor consented
+    if (input.type === 'add_to_cart') {
+      try {
+        const db = getDatabaseClient();
+        const visitorRes = await db.query(
+          `SELECT v.id, v.email, v.phone, mc.opted_in as email_opted_in, wc.opted_in as wa_opted_in
+           FROM visitors v
+           LEFT JOIN marketing_consents mc ON mc.store_id = v.store_id AND mc.visitor_id = v.id AND mc.opted_in = true
+           LEFT JOIN whatsapp_consents wc ON wc.store_id = v.store_id AND wc.visitor_id = v.id AND wc.opted_in = true
+           WHERE v.store_id = $1 AND v.id = $2`,
+          [storeId, input.visitor_id]
+        );
+        const visitor = visitorRes.rows[0];
+        if (visitor) {
+          // Schedule email recovery job if email & consent exist
+          if (visitor.email && visitor.email_opted_in) {
+            const { EmailRepository } = await import('../../modules/email/email.repository');
+            const emailRepo = new EmailRepository(db);
+            const isSuppressed = await emailRepo.isSuppressed(storeId, visitor.email);
+            if (!isSuppressed) {
+              const delayMinutes = parseInt(process.env.EMAIL_STAGE_1_DELAY_MINUTES || '60', 10);
+              const scheduledFor = new Date(Date.now() + delayMinutes * 60000);
+              const pendingJob = await db.query(
+                `SELECT id FROM email_campaign_events WHERE store_id = $1 AND visitor_id = $2 AND status = 'pending'`,
+                [storeId, input.visitor_id]
+              );
+              if (pendingJob.rows.length === 0) {
+                let sessionId = input.session_id;
+                if (!sessionId) {
+                  const sRes = await db.query(
+                    `SELECT id FROM chat_sessions WHERE store_id = $1 AND visitor_id = $2 ORDER BY created_at DESC LIMIT 1`,
+                    [storeId, input.visitor_id]
+                  );
+                  if (sRes.rows.length > 0) {
+                    sessionId = sRes.rows[0].id;
+                  } else {
+                    const newS = await db.query(
+                      `INSERT INTO chat_sessions (store_id, visitor_id, status) VALUES ($1, $2, 'active') RETURNING id`,
+                      [storeId, input.visitor_id]
+                    );
+                    sessionId = newS.rows[0].id;
+                  }
+                }
+                await emailRepo.scheduleRecoveryJob(storeId, input.visitor_id, sessionId!, 1, scheduledFor);
+              }
+            }
+          }
+
+          // Schedule WhatsApp recovery job if phone & consent exist
+          if (visitor.phone && visitor.wa_opted_in) {
+            const { WhatsAppService } = await import('../../modules/whatsapp/whatsapp.service');
+            const waService = new WhatsAppService({ db });
+            await waService.scheduleAbandonedCartRecovery(storeId, {
+              visitorId: input.visitor_id,
+              phone: visitor.phone,
+              productId: input.payload?.product_id ? String(input.payload.product_id) : undefined,
+              productTitle: input.payload?.title ? String(input.payload.title) : undefined,
+              price: input.payload?.price ? parseFloat(String(input.payload.price)) : undefined,
+              currency: input.payload?.currency ? String(input.payload.currency) : undefined,
+            });
+          }
+
+        }
+      } catch (err) {
+        // Safe non-blocking error logging
+        console.warn(`[WidgetEvents] Failed to schedule cart recovery for store ${storeId}:`, err);
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -75,3 +144,4 @@ router.post('/events', (req, res, next) => createStoreAuthMiddleware()(req, res,
 });
 
 export default router;
+

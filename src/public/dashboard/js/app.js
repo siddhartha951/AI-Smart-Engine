@@ -47,6 +47,7 @@ const views = {
 };
 
 const sections = {
+  'growth-copilot': document.getElementById('growth-copilot'),
   'overview': document.getElementById('overview'),
   'live-analytics': document.getElementById('live-analytics'),
   'my-agent': document.getElementById('my-agent'),
@@ -705,6 +706,11 @@ async function loadSectionData(section) {
   if (!state.activeStoreId) return;
 
   try {
+    if (section === 'growth-copilot') {
+      await loadGrowthCopilotData();
+      return;
+    }
+
     if (section === 'live-analytics') {
       await Promise.all([
         loadLiveAnalytics(),
@@ -3436,5 +3442,271 @@ window.deleteAdSpendEntry = async function(id) {
   }
 };
 
+// ============================================================
+// Phase 16: AI Merchant Growth Copilot & Action Center Handlers
+// ============================================================
 
+async function loadGrowthCopilotData() {
+  if (!state.activeStoreId) return;
 
+  try {
+    const [overviewRes, actionsRes, goalRes, summaryRes, historyRes] = await Promise.all([
+      fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/overview`, {
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      }),
+      fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/actions`, {
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      }),
+      fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/goal`, {
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      }),
+      fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/weekly-summary`, {
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      }),
+      fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/history`, {
+        headers: { 'Authorization': `Bearer ${state.token}` }
+      }),
+    ]);
+
+    // 1. Overview KPIs
+    if (overviewRes.ok) {
+      const { data: o } = await overviewRes.json();
+      const oppEl = document.getElementById('copilot-estimated-opp');
+      const revEl = document.getElementById('copilot-revenue');
+      const ordersEl = document.getElementById('copilot-orders');
+      const roasEl = document.getElementById('copilot-roas');
+      const spendEl = document.getElementById('copilot-spend');
+      const convEl = document.getElementById('copilot-conv-rate');
+      const aiRevEl = document.getElementById('copilot-ai-revenue');
+
+      if (oppEl) oppEl.textContent = `+£${Number(o.estimated_growth_opportunity || 0).toFixed(2)}`;
+      if (revEl) revEl.textContent = `£${Number(o.total_revenue || 0).toFixed(2)}`;
+      if (ordersEl) ordersEl.textContent = `${o.total_orders || 0} orders (AOV: £${Number(o.average_order_value || 0).toFixed(2)})`;
+      if (roasEl) roasEl.textContent = `${Number(o.blended_roas || 0).toFixed(2)}x`;
+      if (spendEl) spendEl.textContent = `on £${Number(o.total_ad_spend || 0).toFixed(2)} spend`;
+      if (convEl) convEl.textContent = `${Number(o.conversion_rate || 0).toFixed(1)}%`;
+      if (aiRevEl) aiRevEl.textContent = `£${Number(o.ai_assisted_revenue || 0).toFixed(2)}`;
+    }
+
+    // 2. Merchant Goal
+    if (goalRes.ok) {
+      const { data: g } = await goalRes.json();
+      const goalSelect = document.getElementById('merchant-goal-select');
+      if (goalSelect && g?.primary_goal) {
+        goalSelect.value = g.primary_goal;
+      }
+    }
+
+    // 3. Growth Actions
+    if (actionsRes.ok) {
+      const { data: actions } = await actionsRes.json();
+      const actionsContainer = document.getElementById('copilot-actions-container');
+      const countEl = document.getElementById('copilot-actions-count');
+
+      const activeActions = (actions || []).filter(a => a.status === 'pending' || a.status === 'in_progress');
+      if (countEl) countEl.textContent = `${activeActions.length} Action${activeActions.length === 1 ? '' : 's'}`;
+
+      if (actionsContainer) {
+        if (activeActions.length === 0) {
+          actionsContainer.innerHTML = `
+            <div style="text-align: center; padding: 24px; color: var(--text-muted); background: rgba(0,0,0,0.15); border-radius: 8px;">
+              <span style="font-size: 24px;">✨</span>
+              <p style="margin: 8px 0 0 0; font-weight: 500;">All growth signals healthy! No immediate critical actions required.</p>
+            </div>
+          `;
+        } else {
+          const priorityColors = {
+            critical: { bg: 'rgba(239, 68, 68, 0.15)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.4)' },
+            high: { bg: 'rgba(245, 158, 11, 0.15)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.4)' },
+            medium: { bg: 'rgba(99, 102, 241, 0.15)', text: '#818cf8', border: 'rgba(99, 102, 241, 0.4)' },
+            low: { bg: 'rgba(100, 116, 139, 0.15)', text: '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' }
+          };
+
+          actionsContainer.innerHTML = activeActions.map(action => {
+            const colors = priorityColors[action.priority] || priorityColors.medium;
+            const oppBadge = Number(action.estimated_opportunity) > 0
+              ? `<span style="font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">+£${Number(action.estimated_opportunity).toFixed(2)} Potential</span>`
+              : '';
+
+            return `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); gap: 16px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 260px;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                    <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: ${colors.bg}; color: ${colors.text}; border: 1px solid ${colors.border};">
+                      ${action.priority}
+                    </span>
+                    <strong style="color: var(--text-main); font-size: 14px;">${escapeHtml(action.title)}</strong>
+                    ${oppBadge}
+                  </div>
+                  <p style="margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.4;">${escapeHtml(action.reason)}</p>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button class="btn-primary btn-sm" onclick="executeGrowthAction('${action.id}', '${action.target_module}', '${action.target_id || ''}')" style="padding: 6px 12px; font-size: 12px;">
+                    Open ${escapeHtml(action.target_module.replace('-', ' '))} ➔
+                  </button>
+                  <button class="btn-secondary btn-sm" onclick="dismissGrowthAction('${action.id}')" style="padding: 6px 10px; font-size: 12px; color: var(--text-muted);">
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    }
+
+    // 4. Weekly Summary
+    if (summaryRes.ok) {
+      const { data: s } = await summaryRes.json();
+      const revEl = document.getElementById('summary-rev');
+      const ordersEl = document.getElementById('summary-orders');
+      const roasEl = document.getElementById('summary-roas');
+      const convEl = document.getElementById('summary-conv');
+      const whatChangedEl = document.getElementById('copilot-what-changed');
+
+      if (revEl) revEl.textContent = `£${Number(s.metrics?.revenue || 0).toFixed(2)}`;
+      if (ordersEl) ordersEl.textContent = `${s.metrics?.orders || 0}`;
+      if (roasEl) roasEl.textContent = `${Number(s.metrics?.roas || 0).toFixed(2)}x`;
+      if (convEl) convEl.textContent = `${Number(s.metrics?.conversion_rate || 0).toFixed(1)}%`;
+
+      if (whatChangedEl && Array.isArray(s.what_changed)) {
+        whatChangedEl.innerHTML = s.what_changed.length > 0
+          ? s.what_changed.map(item => `<li>${escapeHtml(item)}</li>`).join('')
+          : '<li>Telemetry steady across storefront channels.</li>';
+      }
+    }
+
+    // 5. Action History Table
+    if (historyRes.ok) {
+      const { data: history } = await historyRes.json();
+      const tbody = document.getElementById('copilot-history-tbody');
+      if (tbody) {
+        if (!history || history.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">No action history recorded yet.</td></tr>`;
+        } else {
+          tbody.innerHTML = history.map(h => `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+              <td style="padding: 8px;">${new Date(h.created_at).toLocaleDateString()}</td>
+              <td style="padding: 8px; font-weight: 500;">${escapeHtml(h.action_key)}</td>
+              <td style="padding: 8px; color: var(--text-muted);">${escapeHtml(h.action_type)}</td>
+              <td style="padding: 8px;"><span class="badge">${escapeHtml(h.status)}</span></td>
+              <td style="padding: 8px; color: var(--text-muted);">${escapeHtml(h.notes || '--')}</td>
+            </tr>
+          `).join('');
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load growth copilot data:', err);
+  }
+}
+
+window.executeGrowthAction = async function(actionId, targetModule, _targetId) {
+  try {
+    await fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/actions/${actionId}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ status: 'in_progress', notes: `Action initiated: navigated to ${targetModule}` })
+    });
+  } catch (_) {}
+
+  const navLink = document.querySelector(`.nav-links a[data-target="${targetModule}"]`);
+  if (navLink) {
+    document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
+    navLink.classList.add('active');
+    showSection(targetModule);
+    loadSectionData(targetModule);
+    showToast(`Navigating to ${targetModule.replace('-', ' ')} ➔`);
+  }
+};
+
+window.dismissGrowthAction = async function(actionId) {
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/actions/${actionId}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ status: 'dismissed', notes: 'Dismissed by merchant' })
+    });
+    if (!res.ok) throw new Error('Failed to dismiss action');
+    showToast('Action dismissed');
+    await loadGrowthCopilotData();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+};
+
+async function askGrowthCopilotAi() {
+  const box = document.getElementById('copilot-ai-explanation-box');
+  const takeaways = document.getElementById('copilot-ai-takeaways');
+  const btn = document.getElementById('copilot-ask-ai-btn');
+
+  if (box) box.innerHTML = '<span style="color:var(--text-muted);">Analyzing store telemetry and verified growth signals...</span>';
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/explain`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+    if (!res.ok) throw new Error('Failed to generate AI explanation');
+    const { data } = await res.json();
+
+    if (box && data?.explanation) {
+      box.textContent = data.explanation;
+    }
+    if (takeaways && Array.isArray(data?.key_takeaways)) {
+      takeaways.innerHTML = data.key_takeaways.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    }
+  } catch (err) {
+    if (box) box.innerHTML = `<span style="color:#ef4444;">${escapeHtml(err.message)}</span>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Wire Event Listeners for Growth Copilot
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshBtn = document.getElementById('refresh-growth-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      showToast('Refreshing growth copilot...');
+      loadGrowthCopilotData();
+    });
+  }
+
+  const goalSelect = document.getElementById('merchant-goal-select');
+  if (goalSelect) {
+    goalSelect.addEventListener('change', async (e) => {
+      const newGoal = e.target.value;
+      try {
+        const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/goal`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.token}`
+          },
+          body: JSON.stringify({ primary_goal: newGoal })
+        });
+        if (!res.ok) throw new Error('Failed to update primary goal');
+        showToast('Primary goal updated & actions re-prioritized!');
+        await loadGrowthCopilotData();
+      } catch (err) {
+        showToast(err.message, true);
+      }
+    });
+  }
+
+  const askAiBtn = document.getElementById('copilot-ask-ai-btn');
+  if (askAiBtn) {
+    askAiBtn.addEventListener('click', askGrowthCopilotAi);
+  }
+});

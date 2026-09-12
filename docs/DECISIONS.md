@@ -109,3 +109,19 @@
   6. Zero-Division ROAS Safety: Guard all ROAS computations ($ROAS = \frac{Revenue}{Spend}$) such that zero or negative spend cleanly yields $0.00x$ rather than `Infinity` or `NaN`.
   7. Strict Tenant Isolation: All touchpoint ingestion, spend records, attribution summaries, and journey timelines strictly enforce `store_id` isolation.
 - **Consequences**: Merchants gain transparent, reliable multi-touch ad intelligence and AI impact visibility with zero external platform dependencies or division-by-zero errors.
+
+---
+
+## ADR-011: AI Merchant Growth Copilot & Action Center Architecture
+- **Context**: Merchants have multiple advanced modules (AI Agent, Ad Creative Studio, WhatsApp Engine, Smart Reorder, Multi-Touch Attribution) but lack a unified intelligence layer to synthesize cross-module signals into prioritized, high-leverage merchant actions. Furthermore, some data flows (e.g. storefront UTM capture, cart recovery triggering, order cancellation) were disconnected end-to-end.
+- **Decision**:
+  1. Integration-First Mandate: Audited and repaired real cross-module data pipelines before building new abstractions:
+     - Storefront widget captures UTMs and click IDs (`fbclid`, `gclid`, `ttclid`), sends them to `/api/v1/attribution/touchpoint`, and attaches them to Shopify cart note attributes via `/cart/update.js`.
+     - Storefront `add_to_cart` events trigger automated abandoned cart recovery scheduling in email and WhatsApp modules subject to visitor consent.
+     - Shopify order webhooks immediately cancel pending abandoned cart recovery jobs (`purchased`).
+  2. Deterministic Growth Signal Engine: All telemetry aggregation across orders, spend, ROAS, funnel conversion, abandoned carts, and reorders is computed with strict deterministic SQL aggregations. Generative AI is strictly forbidden from computing metrics.
+  3. Rule-Based Opportunity Detection: Implemented 8 deterministic opportunity detection rules (AOV, cart abandonment, low ROAS campaigns, due replenishment, eligible cart recovery, AI assistant lift, storefront conversion, zero-conversion campaign stops).
+  4. Dynamic Goal Alignment: Merchants can select their primary growth goal (`increase_revenue`, `improve_roas`, `improve_conversion`, `boost_reorders`, `reduce_abandonment`). Opportunities dynamically adjust their priority scores based on alignment with the active goal.
+  5. Action Center Execution & Audit Trail: Created `growth_actions` and `growth_action_history` tables to track status transitions (`pending`, `in_progress`, `completed`, `dismissed`) with user ID attribution and audit notes.
+  6. Zero Fabricated Metrics: Opportunity estimates use documented conservative formulas and prominently disclaim revenue guarantees. The AI explanation endpoint (`/explain`) is strictly grounded in verified database numbers.
+- **Consequences**: Closed-loop platform integration, deterministic business logic, safe AI co-piloting, and an actionable merchant workflow with zero revenue fabrication.

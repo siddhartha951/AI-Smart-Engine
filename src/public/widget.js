@@ -58,21 +58,38 @@
       if (!window.location.hostname.includes('myshopify.com') && !window.Shopify) {
         return;
       }
+      const actualUtmSource = sessionStorage.getItem('ai_utm_source');
+      const actualUtmMedium = sessionStorage.getItem('ai_utm_medium');
+      const actualUtmCampaign = sessionStorage.getItem('ai_utm_campaign');
+      const actualUtmContent = sessionStorage.getItem('ai_utm_content');
+      const actualUtmTerm = sessionStorage.getItem('ai_utm_term');
+      const fbclid = sessionStorage.getItem('ai_fbclid') || '';
+      const gclid = sessionStorage.getItem('ai_gclid') || '';
+      const ttclid = sessionStorage.getItem('ai_ttclid') || '';
+
+      const attrs = {
+        '_ai_session_id': sessionId || '',
+        '_ai_visitor_id': visitorId || ''
+      };
+      if (actualUtmSource) attrs['utm_source'] = actualUtmSource;
+      if (actualUtmMedium) attrs['utm_medium'] = actualUtmMedium;
+      if (actualUtmCampaign) attrs['utm_campaign'] = actualUtmCampaign;
+      if (actualUtmContent) attrs['utm_content'] = actualUtmContent;
+      if (actualUtmTerm) attrs['utm_term'] = actualUtmTerm;
+      if (fbclid) attrs['fbclid'] = fbclid;
+      if (gclid) attrs['gclid'] = gclid;
+      if (ttclid) attrs['ttclid'] = ttclid;
+
       await fetch('/cart/update.js', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
-          attributes: {
-            '_ai_session_id': sessionId || '',
-            '_ai_visitor_id': visitorId || '',
-            'utm_source': 'ai_smart_engine',
-            'utm_medium': 'shopping_assistant',
-            'utm_campaign': 'ai_recommendation'
-          }
+          attributes: attrs
         })
       });
     } catch (_) {}
   }
+
 
   function extractProductsFromMarkdown(content) {
     if (!content) return { cleanText: '', cards: [] };
@@ -234,6 +251,8 @@
 
         // Fire instant page_view on landing
         if (this.visitorId) {
+          this.recordMarketingTouchpoint();
+
           const lastPv = sessionStorage.getItem('ai_last_pv');
           if (lastPv !== window.location.pathname) {
             this.trackEvent('page_view', {
@@ -250,6 +269,61 @@
         console.log('AI Smart Engine: Storefront live tracking is deactivated by administrator.');
       }
     }
+
+    async recordMarketingTouchpoint() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const utmSource = params.get('utm_source');
+        const utmMedium = params.get('utm_medium');
+        const utmCampaign = params.get('utm_campaign');
+        const utmContent = params.get('utm_content');
+        const utmTerm = params.get('utm_term');
+        const fbclid = params.get('fbclid');
+        const gclid = params.get('gclid');
+        const ttclid = params.get('ttclid');
+
+        if (utmSource || fbclid || gclid || ttclid) {
+          try {
+            if (utmSource) sessionStorage.setItem('ai_utm_source', utmSource);
+            if (utmMedium) sessionStorage.setItem('ai_utm_medium', utmMedium);
+            if (utmCampaign) sessionStorage.setItem('ai_utm_campaign', utmCampaign);
+            if (utmContent) sessionStorage.setItem('ai_utm_content', utmContent);
+            if (utmTerm) sessionStorage.setItem('ai_utm_term', utmTerm);
+            if (fbclid) sessionStorage.setItem('ai_fbclid', fbclid);
+            if (gclid) sessionStorage.setItem('ai_gclid', gclid);
+            if (ttclid) sessionStorage.setItem('ai_ttclid', ttclid);
+          } catch (_) {}
+
+          const storeId = this.storeId || (this.state.config && this.state.config.store_id);
+          if (storeId && this.visitorId) {
+            const touchpointKey = `ai_tp_${utmSource || ''}_${utmCampaign || ''}_${fbclid || gclid || ttclid || ''}`;
+            if (!sessionStorage.getItem(touchpointKey)) {
+              sessionStorage.setItem(touchpointKey, '1');
+              await fetch(`${API_BASE_URL}/api/v1/attribution/touchpoint`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  store_id: storeId,
+                  visitor_id: this.visitorId,
+                  session_id: this.sessionId,
+                  utm_source: utmSource || undefined,
+                  utm_medium: utmMedium || undefined,
+                  utm_campaign: utmCampaign || undefined,
+                  utm_content: utmContent || undefined,
+                  utm_term: utmTerm || undefined,
+                  fbclid: fbclid || undefined,
+                  gclid: gclid || undefined,
+                  ttclid: ttclid || undefined,
+                  landing_page: window.location.href,
+                  referrer: document.referrer || undefined
+                })
+              });
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
 
     initHeartbeat() {
       if (this._heartbeatTimer) clearInterval(this._heartbeatTimer);
@@ -1437,21 +1511,25 @@
       const aiSid = params.get('ai_sid');
       const aiVid = params.get('ai_vid');
       const utmSource = params.get('utm_source');
-      if (aiSid) {
-        try {
-          sessionStorage.setItem('ai_session_id', aiSid);
-          localStorage.setItem('ai_session_id', aiSid);
-        } catch (_) {}
-      }
-      if (aiVid) {
-        try {
-          sessionStorage.setItem('ai_visitor_id', aiVid);
-          localStorage.setItem('ai_visitor_id', aiVid);
-        } catch (_) {}
-      }
-      if (utmSource) {
-        try { sessionStorage.setItem('ai_utm_source', utmSource); } catch (_) {}
-      }
+      const utmMedium = params.get('utm_medium');
+      const utmCampaign = params.get('utm_campaign');
+      const utmContent = params.get('utm_content');
+      const utmTerm = params.get('utm_term');
+      const fbclid = params.get('fbclid');
+      const gclid = params.get('gclid');
+      const ttclid = params.get('ttclid');
+
+      if (aiSid) { try { sessionStorage.setItem('ai_session_id', aiSid); localStorage.setItem('ai_session_id', aiSid); } catch (_) {} }
+      if (aiVid) { try { sessionStorage.setItem('ai_visitor_id', aiVid); localStorage.setItem('ai_visitor_id', aiVid); } catch (_) {} }
+      if (utmSource) { try { sessionStorage.setItem('ai_utm_source', utmSource); } catch (_) {} }
+      if (utmMedium) { try { sessionStorage.setItem('ai_utm_medium', utmMedium); } catch (_) {} }
+      if (utmCampaign) { try { sessionStorage.setItem('ai_utm_campaign', utmCampaign); } catch (_) {} }
+      if (utmContent) { try { sessionStorage.setItem('ai_utm_content', utmContent); } catch (_) {} }
+      if (utmTerm) { try { sessionStorage.setItem('ai_utm_term', utmTerm); } catch (_) {} }
+      if (fbclid) { try { sessionStorage.setItem('ai_fbclid', fbclid); } catch (_) {} }
+      if (gclid) { try { sessionStorage.setItem('ai_gclid', gclid); } catch (_) {} }
+      if (ttclid) { try { sessionStorage.setItem('ai_ttclid', ttclid); } catch (_) {} }
+
 
       const activeSid = aiSid || sessionStorage.getItem('ai_session_id') || localStorage.getItem('ai_session_id');
       const activeVid = aiVid || sessionStorage.getItem('ai_visitor_id') || localStorage.getItem('ai_visitor_id');

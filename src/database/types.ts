@@ -503,6 +503,97 @@ export interface CustomerJourneyTimeline {
   timeline: CustomerJourneyTouchpoint[];
 }
 
+// ============================================================
+// Phase 16: AI Merchant Growth Copilot & Action Center Types
+// ============================================================
 
+export type MerchantGoalType =
+  | 'increase_revenue'
+  | 'improve_roas'
+  | 'improve_conversion'
+  | 'increase_repeat_purchases'
+  | 'recover_abandoned_carts'
+  | 'improve_ai_conversion';
 
+export type GrowthActionType =
+  | 'VIEW_CAMPAIGN'
+  | 'REVIEW_PRODUCT'
+  | 'OPEN_CART_RECOVERY'
+  | 'OPEN_REORDER'
+  | 'VIEW_AI_ANALYTICS'
+  | 'VIEW_ATTRIBUTION'
+  | 'VIEW_CUSTOMER_JOURNEY';
 
+export type GrowthActionPriority = 'critical' | 'high' | 'medium' | 'low';
+export type GrowthActionStatus = 'pending' | 'in_progress' | 'completed' | 'dismissed';
+
+export interface GrowthGoal {
+  id: string;
+  store_id: string;
+  primary_goal: MerchantGoalType;
+  target_metric?: string | null;
+  target_value?: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface GrowthAction {
+  id: string;
+  store_id: string;
+  action_key: string;
+  title: string;
+  priority: GrowthActionPriority;
+  reason: string;
+  estimated_opportunity: number;
+  action_type: GrowthActionType;
+  target_module: string;
+  target_id: string;
+  status: GrowthActionStatus;
+  metadata: Record<string, any>;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface GrowthActionHistory {
+  id: string;
+  store_id: string;
+  action_id?: string | null;
+  action_key: string;
+  action_type: GrowthActionType;
+  status: GrowthActionStatus;
+  user_id?: string | null;
+  notes?: string | null;
+  created_at: Date;
+}
+
+export interface GrowthOverview {
+  total_revenue: number;
+  total_orders: number;
+  average_order_value: number;
+  conversion_rate: number;
+  total_ad_spend: number;
+  blended_roas: number;
+  ai_assisted_revenue: number;
+  abandoned_carts_count: number;
+  reorder_schedules_due: number;
+  estimated_growth_opportunity: number;
+  currency: string;
+}
+
+export interface WeeklyGrowthSummary {
+  period_start: string;
+  period_end: string;
+  metrics: {
+    revenue: number;
+    orders: number;
+    conversion_rate: number;
+    ad_spend: number;
+    roas: number;
+    ai_assisted_revenue: number;
+    recovered_revenue: number;
+    reorder_revenue: number;
+    currency: string;
+  };
+  what_changed: string[];
+  top_actions: GrowthAction[];
+}
