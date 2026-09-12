@@ -7,7 +7,7 @@ export * from './purchase.adapter';
 export * from './fake.purchase.adapter';
 export * from './real.purchase.adapter';
 
-let fakePurchaseAdapter = new FakePurchaseAdapter();
+const fakePurchaseAdapter = new FakePurchaseAdapter();
 let realPurchaseAdapter: RealPurchaseAdapter | null = null;
 let purchaseAdapterOverride: IPurchaseAdapter | null = null;
 

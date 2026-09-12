@@ -251,4 +251,27 @@
 - **Verification**:
   - 159/159 tests passing across 21 test files. TypeScript type-check and production build clean.
 
+---
 
+### [2026-09-12] Phase 14 Completed — Auto Replenishment & Reorder Engine
+- **Changes**:
+  - Added Migration 021 (`replenishment_product_settings`, `replenishment_schedules`, `replenishment_channel_settings`).
+  - Implemented `ReplenishmentRepository` and `ReplenishmentService` with deterministic cadence calculations.
+  - Added Shopify `orders/create` webhook ingestion with line-item replenishment checks and automatic repurchase cancellation/reset.
+  - Implemented multi-channel dispatch (Email & WhatsApp) respecting independent marketing consents.
+  - Generated 1-click Shopify cart permalinks with discount codes and click tracking.
+  - Added `ReplenishmentWorker` polling service and merchant dashboard UI under `🔄 Smart Reorder`.
+- **Verification**: 22/22 dedicated integration tests passing; 184/184 total regression tests passing.
+
+---
+
+### [2026-09-12] Phase 15 Completed — Multi-Touch Ad Intelligence & Attribution Engine
+- **Changes**:
+  - Added Migration 022 (`marketing_touchpoints`, `ad_spend`, `order_attributions`, `order_attribution_touchpoints`).
+  - Implemented `AttributionRepository` and `AttributionService` supporting First-Touch, Last-Touch, and Linear Multi-Touch models.
+  - Implemented marketing parameter ingestion with automatic Click ID normalization (`fbclid`, `gclid`, `ttclid`).
+  - Connected `AttributionService.processOrderAttribution` to Shopify `orders/create` webhook pipeline with direct/organic fallback.
+  - Implemented 30-day lookback AI-assisted revenue identification from chat sessions and product recommendations.
+  - Added merchant ad spend ledger and zero-division guarded ROAS calculations ($0.00x$ on $\le 0$ spend).
+  - Built Ad Intelligence dashboard under `🎯 Ad Intelligence` with KPI cards, model switcher, channel/campaign breakdowns, journey timeline explorer, and spend management modal.
+- **Verification**: 20/20 dedicated integration tests passing; 204/204 total regression tests passing across 23 test suites. 0 TypeScript errors, 0 ESLint errors, clean production build.

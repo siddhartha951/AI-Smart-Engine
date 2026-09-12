@@ -96,5 +96,16 @@
   6. 1-click Shopify cart permalinks: Generated via `/cart/{variant_id}:{qty}?discount={discount_code}` with click tracking via `/api/v1/reorder/:storeId/:scheduleId/click`.
 - **Consequences**: Safe, compliant, merchant-controlled repeat revenue automation without subscription complexity.
 
+---
 
-
+## ADR-010: Multi-Touch Ad Intelligence & Attribution Architecture
+- **Context**: Merchants run multi-channel advertising (Meta, Google, TikTok, email) and need to understand customer conversion journeys, calculate true ROAS, and measure the revenue impact of on-site AI assistance. However, relying on external ad platform black-box attribution or generative AI for financial math introduces hallucinations, bias, and compliance risks.
+- **Decision**:
+  1. 100% Deterministic Attribution: All revenue attribution calculations, touchpoint weightings, and ROAS calculations are strictly deterministic SQL and code formulas. LLMs are never used for financial calculations or attribution rules.
+  2. Multi-Model Support: Store and calculate First-Touch (100% credit to initial touchpoint), Last-Touch (100% credit to final pre-order touchpoint), and Linear Multi-Touch ($1/N$ credit split evenly across all $N$ journey touchpoints).
+  3. Click ID Normalization: Ingest `fbclid`, `gclid`, and `ttclid` query parameters and automatically resolve to standard channel/medium defaults (`facebook`/`paid_social`, `google`/`cpc`, `tiktok`/`paid_social`) when explicit UTMs are absent.
+  4. AI-Assisted Revenue Tracking: Identify orders influenced by AI shopping assistants or recommendations within a 30-day lookback window prior to order placement.
+  5. Merchant-Controlled Ad Spend: Maintain an ad spend ledger table partitioned by `store_id`, channel, campaign, and date ranges without requiring high-friction external OAuth integrations.
+  6. Zero-Division ROAS Safety: Guard all ROAS computations ($ROAS = \frac{Revenue}{Spend}$) such that zero or negative spend cleanly yields $0.00x$ rather than `Infinity` or `NaN`.
+  7. Strict Tenant Isolation: All touchpoint ingestion, spend records, attribution summaries, and journey timelines strictly enforce `store_id` isolation.
+- **Consequences**: Merchants gain transparent, reliable multi-touch ad intelligence and AI impact visibility with zero external platform dependencies or division-by-zero errors.

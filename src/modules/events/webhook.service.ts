@@ -137,6 +137,15 @@ export class WebhookService {
         logger.warn(`Failed to process replenishment schedules for store ${storeId}: ${repErr}`);
       }
 
+      // Multi-Touch Ad Intelligence & Attribution Engine (Phase 15)
+      try {
+        const { AttributionService } = await import('../attribution/attribution.service');
+        const attributionService = new AttributionService({ db });
+        await attributionService.processOrderAttribution(storeId, orderData, visitorId, noteSessionId);
+      } catch (attrErr) {
+        logger.warn(`Failed to process order attribution for store ${storeId}: ${attrErr}`);
+      }
+
       logger.info(`Processed order webhook for store ${storeId}, order ${orderData.order_number}, utm_source: ${utmSource}`);
     } catch (err) {
       logger.error('Error processing order webhook', err);

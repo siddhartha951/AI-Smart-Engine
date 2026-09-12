@@ -56,7 +56,8 @@ const sections = {
   'ad-creative-studio': document.getElementById('ad-creative-studio'),
   'whatsapp-growth': document.getElementById('whatsapp-growth'),
   'email-automation': document.getElementById('email-automation'),
-  'reorder-reminders': document.getElementById('reorder-reminders')
+  'reorder-reminders': document.getElementById('reorder-reminders'),
+  'ad-intelligence': document.getElementById('ad-intelligence')
 };
 
 let adStudioState = {
@@ -119,6 +120,9 @@ function setupEventListeners() {
 
   // Smart Reorder Reminders controls (Phase 14)
   setupReorderRemindersEventListeners();
+
+  // Multi-Touch Ad Intelligence controls (Phase 15)
+  setupAdIntelligenceEventListeners();
 
   // Login
   document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -725,6 +729,11 @@ async function loadSectionData(section) {
 
     if (section === 'reorder-reminders') {
       await loadReorderRemindersData();
+      return;
+    }
+
+    if (section === 'ad-intelligence') {
+      await loadAdIntelligenceData();
       return;
     }
 
@@ -2953,5 +2962,479 @@ async function runReplenishmentWorkerNow() {
     }
   }
 }
+
+// ==========================================
+// Phase 15: Multi-Touch Ad Intelligence & Attribution Engine
+// ==========================================
+
+let attributionState = {
+  activeModel: 'last_touch',
+  fromDate: '',
+  toDate: '',
+};
+
+function setupAdIntelligenceEventListeners() {
+  // 1. Model Switcher buttons
+  document.querySelectorAll('.model-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const model = btn.getAttribute('data-model');
+      if (!model || model === attributionState.activeModel) return;
+
+      attributionState.activeModel = model;
+
+      // Update UI active states
+      document.querySelectorAll('.model-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.background = 'transparent';
+        b.style.color = 'var(--text-muted)';
+      });
+      btn.classList.add('active');
+      btn.style.background = 'var(--primary, #6366f1)';
+      btn.style.color = '#fff';
+
+      // Update explanatory pill
+      const explEl = document.getElementById('attr-model-explanation');
+      const modelLabelEl = document.getElementById('attr-stat-model-label');
+
+      if (model === 'first_touch') {
+        if (explEl) explEl.innerHTML = '✨ <strong>First-Touch</strong>: Attributes 100% of order revenue to the earliest discovery ad click or campaign touchpoint.';
+        if (modelLabelEl) modelLabelEl.textContent = 'Via First-Touch model';
+      } else if (model === 'linear') {
+        if (explEl) explEl.innerHTML = '✨ <strong>Linear Multi-Touch</strong>: Distributes order revenue evenly (1/N) across all touchpoints in the customer journey.';
+        if (modelLabelEl) modelLabelEl.textContent = 'Via Linear Multi-Touch model';
+      } else {
+        if (explEl) explEl.innerHTML = '✨ <strong>Last-Touch</strong>: Attributes 100% of order revenue to the latest marketing touchpoint prior to checkout.';
+        if (modelLabelEl) modelLabelEl.textContent = 'Via Last-Touch model';
+      }
+
+      // Reload attribution views with the selected model
+      await Promise.all([
+        loadAttributionOverview(),
+        loadChannelPerformance(),
+        loadCampaignPerformance(),
+      ]);
+    });
+  });
+
+  // 2. Ad Spend Modal controls
+  const openSpendBtn = document.getElementById('btn-open-ad-spend-modal');
+  const closeSpendBtn = document.getElementById('close-ad-spend-modal');
+  const spendModal = document.getElementById('ad-spend-modal');
+
+  if (openSpendBtn && spendModal) {
+    openSpendBtn.addEventListener('click', () => {
+      const dateInput = document.getElementById('spend-date');
+      if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+      }
+      spendModal.classList.remove('hidden');
+      loadAdSpendList();
+    });
+  }
+
+  if (closeSpendBtn && spendModal) {
+    closeSpendBtn.addEventListener('click', () => {
+      spendModal.classList.add('hidden');
+    });
+  }
+
+  // 3. Ad Spend Form Submit
+  const spendForm = document.getElementById('ad-spend-form');
+  if (spendForm) {
+    spendForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const saveBtn = document.getElementById('btn-save-spend');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+      }
+
+      try {
+        const spendDate = document.getElementById('spend-date')?.value;
+        const platform = document.getElementById('spend-platform')?.value;
+        const campaign = document.getElementById('spend-campaign')?.value;
+        const spendAmount = parseFloat(document.getElementById('spend-amount')?.value || '0');
+        const notes = document.getElementById('spend-notes')?.value || '';
+
+        const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/spend`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.token}`
+          },
+          body: JSON.stringify({ spendDate, platform, campaign, spendAmount, notes })
+        });
+
+        const resData = await res.json();
+        if (!res.ok) throw new Error(resData.error || 'Failed to save ad spend');
+
+        showToast('Ad spend entry saved successfully!');
+        document.getElementById('spend-amount').value = '';
+        document.getElementById('spend-notes').value = '';
+
+        await Promise.all([
+          loadAdSpendList(),
+          loadAttributionOverview(),
+          loadChannelPerformance(),
+          loadCampaignPerformance(),
+        ]);
+      } catch (err) {
+        showToast(err.message, true);
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Spend Entry';
+        }
+      }
+    });
+  }
+
+  // 4. Customer Journey Modal Close
+  const closeJourneyBtn = document.getElementById('close-journey-modal');
+  const journeyModal = document.getElementById('customer-journey-modal');
+  if (closeJourneyBtn && journeyModal) {
+    closeJourneyBtn.addEventListener('click', () => {
+      journeyModal.classList.add('hidden');
+    });
+  }
+}
+
+async function loadAdIntelligenceData() {
+  await Promise.all([
+    loadAttributionOverview(),
+    loadChannelPerformance(),
+    loadCampaignPerformance(),
+    loadAttributedOrders(),
+  ]);
+}
+
+async function loadAttributionOverview() {
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/overview?model=${attributionState.activeModel}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    const curr = data.currency || 'GBP';
+    const sym = curr === 'GBP' ? '£' : (curr === 'USD' ? '$' : (curr === 'INR' ? '₹' : curr + ' '));
+
+    const spendEl = document.getElementById('attr-stat-spend');
+    const revEl = document.getElementById('attr-stat-revenue');
+    const roasEl = document.getElementById('attr-stat-roas');
+    const ordersEl = document.getElementById('attr-stat-orders');
+    const aiRevEl = document.getElementById('attr-stat-ai-rev');
+
+    if (spendEl) spendEl.textContent = `${sym}${Number(data.total_spend || 0).toFixed(2)}`;
+    if (revEl) revEl.textContent = `${sym}${Number(data.attributed_revenue || 0).toFixed(2)}`;
+    if (roasEl) {
+      roasEl.textContent = `${Number(data.roas || 0).toFixed(2)}x`;
+      roasEl.style.color = data.roas >= 3.0 ? '#10b981' : (data.roas >= 1.0 ? '#6366f1' : '#f59e0b');
+    }
+    if (ordersEl) ordersEl.textContent = String(data.total_orders || 0);
+    if (aiRevEl) aiRevEl.textContent = `${sym}${Number(data.ai_assisted_revenue || 0).toFixed(2)}`;
+  } catch (err) {
+    console.error('Failed to load attribution overview:', err);
+  }
+}
+
+async function loadChannelPerformance() {
+  const tbody = document.getElementById('attr-channels-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/channels?model=${attributionState.activeModel}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+    const channels = data.channels || [];
+
+    if (channels.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No channel attribution recorded yet.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const platformIcons = {
+      'facebook': '🟦 Meta Ads',
+      'instagram': '🟪 Instagram',
+      'google': '🔴 Google Ads',
+      'tiktok': '⬛ TikTok Ads',
+      'email': '✉️ Email Marketing',
+      'direct': '🌐 Direct / Storefront',
+      'other': '🔗 Other / Referral'
+    };
+
+    tbody.innerHTML = channels.map(ch => {
+      const label = platformIcons[ch.channel.toLowerCase()] || `📢 ${escapeHtml(ch.channel)}`;
+      const roasColor = ch.roas >= 3.0 ? '#10b981' : (ch.roas >= 1.0 ? '#6366f1' : 'var(--text-muted)');
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main);">${label}</td>
+          <td style="padding: 12px; color: #f59e0b; font-weight: 500;">£${Number(ch.spend).toFixed(2)}</td>
+          <td style="padding: 12px; color: var(--text-main); font-weight: 500;">${ch.orders}</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">£${Number(ch.attributed_revenue).toFixed(2)}</td>
+          <td style="padding: 12px;">
+            <span style="font-weight: 700; color: ${roasColor}; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">
+              ${Number(ch.roas).toFixed(2)}x
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load channel performance:', err);
+  }
+}
+
+async function loadCampaignPerformance() {
+  const tbody = document.getElementById('attr-campaigns-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/campaigns?model=${attributionState.activeModel}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+    const campaigns = data.campaigns || [];
+
+    if (campaigns.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No campaign attribution data recorded yet.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = campaigns.map(c => {
+      const roasColor = c.roas >= 3.0 ? '#10b981' : (c.roas >= 1.0 ? '#6366f1' : 'var(--text-muted)');
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main);">${escapeHtml(c.campaign)}</td>
+          <td style="padding: 12px; color: var(--text-muted); font-size: 13px; text-transform: capitalize;">${escapeHtml(c.source)}</td>
+          <td style="padding: 12px; color: #f59e0b; font-weight: 500;">£${Number(c.spend).toFixed(2)}</td>
+          <td style="padding: 12px; color: var(--text-main); font-weight: 500;">${c.orders}</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">£${Number(c.attributed_revenue).toFixed(2)}</td>
+          <td style="padding: 12px;">
+            <span style="font-weight: 700; color: ${roasColor}; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">
+              ${Number(c.roas).toFixed(2)}x
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load campaign performance:', err);
+  }
+}
+
+async function loadAttributedOrders() {
+  const tbody = document.getElementById('attr-orders-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/overview`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+
+    // Fetch list of recent orders from events
+    const eventsRes = await fetch(`/api/v1/dashboard/${state.activeStoreId}/live/activity?limit=20`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!eventsRes.ok) return;
+    const eventsData = await eventsRes.json();
+    const purchaseEvents = (eventsData.data?.feed || []).filter(item => item.type === 'purchase_completed');
+
+    if (purchaseEvents.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No connected purchases yet. When customers buy from Shopify, their multi-touch attribution journeys will appear here.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = purchaseEvents.map(p => {
+      const orderId = p.metadata?.order_id || p.id;
+      const orderNum = p.metadata?.order_number ? `#${p.metadata.order_number}` : 'Order';
+      const rev = p.metadata?.total_price ? `£${Number(p.metadata.total_price).toFixed(2)}` : '--';
+      const firstTouch = p.metadata?.utm_source || 'direct';
+      const lastTouch = p.metadata?.utm_campaign || 'storefront';
+      const isAi = p.metadata?.session_id ? '✨ Yes' : 'No';
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main); font-family: var(--font-mono);">${orderNum}</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">${rev}</td>
+          <td style="padding: 12px; color: var(--text-main); text-transform: capitalize;">${escapeHtml(firstTouch)}</td>
+          <td style="padding: 12px; color: var(--text-muted);">${escapeHtml(lastTouch)}</td>
+          <td style="padding: 12px;">${isAi}</td>
+          <td style="padding: 12px; color: var(--text-muted);">Connected</td>
+          <td style="padding: 12px;">
+            <button class="btn-secondary btn-sm" onclick="openCustomerJourneyModal('${orderId}')" style="padding: 4px 10px; font-size: 12px;">
+              View Journey 🔍
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load attributed orders:', err);
+  }
+}
+
+window.openCustomerJourneyModal = async function(orderId) {
+  const modal = document.getElementById('customer-journey-modal');
+  const titleEl = document.getElementById('journey-modal-title');
+  const metaEl = document.getElementById('journey-modal-meta');
+  const timelineEl = document.getElementById('journey-timeline-container');
+
+  if (!modal || !timelineEl) return;
+
+  modal.classList.remove('hidden');
+  timelineEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);">Loading customer journey timeline...</div>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/journey/${orderId}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Customer journey not found');
+    const { data } = await res.json();
+
+    if (titleEl) {
+      titleEl.textContent = `Customer Journey: #${data.order_number || data.order_id}`;
+    }
+
+    if (metaEl) {
+      metaEl.innerHTML = `
+        <div><strong>Revenue:</strong> £${Number(data.order_revenue).toFixed(2)}</div>
+        <div><strong>First Touch:</strong> ${escapeHtml(data.first_touch.source)} (${escapeHtml(data.first_touch.campaign)})</div>
+        <div><strong>Last Touch:</strong> ${escapeHtml(data.last_touch.source)} (${escapeHtml(data.last_touch.campaign)})</div>
+        <div><strong>AI-Assisted:</strong> ${data.is_ai_assisted ? '✨ Yes (£' + Number(data.ai_assisted_revenue).toFixed(2) + ')' : 'No'}</div>
+      `;
+    }
+
+    const timeline = data.timeline || [];
+    if (timeline.length === 0) {
+      timelineEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);">No journey events recorded.</div>';
+      return;
+    }
+
+    const iconMap = {
+      'touchpoint': '📢',
+      'ai_session': '🤖',
+      'cart_add': '🛒',
+      'order': '🎉'
+    };
+
+    timelineEl.innerHTML = timeline.map((step, idx) => {
+      const icon = iconMap[step.type] || '📍';
+      const timeStr = new Date(step.timestamp).toLocaleString();
+      const isLast = idx === timeline.length - 1;
+      const borderLeft = isLast ? 'none' : '2px solid rgba(255,255,255,0.15)';
+
+      return `
+        <div style="display: flex; gap: 14px; position: relative;">
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(99, 102, 241, 0.2); border: 1px solid #6366f1; display: flex; align-items: center; justify-content: center; font-size: 14px; z-index: 2;">
+              ${icon}
+            </div>
+            <div style="flex: 1; width: 2px; background: ${borderLeft}; min-height: 24px; margin: 4px 0;"></div>
+          </div>
+          <div style="padding-bottom: 20px; flex: 1;">
+            <div style="font-weight: 600; color: var(--text-main); font-size: 14px;">${escapeHtml(step.title)}</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">${escapeHtml(step.subtitle)}</div>
+            <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px; font-family: var(--font-mono);">${timeStr}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    timelineEl.innerHTML = `<div style="text-align:center;padding:20px;color:#ef4444;">${err.message}</div>`;
+  }
+};
+
+async function loadAdSpendList() {
+  const tbody = document.getElementById('ad-spend-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/spend`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+    const spendItems = data.spend || [];
+
+    if (spendItems.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">
+            No spend entries recorded yet.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = spendItems.map(s => {
+      const dateStr = s.spend_date ? new Date(s.spend_date).toLocaleDateString() : '--';
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 8px;">${dateStr}</td>
+          <td style="padding: 8px; text-transform: capitalize;">${escapeHtml(s.platform)}</td>
+          <td style="padding: 8px;">${escapeHtml(s.campaign)}</td>
+          <td style="padding: 8px; font-weight: 600; color: #f59e0b;">£${Number(s.spend_amount).toFixed(2)}</td>
+          <td style="padding: 8px;">
+            <button class="btn-secondary" onclick="deleteAdSpendEntry('${s.id}')" style="padding: 2px 8px; font-size: 11px; color: #ef4444; border-color: rgba(239,68,68,0.3);">
+              Delete
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load ad spend list:', err);
+  }
+}
+
+window.deleteAdSpendEntry = async function(id) {
+  if (!confirm('Are you sure you want to delete this spend entry?')) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/spend/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to delete spend entry');
+    showToast('Spend entry deleted');
+
+    await Promise.all([
+      loadAdSpendList(),
+      loadAttributionOverview(),
+      loadChannelPerformance(),
+      loadCampaignPerformance(),
+    ]);
+  } catch (err) {
+    showToast(err.message, true);
+  }
+};
+
 
 

@@ -376,5 +376,133 @@ export interface ReplenishmentChannelSettings {
   updated_at: Date;
 }
 
+// ==========================================
+// Phase 15: Multi-Touch Ad Intelligence & Attribution
+// ==========================================
+
+export type AttributionModel = 'first_touch' | 'last_touch' | 'linear';
+
+export interface MarketingTouchpoint {
+  id: string;
+  store_id: string;
+  visitor_id: string;
+  session_id: string | null;
+  touchpoint_type: string;
+  source: string;
+  medium: string;
+  campaign: string;
+  content: string;
+  term: string;
+  fbclid: string;
+  gclid: string;
+  ttclid: string;
+  landing_page_url: string;
+  referrer_url: string;
+  created_at: Date;
+}
+
+export interface AdSpend {
+  id: string;
+  store_id: string;
+  spend_date: string;
+  platform: string;
+  campaign: string;
+  spend_amount: number;
+  currency: string;
+  notes: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface OrderAttribution {
+  id: string;
+  store_id: string;
+  order_id: string;
+  order_number: string | null;
+  visitor_id: string | null;
+  customer_email: string | null;
+  order_revenue: number;
+  currency: string;
+  order_created_at: Date;
+  first_touchpoint_id: string | null;
+  first_touch_source: string;
+  first_touch_campaign: string;
+  last_touchpoint_id: string | null;
+  last_touch_source: string;
+  last_touch_campaign: string;
+  touchpoint_count: number;
+  is_ai_assisted: boolean;
+  ai_assisted_revenue: number;
+  ai_session_id: string | null;
+  matched_recommendation_ids: string[];
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface OrderAttributionTouchpoint {
+  id: string;
+  store_id: string;
+  order_id: string;
+  touchpoint_id: string;
+  weight: number;
+  attributed_revenue: number;
+  source: string;
+  campaign: string;
+  created_at: Date;
+}
+
+export interface AttributionOverview {
+  model: AttributionModel;
+  total_spend: number;
+  attributed_revenue: number;
+  total_orders: number;
+  roas: number;
+  ai_assisted_revenue: number;
+  currency: string;
+}
+
+export interface ChannelPerformance {
+  channel: string;
+  spend: number;
+  orders: number;
+  attributed_revenue: number;
+  roas: number;
+  currency: string;
+}
+
+export interface CampaignPerformance {
+  campaign: string;
+  source: string;
+  spend: number;
+  orders: number;
+  attributed_revenue: number;
+  roas: number;
+  currency: string;
+}
+
+export interface CustomerJourneyTouchpoint {
+  id: string;
+  type: 'touchpoint' | 'ai_session' | 'cart_add' | 'order';
+  title: string;
+  subtitle: string;
+  timestamp: Date;
+  metadata: Record<string, any>;
+}
+
+export interface CustomerJourneyTimeline {
+  order_id: string;
+  order_number: string | null;
+  order_revenue: number;
+  currency: string;
+  visitor_id: string | null;
+  customer_email: string | null;
+  first_touch: { source: string; campaign: string };
+  last_touch: { source: string; campaign: string };
+  is_ai_assisted: boolean;
+  ai_assisted_revenue: number;
+  timeline: CustomerJourneyTouchpoint[];
+}
+
+
 
 

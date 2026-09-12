@@ -352,7 +352,6 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
 
     const dallEPrompt = `Commercial advertisement product photography for an e-commerce store. Product: "${product.title}" (${product.category || 'Quality Goods'}). ${styleDescription} ${customContext} ${headlineContext} Designed for ${platformLabel} sponsored advertisement. Ultra-sharp focus on the product, photorealistic textures, 8k resolution, masterwork commercial advertising visual, professional color grading. Strictly NO text, NO typography, NO watermark, NO logo overlay, clean centered composition.`.trim();
 
-    let usedModel = 'gpt-image-1';
     try {
       logger.info(`Generating AI ad image via OpenAI for product "${product.title}"`);
       let response;

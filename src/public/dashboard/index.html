@@ -90,6 +90,7 @@
           <li><a href="#" data-target="whatsapp-growth"><span class="nav-icon">💬</span> WhatsApp Growth</a></li>
           <li><a href="#" data-target="email-automation"><span class="nav-icon">✉️</span> Email Automation</a></li>
           <li><a href="#" data-target="reorder-reminders"><span class="nav-icon">🔄</span> Smart Reorder</a></li>
+          <li><a href="#" data-target="ad-intelligence"><span class="nav-icon">🎯</span> Ad Intelligence</a></li>
         </ul>
         <div class="sidebar-footer">
           <button id="logout-btn" class="btn-secondary outline">Log Out</button>
@@ -1234,7 +1235,242 @@
             </div>
           </div>
         </section>
+
+        <!-- 11. Multi-Touch Ad Intelligence & Attribution Section -->
+        <section id="ad-intelligence" class="content-section">
+          <header class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+            <div>
+              <h2>Multi-Touch Ad Intelligence & Attribution</h2>
+              <p class="section-desc">Track customer acquisition journeys from initial ad clicks (Meta, Google, TikTok) through AI chats to Shopify purchase. Evaluate ROAS across First-Touch, Last-Touch, and Linear models.</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button id="btn-open-ad-spend-modal" class="btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+                <span>💰</span> Manage Ad Spend
+              </button>
+            </div>
+          </header>
+
+          <!-- Model Switcher Toolbar -->
+          <div class="card glass-card" style="margin-bottom: 24px; padding: 18px 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-weight: 600; color: var(--text-main); font-size: 14px;">Attribution Model:</span>
+                <div class="model-toggle-group" style="display: flex; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                  <button class="model-btn active" data-model="last_touch" style="padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: var(--primary, #6366f1); color: #fff;">
+                    Last-Touch (Default)
+                  </button>
+                  <button class="model-btn" data-model="first_touch" style="padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">
+                    First-Touch
+                  </button>
+                  <button class="model-btn" data-model="linear" style="padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">
+                    Linear Multi-Touch
+                  </button>
+                </div>
+              </div>
+              <div id="attr-model-explanation" style="font-size: 12px; color: var(--text-muted); background: rgba(99, 102, 241, 0.1); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                ✨ <strong>Last-Touch</strong>: Attributes 100% of order revenue to the latest marketing touchpoint prior to checkout.
+              </div>
+            </div>
+          </div>
+
+          <!-- Attribution Overview KPI Cards -->
+          <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Total Ad Spend</div>
+              <div class="metric-value" id="attr-stat-spend" style="font-size: 28px; font-weight: 700; color: #f59e0b; margin-top: 6px;">£0.00</div>
+              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Across all platforms</div>
+            </div>
+
+            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Attributed Revenue</div>
+              <div class="metric-value" id="attr-stat-revenue" style="font-size: 28px; font-weight: 700; color: #10b981; margin-top: 6px;">£0.00</div>
+              <div class="metric-sub" id="attr-stat-model-label" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Via Last-Touch model</div>
+            </div>
+
+            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Blended ROAS</div>
+              <div class="metric-value" id="attr-stat-roas" style="font-size: 28px; font-weight: 700; color: #6366f1; margin-top: 6px;">0.00x</div>
+              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Attributed Rev / Spend</div>
+            </div>
+
+            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Attributed Orders</div>
+              <div class="metric-value" id="attr-stat-orders" style="font-size: 28px; font-weight: 700; color: var(--text-main); margin-top: 6px;">0</div>
+              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Connected conversions</div>
+            </div>
+
+            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">AI-Assisted Revenue</div>
+              <div class="metric-value" id="attr-stat-ai-rev" style="font-size: 28px; font-weight: 700; color: #ec4899; margin-top: 6px;">£0.00</div>
+              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Chat & recommendation assists</div>
+            </div>
+          </div>
+
+          <!-- Channel Performance Table -->
+          <div class="card glass-card" style="margin-bottom: 24px;">
+            <h3 style="margin-bottom: 6px;">Channel Performance & ROAS</h3>
+            <p class="section-desc" style="margin-bottom: 16px;">Spend, conversion volume, attributed revenue, and ROAS broken down by traffic channel.</p>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Channel / Platform</th>
+                    <th>Ad Spend</th>
+                    <th>Orders</th>
+                    <th>Attributed Revenue</th>
+                    <th>ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="attr-channels-tbody">
+                  <tr>
+                    <td colspan="5" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      Loading channel performance...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Campaign Performance Table -->
+          <div class="card glass-card" style="margin-bottom: 24px;">
+            <h3 style="margin-bottom: 6px;">Campaign Performance</h3>
+            <p class="section-desc" style="margin-bottom: 16px;">Efficiency and return across marketing campaigns.</p>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Campaign</th>
+                    <th>Source / Platform</th>
+                    <th>Ad Spend</th>
+                    <th>Orders</th>
+                    <th>Attributed Revenue</th>
+                    <th>ROAS</th>
+                  </tr>
+                </thead>
+                <tbody id="attr-campaigns-tbody">
+                  <tr>
+                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      Loading campaign performance...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Customer Journey Timeline Explorer -->
+          <div class="card glass-card">
+            <h3 style="margin-bottom: 6px;">Attributed Customer Journeys</h3>
+            <p class="section-desc" style="margin-bottom: 16px;">Inspect multi-touch journeys connecting initial ad clicks, AI shopping chats, and Shopify checkouts.</p>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Order #</th>
+                    <th>Revenue</th>
+                    <th>First Touch</th>
+                    <th>Last Touch</th>
+                    <th>AI-Assisted</th>
+                    <th>Touchpoints</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="attr-orders-tbody">
+                  <tr>
+                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                      Loading customer journeys...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       </main>
+    </div>
+  </div>
+
+  <!-- Ad Spend Management Modal -->
+  <div id="ad-spend-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 650px; width: 90%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3>💰 Manage Ad Spend</h3>
+        <button id="close-ad-spend-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+        Record your marketing spend per platform and campaign. This spend is deterministically used to compute ROAS.
+      </p>
+
+      <form id="ad-spend-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Date</label>
+          <input type="date" id="spend-date" class="input-field" required style="width: 100%; margin-top: 4px;" />
+        </div>
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Platform / Source</label>
+          <select id="spend-platform" class="input-field" required style="width: 100%; margin-top: 4px;">
+            <option value="facebook">Meta (Facebook / Instagram)</option>
+            <option value="google">Google Ads</option>
+            <option value="tiktok">TikTok Ads</option>
+            <option value="email">Email Marketing</option>
+            <option value="other">Other / Referral</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Campaign Name</label>
+          <input type="text" id="spend-campaign" class="input-field" placeholder="e.g. summer_boost_2026" required style="width: 100%; margin-top: 4px;" />
+        </div>
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Spend Amount</label>
+          <input type="number" id="spend-amount" class="input-field" step="0.01" min="0" placeholder="0.00" required style="width: 100%; margin-top: 4px;" />
+        </div>
+        <div style="grid-column: span 2;">
+          <label style="font-size: 12px; color: var(--text-muted);">Notes (Optional)</label>
+          <input type="text" id="spend-notes" class="input-field" placeholder="e.g. Meta Advantage+ Shopping Campaign" style="width: 100%; margin-top: 4px;" />
+        </div>
+        <div style="grid-column: span 2; text-align: right; margin-top: 8px;">
+          <button type="submit" class="btn-primary" id="btn-save-spend">Save Spend Entry</button>
+        </div>
+      </form>
+
+      <h4 style="margin-bottom: 8px; font-size: 14px;">Recent Spend Entries</h4>
+      <div style="max-height: 200px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+        <table class="data-table" style="width: 100%; font-size: 12px;">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Platform</th>
+              <th>Campaign</th>
+              <th>Spend</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="ad-spend-tbody">
+            <tr>
+              <td colspan="5" style="text-align: center; padding: 15px; color: var(--text-muted);">
+                No spend entries recorded yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Journey Modal -->
+  <div id="customer-journey-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 700px; width: 90%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 id="journey-modal-title">Multi-Touch Customer Journey</h3>
+        <button id="close-journey-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+      <div id="journey-modal-meta" style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
+        <!-- Meta summary inserted here -->
+      </div>
+      <div id="journey-timeline-container" style="max-height: 400px; overflow-y: auto; padding-left: 8px;">
+        <!-- Chronological timeline items inserted here -->
+      </div>
     </div>
   </div>
 
