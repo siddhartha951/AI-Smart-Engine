@@ -336,14 +336,77 @@
 336:   - BUG-03 (P2): Enhanced `/health` and `/api/v1/health` endpoints to report safe dependency readiness status (AI, Email, WhatsApp, Shopify) without exposing secrets.
 337:   - BUG-04 (P3): Fixed webhook callback URL resolution in `live.shopify.adapter.ts` to check `BASE_URL || APP_URL`.
 338:   - BUG-05 (P3): Added static public directory fallback in `app.ts` for consistent asset delivery across deployment contexts.
-339: - **Deliverables Created**:
-340:   - `docs/PRODUCTION_READINESS_AUDIT.md`: Comprehensive system inventory, flow audits, security verification, and bug classifications.
-341:   - `docs/RAILWAY_VARIABLES.md`: Complete audit of platform-level environment variables categorized from A to H.
-342:   - `docs/PRODUCTION_SMOKE_TEST.md`: 20-item manual smoke test matrix with step-by-step instructions for live Shopify store validation.
-343: - **Verification Metrics**:
-344:   - Automated Tests: 224/224 passing across 24 test suites.
-345:   - TypeScript: 0 errors (`npm run type-check`).
-346:   - ESLint: 0 errors (`npm run lint`).
-347:   - Production Build: Successful (`npm run build`).
-348:   - Git Hygiene: Staged zero changes; no commits or pushes made.
-349: - **Verdict**: READY WITH BLOCKERS (Requires External Production Credentials).
+- **Verification**: 20/20 dedicated integration tests passing; 204/204 total regression tests passing across 23 test suites. 0 TypeScript errors, 0 ESLint errors, clean production build.
+
+---
+
+### [2026-09-12] Phase 16 Completed — AI Merchant Growth Copilot & Action Center
+- **Changes**:
+  - Performed integration-first audit and repaired:
+    1. Storefront widget marketing touchpoint ingestion (`recordMarketingTouchpoint`).
+    2. Add-to-cart abandoned cart recovery scheduling (`POST /api/v1/widget/events`).
+    3. Shopify order webhook recovery job cancellation.
+  - Added Migration 023 (`growth_copilot_recommendations`, `growth_copilot_actions`).
+  - Implemented `GrowthRepository` and `GrowthService` with deterministic metric analysis across Funnel, Attribution, Abandoned Cart, Replenishment, and AI recommendations.
+  - Built Growth Copilot dashboard under `🚀 Growth Copilot` with real action routing.
+- **Verification**: 20/20 dedicated integration tests passing; 224/224 total platform regression tests passing across 24 suites.
+
+---
+
+### [2026-09-12] Production Readiness & Real End-to-End Connectivity Audit
+- **Audit Scope**: Complete system audit across Frontend, Backend, Infrastructure, External Services, Security, and Configuration.
+- **Issues Identified & Fixed**:
+  - BUG-01 (P2): Fixed artificial UTM overwrite in `widget.js` (`syncShopifyCartAttributes`) to preserve actual marketing attribution.
+  - BUG-02 (P2): Added `SIGTERM` and `SIGINT` graceful shutdown handlers in `server.ts` for clean connection draining during Railway redeployments.
+  - BUG-03 (P2): Enhanced `/health` and `/api/v1/health` endpoints to report safe dependency readiness status (AI, Email, WhatsApp, Shopify) without exposing secrets.
+  - BUG-04 (P3): Fixed webhook callback URL resolution in `live.shopify.adapter.ts` to check `BASE_URL || APP_URL`.
+  - BUG-05 (P3): Added static public directory fallback in `app.ts` for consistent asset delivery across deployment contexts.
+- **Deliverables Created**:
+  - `docs/PRODUCTION_READINESS_AUDIT.md`: Comprehensive system inventory, flow audits, security verification, and bug classifications.
+  - `docs/RAILWAY_VARIABLES.md`: Complete audit of platform-level environment variables categorized from A to H.
+  - `docs/PRODUCTION_SMOKE_TEST.md`: 20-item manual smoke test matrix with step-by-step instructions for live Shopify store validation.
+- **Verification Metrics**:
+  - Automated Tests: 224/224 passing across 24 test suites.
+  - TypeScript: 0 errors (`npm run type-check`).
+  - ESLint: 0 errors (`npm run lint`).
+  - Production Build: Successful (`npm run build`).
+  - Git Hygiene: Staged zero changes; no commits or pushes made.
+- **Verdict**: READY WITH BLOCKERS (Requires External Production Credentials).
+
+---
+
+### [2026-09-12] Phase 17 Completed — AI Intelligence Layer, Domain Analytics & Admin Feature Entitlements
+- **Core Additions**:
+  1. **Database Migration (`migrations/024_feature_entitlements_and_ai_cache.sql`)**:
+     - Created `store_feature_entitlements` table with unique constraint on `(store_id, feature_key)`.
+     - Created `ai_cache` table with composite index on `(store_id, analysis_type)` for fast cached intelligence retrieval.
+     - Seeded all canonical 13 features enabled by default for existing stores A and B.
+  2. **Feature Entitlements Engine (`src/modules/entitlements/`)**:
+     - `entitlement.types.ts`: 13 canonical features (`overview`, `live_pulse`, `funnel`, `catalogue`, `leads`, `email_automation`, `whatsapp`, `smart_reorder`, `ad_intelligence`, `ad_creative`, `growth_copilot`, `ai_store_analysis`, `ai_assistant`) with names, descriptions, categories, and defaults.
+     - `entitlement.repository.ts`: Full store entitlement query, single toggle, bulk update, lazy auto-provisioning, and audit logging (`UPDATE_FEATURE_ENTITLEMENT`).
+     - `entitlement.middleware.ts`: Route guard `enforceFeature(featureKey)` enforcing 403 Forbidden with actionable error messages when disabled.
+     - `admin.routes.ts`: Added admin endpoints `GET/PUT/POST /api/v1/admin/stores/:storeId/features/*` and updated Admin UI with live toggle switches.
+  3. **AI Intelligence Layer (`src/modules/ai/`)**:
+     - `ai-types.ts`: Zod schemas for 10 domain intelligence operations.
+     - `ai-cache.service.ts`: PostgreSQL `ai_cache` caching with automatic TTL (1–2h) and SHA-256 data hash invalidation.
+     - `ai-context.service.ts`: Assembles bounded, compact store context from catalog, visitors, funnel, email, replenishment, and attribution strictly scoped by `store_id`.
+     - `ai-orchestrator.service.ts`: Budget-guarded structured JSON and text generation with token tracking in `ai_usage_ledger`.
+     - `ai-analysis.service.ts`: Implemented 10 domain intelligence methods (Store Deep Audit, Overview Insights, Catalogue Audit, Product Listing Improvements, Funnel Drop-Off, Funnel Q&A, Email Generator, Reorder AI Recommendations, Ad Attribution Audit, Ad Attribution Q&A, and Growth Copilot Q&A).
+     - `ai.routes.ts`: Mounted all endpoints at `/api/v1/dashboard/:storeId/ai/*` guarded by `enforceFeature`.
+  4. **Frontend Dashboard UI Enhancements (`src/public/dashboard/`)**:
+     - Overview: AI Store Insights card with What, Why, Next Actions, and "Deep Store Audit" modal.
+     - Catalogue: AI Listing Quality Audit banner & "Improve with AI" modal for individual products.
+     - Live Pulse & Funnel: Funnel AI Deep-Dive and interactive Ask AI Q&A box.
+     - Email Automation: "Create Email with AI" studio card and draft generator modal.
+     - Smart Reorder: AI Consumable Recommendations button and Reorder Product Settings modal.
+     - Ad Intelligence: AI Ad Performance Audit & Ask AI box.
+     - Client-side feature entitlement fetching and graceful navigation hiding when features are disabled.
+- **Verification Metrics**:
+  - Automated Integration Tests:
+    * `tests/integration/phase17_feature_entitlements.test.ts`: 8/8 passing.
+    * `tests/integration/phase17_ai_intelligence.test.ts`: 13/13 passing.
+  - Full Platform Regression: 26/26 test suites passing (245/245 tests passing).
+  - TypeScript: 0 errors (`npm run type-check`).
+  - ESLint: 0 errors (`npm run lint`).
+  - Production Build: Successful (`npm run build`).
+  - Git Hygiene: Zero commits or pushes.

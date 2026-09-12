@@ -4,6 +4,8 @@ import { verifyJwt, requireAdminOnly, requireSuperAdmin } from '../middlewares/a
 import { AuditRepository } from '../../modules/merchant/audit.repository';
 import { getEmailProvider } from '../../providers/email';
 import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
+import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
+import { ALL_FEATURE_KEYS, FEATURE_CATALOG, FeatureKey } from '../../modules/entitlements/entitlement.types';
 import crypto from 'crypto';
 
 const router = Router();
@@ -704,6 +706,122 @@ router.post('/stores/:storeId/domains/:domainId/verify', async (req: Request, re
     );
 
     res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// =========================================================================
+// FEATURE ENTITLEMENT MANAGEMENT (PHASE L & O)
+// =========================================================================
+
+// Get store feature entitlements
+router.get('/stores/:storeId/features', async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const storeCheck = await db.query('SELECT id, brand_name, shop_domain FROM stores WHERE id = $1', [storeId]);
+    if (storeCheck.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Store not found' });
+      return;
+    }
+
+    const entitlementRepo = new EntitlementRepository(db);
+    const featuresMap = await entitlementRepo.getStoreEntitlements(storeId);
+    const featureList = ALL_FEATURE_KEYS.map((key) => ({
+      ...FEATURE_CATALOG[key],
+      enabled: featuresMap[key],
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        store_id: storeId,
+        store_name: storeCheck.rows[0].brand_name,
+        features: featureList,
+        catalog: FEATURE_CATALOG,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update single feature entitlement
+router.put('/stores/:storeId/features/:featureKey', async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const featureKey = req.params.featureKey as FeatureKey;
+    const { enabled } = req.body;
+
+    if (!ALL_FEATURE_KEYS.includes(featureKey)) {
+      res.status(400).json({ success: false, error: `Invalid feature key: ${featureKey}` });
+      return;
+    }
+
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ success: false, error: 'Field "enabled" must be a boolean' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const storeCheck = await db.query('SELECT id FROM stores WHERE id = $1', [storeId]);
+    if (storeCheck.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Store not found' });
+      return;
+    }
+
+    const entitlementRepo = new EntitlementRepository(db);
+    await entitlementRepo.setFeatureEntitlement(storeId, featureKey, enabled, req.user!.id);
+
+    res.json({
+      success: true,
+      data: {
+        store_id: storeId,
+        feature_key: featureKey,
+        enabled,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Bulk update feature entitlements
+router.post('/stores/:storeId/features/bulk', async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { features, entitlements } = req.body;
+    const targetFeatures = features || entitlements;
+
+    if (!targetFeatures || typeof targetFeatures !== 'object') {
+      res.status(400).json({ success: false, error: 'Field "features" or "entitlements" must be a key-value object' });
+      return;
+    }
+
+    const db = getDatabaseClient();
+    const storeCheck = await db.query('SELECT id FROM stores WHERE id = $1', [storeId]);
+    if (storeCheck.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Store not found' });
+      return;
+    }
+
+    const entitlementRepo = new EntitlementRepository(db);
+    await entitlementRepo.setBulkFeatureEntitlements(storeId, targetFeatures, req.user!.id);
+
+    const updatedFeaturesMap = await entitlementRepo.getStoreEntitlements(storeId);
+    const updatedFeaturesList = ALL_FEATURE_KEYS.map((key) => ({
+      ...FEATURE_CATALOG[key],
+      enabled: updatedFeaturesMap[key],
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        store_id: storeId,
+        features: updatedFeaturesList,
+      },
+    });
   } catch (err) {
     next(err);
   }

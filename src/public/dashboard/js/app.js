@@ -557,8 +557,9 @@ async function initDashboard() {
   updateActiveStoreUI();
 }
 
-function updateActiveStoreUI() {
+async function updateActiveStoreUI() {
   if (state.activeStoreId) {
+    await fetchStoreFeatures();
     const activeSectionEl = document.querySelector('.nav-links a.active');
     const activeSection = activeSectionEl ? activeSectionEl.getAttribute('data-target') : 'overview';
     loadSectionData(activeSection);
@@ -679,6 +680,12 @@ function showView(viewName) {
 }
 
 function showSection(sectionName) {
+  const featKey = NAV_FEATURE_MAP[sectionName];
+  if (featKey && state.features && state.features[featKey] === false) {
+    showToast('This feature is not enabled for your store. Contact your administrator.', true);
+    return;
+  }
+
   Object.values(sections).forEach(s => { if (s) s.classList.add('hidden'); });
   const targetSection = sections[sectionName];
   if (targetSection) {
@@ -794,6 +801,8 @@ async function loadSectionData(section) {
       
       const widgetBadge = document.getElementById('widget-status-badge');
       widgetBadge.innerHTML = `<span class="dot active"></span> Widget Status: Online`;
+
+      loadOverviewInsights();
     } 
     else if (section === 'my-agent') {
       if (data.assistant) {
@@ -1055,7 +1064,10 @@ async function loadProductsTable(search = '') {
           <td style="padding: 10px; color: var(--text-muted); font-size: 13px;">${escapeHtml(p.category || 'General')}</td>
           <td style="padding: 10px; font-weight: 600;">${currencySymbol}${price}</td>
           <td style="padding: 10px;">${stockBadge}</td>
-          <td style="padding: 10px; text-align: right;">${linkHtml}</td>
+          <td style="padding: 10px; text-align: right;">
+            ${linkHtml}
+            <button class="btn-secondary btn-sm" style="margin-left: 6px; padding: 3px 8px; font-size: 11px; border-color: rgba(99,102,241,0.4);" onclick="window.improveProductWithAi('${p.id}')">✨ Improve</button>
+          </td>
         </tr>
       `;
     }).join('');
@@ -3707,6 +3719,700 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const askAiBtn = document.getElementById('copilot-ask-ai-btn');
   if (askAiBtn) {
-    askAiBtn.addEventListener('click', askGrowthCopilotAi);
+    askAiBtn.addEventListener('click', openCopilotAskModal);
   }
+
+  // Phase 17 Event Listeners
+  setupAiIntelligenceListeners();
 });
+
+// =========================================================================
+// PHASE 17: AI INTELLIGENCE LAYER & MERCHANT ANALYTICS MODULE
+// =========================================================================
+
+const NAV_FEATURE_MAP = {
+  'growth-copilot': 'growth_copilot',
+  'overview': 'overview',
+  'live-analytics': 'live_pulse',
+  'my-agent': 'widget',
+  'leads-optins': 'leads',
+  'widget-settings': 'widget',
+  'shopify-connection': 'catalogue',
+  'ad-creative-studio': 'ad_creative',
+  'whatsapp-growth': 'whatsapp',
+  'email-automation': 'email_automation',
+  'reorder-reminders': 'smart_reorder',
+  'ad-intelligence': 'ad_intelligence',
+};
+
+async function fetchStoreFeatures() {
+  if (!state.activeStoreId) return;
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/features`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    state.features = json.data?.features || {};
+
+    // Hide or show nav links based on entitlements
+    document.querySelectorAll('.nav-links li').forEach(li => {
+      const a = li.querySelector('a');
+      if (!a) return;
+      const target = a.getAttribute('data-target');
+      const featKey = NAV_FEATURE_MAP[target];
+      if (featKey && state.features[featKey] === false) {
+        li.style.display = 'none';
+      } else {
+        li.style.display = '';
+      }
+    });
+
+    // If currently active tab is disabled, redirect to first visible
+    const activeLink = document.querySelector('.nav-links a.active');
+    if (activeLink) {
+      const curTarget = activeLink.getAttribute('data-target');
+      const curFeat = NAV_FEATURE_MAP[curTarget];
+      if (curFeat && state.features[curFeat] === false) {
+        const firstVisible = Array.from(document.querySelectorAll('.nav-links li'))
+          .find(li => li.style.display !== 'none')
+          ?.querySelector('a');
+        if (firstVisible) {
+          firstVisible.click();
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch store feature entitlements', err);
+  }
+}
+
+window.copyText = function(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  const val = el.value || el.textContent;
+  navigator.clipboard.writeText(val).then(() => {
+    showToast('Copied to clipboard!');
+  }).catch(() => {
+    showToast('Failed to copy text', true);
+  });
+};
+
+// 1. Overview AI Store Insights
+async function loadOverviewInsights(forceRefresh = false) {
+  const happeningEl = document.getElementById('overview-ai-happening');
+  const whyEl = document.getElementById('overview-ai-why');
+  const actionsEl = document.getElementById('overview-ai-actions');
+  if (!happeningEl || !whyEl || !actionsEl || !state.activeStoreId) return;
+
+  if (forceRefresh) {
+    happeningEl.textContent = 'Refreshing store insights...';
+    whyEl.textContent = 'Re-analyzing store telemetry...';
+  }
+
+  try {
+    const url = `/api/v1/dashboard/${state.activeStoreId}/ai/overview-insights${forceRefresh ? '?refresh=true' : ''}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    if (data?.what_is_happening) happeningEl.textContent = data.what_is_happening;
+    if (data?.why_it_is_happening) whyEl.textContent = data.why_it_is_happening;
+    if (Array.isArray(data?.top_recommended_actions)) {
+      actionsEl.innerHTML = data.top_recommended_actions.map(action => `
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+          <div>
+            <div style="font-weight: 500; font-size: 13px; color: var(--text-main);">${escapeHtml(action.title)}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(action.why)}</div>
+          </div>
+          <button class="btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="window.navigateToModule('${action.target_module}')">Go →</button>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    console.error('Error loading overview insights:', err);
+  }
+}
+
+window.navigateToModule = function(moduleName) {
+  const targetMap = {
+    'funnel': 'live-analytics',
+    'catalogue': 'shopify-connection',
+    'ad_creative': 'ad-creative-studio',
+    'whatsapp': 'whatsapp-growth',
+    'email': 'email-automation',
+    'replenishment': 'reorder-reminders',
+    'attribution': 'ad-intelligence',
+    'growth': 'growth-copilot',
+  };
+  const target = targetMap[moduleName] || moduleName;
+  const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
+  if (link && link.closest('li').style.display !== 'none') {
+    link.click();
+  } else {
+    showToast(`Navigated to ${moduleName}`);
+  }
+};
+
+// 2. Full AI Store Audit
+async function openStoreAuditModal() {
+  const modal = document.getElementById('store-audit-modal');
+  if (!modal || !state.activeStoreId) return;
+  modal.classList.remove('hidden');
+
+  const summaryEl = document.getElementById('audit-summary-text');
+  const frictionList = document.getElementById('audit-friction-list');
+  const recList = document.getElementById('audit-rec-list');
+  summaryEl.textContent = 'Running comprehensive multi-vector AI audit (Conversion, Catalog, Traffic, Retention)...';
+  frictionList.innerHTML = '<li>Analyzing potential bottlenecks...</li>';
+  recList.innerHTML = '<div>Evaluating optimization roadmap...</div>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/store-analysis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ forceRefresh: false })
+    });
+    if (!res.ok) throw new Error('Failed to run store audit');
+    const { data } = await res.json();
+
+    document.getElementById('audit-overall-score').textContent = `${data.overall_health_score}/100`;
+    document.getElementById('audit-conv-score').textContent = `${data.conversion_health_score}/100`;
+    document.getElementById('audit-listing-score').textContent = `${data.listing_quality_score}/100`;
+    document.getElementById('audit-ad-score').textContent = `${data.traffic_and_ad_quality_score}/100`;
+
+    summaryEl.textContent = data.summary;
+
+    if (Array.isArray(data.top_friction_points)) {
+      frictionList.innerHTML = data.top_friction_points.map(f => `<li>${escapeHtml(f)}</li>`).join('');
+    }
+
+    if (Array.isArray(data.step_by_step_recommendations)) {
+      recList.innerHTML = data.step_by_step_recommendations.map(r => `
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <strong style="font-size: 13px; color: #34d399;">Step ${r.step}: ${escapeHtml(r.action)}</strong>
+            <span class="badge" style="font-size: 10px; text-transform: uppercase;">${r.priority} Priority</span>
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(r.rationale)}</div>
+          <div style="font-size: 11px; color: #818cf8; margin-top: 2px;">Expected Impact: ${escapeHtml(r.expected_impact)}</div>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    summaryEl.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// 3. Catalogue AI Audit & Product Optimization
+async function auditCatalogue() {
+  const banner = document.getElementById('catalogue-ai-banner');
+  const scoreEl = document.getElementById('catalogue-quality-score');
+  const summaryEl = document.getElementById('catalogue-ai-summary');
+  if (!banner || !state.activeStoreId) return;
+
+  banner.classList.remove('hidden');
+  summaryEl.textContent = 'Auditing catalog titles, descriptions, and conversion risk...';
+  scoreEl.textContent = '...';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/catalogue-analysis`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ forceRefresh: false })
+    });
+    if (!res.ok) throw new Error('Failed to audit catalogue');
+    const { data } = await res.json();
+
+    scoreEl.textContent = data.average_listing_score;
+    summaryEl.textContent = data.overview_summary;
+  } catch (err) {
+    summaryEl.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+window.improveProductWithAi = async function(productId) {
+  const modal = document.getElementById('product-improvement-modal');
+  if (!modal || !state.activeStoreId) return;
+  modal.classList.remove('hidden');
+
+  document.getElementById('improve-title-val').value = 'Generating AI listing improvements...';
+  document.getElementById('improve-desc-val').value = 'Analyzing product attributes...';
+  document.getElementById('improve-selling-points').innerHTML = '<li>Generating selling points...</li>';
+  document.getElementById('improve-faq-list').innerHTML = '<div>Generating FAQs...</div>';
+  document.getElementById('improve-tags-list').innerHTML = '<span>Generating tags...</span>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/product-improvements`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ productId })
+    });
+    if (!res.ok) throw new Error('Failed to generate product improvements');
+    const { data } = await res.json();
+
+    document.getElementById('improve-title-val').value = data.improved_title || '';
+    document.getElementById('improve-desc-val').value = data.improved_description || '';
+
+    if (Array.isArray(data.selling_points)) {
+      document.getElementById('improve-selling-points').innerHTML = data.selling_points.map(sp => `<li>${escapeHtml(sp)}</li>`).join('');
+    }
+
+    if (Array.isArray(data.faq_suggestions)) {
+      document.getElementById('improve-faq-list').innerHTML = data.faq_suggestions.map(faq => `
+        <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 4px;">
+          <strong style="font-size: 12px; color: #a5b4fc;">Q: ${escapeHtml(faq.question)}</strong>
+          <p style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">A: ${escapeHtml(faq.answer)}</p>
+        </div>
+      `).join('');
+    }
+
+    if (Array.isArray(data.recommendation_tags)) {
+      document.getElementById('improve-tags-list').innerHTML = data.recommendation_tags.map(tag => `
+        <span class="badge" style="background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); font-size: 11px;">#${escapeHtml(tag)}</span>
+      `).join('');
+    }
+  } catch (err) {
+    document.getElementById('improve-title-val').value = 'Failed to generate improvements: ' + err.message;
+  }
+};
+
+// 4. Live Funnel Drop-off Deep Dive & Ask AI
+async function runFunnelDeepDive() {
+  const contentEl = document.getElementById('funnel-insights-content');
+  if (!contentEl || !state.activeStoreId) return;
+
+  contentEl.innerHTML = '<div class="insight-placeholder">Analyzing visitor drop-offs and stage friction...</div>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/funnel-analysis`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load funnel analysis');
+    const { data } = await res.json();
+
+    contentEl.innerHTML = `
+      <div style="margin-bottom: 12px; font-size: 13px; line-height: 1.5; color: var(--text-main);">
+        <strong>Executive Summary:</strong> ${escapeHtml(data.executive_summary)}
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${(data.top_bottlenecks || []).map(b => `
+          <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong style="color: #f87171; font-size: 13px;">${escapeHtml(b.stage)}: ${b.drop_off_rate_percent}% Drop-off</strong>
+              <span class="badge" style="font-size: 10px; text-transform: uppercase;">${b.priority} Priority</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><strong>Likely Cause:</strong> ${escapeHtml(b.hypothesized_cause)}</div>
+            <div style="font-size: 12px; color: #34d399;"><strong>Fix:</strong> ${escapeHtml(b.recommended_fix)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (err) {
+    contentEl.innerHTML = `<div style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function askFunnelAi() {
+  const input = document.getElementById('funnel-ai-question');
+  const answerBox = document.getElementById('funnel-ai-answer-box');
+  if (!input || !answerBox || !state.activeStoreId) return;
+
+  const question = input.value.trim();
+  if (!question) {
+    showToast('Please type a question about your funnel', true);
+    return;
+  }
+
+  answerBox.classList.remove('hidden');
+  answerBox.innerHTML = '<span style="color: var(--text-muted);">Consulting AI with current funnel telemetry...</span>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/funnel-ask`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ question })
+    });
+    if (!res.ok) throw new Error('Failed to ask AI');
+    const { data } = await res.json();
+
+    answerBox.innerHTML = `
+      <div style="color: var(--text-main); margin-bottom: 8px;">${escapeHtml(data.answer)}</div>
+      ${Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0 ? `
+        <div style="font-size: 11px; color: #818cf8; margin-top: 8px;">
+          <strong>Suggested Next Steps:</strong>
+          <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+            ${data.suggested_actions.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    `;
+  } catch (err) {
+    answerBox.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// 5. Create Email with AI
+function openAiEmailModal() {
+  const modal = document.getElementById('ai-email-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+async function handleGenerateAiEmail(e) {
+  e.preventDefault();
+  const resultBox = document.getElementById('ai-email-result');
+  const btn = document.getElementById('btn-generate-ai-email');
+  if (!resultBox || !state.activeStoreId) return;
+
+  const emailType = document.getElementById('ai-email-type').value;
+  const tone = document.getElementById('ai-email-tone').value;
+  const goal = document.getElementById('ai-email-goal').value;
+  const length = document.getElementById('ai-email-length').value;
+  const customContext = document.getElementById('ai-email-context').value.trim();
+
+  if (btn) btn.disabled = true;
+  btn.textContent = 'Generating Draft...';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/email-generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ emailType, tone, goal, length, customContext })
+    });
+    if (!res.ok) throw new Error('Failed to generate email');
+    const { data } = await res.json();
+
+    resultBox.classList.remove('hidden');
+    document.getElementById('ai-email-subject').textContent = data.subject || '';
+    document.getElementById('ai-email-preview').textContent = data.preview_text || '';
+    document.getElementById('ai-email-body').textContent = data.body || '';
+    document.getElementById('ai-email-cta-btn').textContent = data.call_to_action?.text || 'Shop Now';
+    document.getElementById('ai-email-cta-url').textContent = `Target: ${data.call_to_action?.url || '/'}`;
+
+    const altList = document.getElementById('ai-email-alt-subjects');
+    if (Array.isArray(data.alternative_subjects)) {
+      altList.innerHTML = data.alternative_subjects.map(s => `<li>${escapeHtml(s)}</li>`).join('');
+    }
+    showToast('Email draft generated successfully!');
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+    btn.textContent = '⚡ Generate Email Draft';
+  }
+}
+
+// 6. Smart Reorder Manual Add & AI Consumables
+async function openReorderAddModal() {
+  const modal = document.getElementById('reorder-add-modal');
+  if (!modal || !state.activeStoreId) return;
+  modal.classList.remove('hidden');
+
+  const select = document.getElementById('reorder-select-product');
+  select.innerHTML = '<option value="">Loading products...</option>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/products`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    const products = data?.products || [];
+    select.innerHTML = '<option value="">Choose a product from catalog...</option>' + 
+      products.map(p => `<option value="${p.id}">${escapeHtml(p.title)} (${p.currency || 'GBP'} ${Number(p.price || 0).toFixed(2)})</option>`).join('');
+  } catch (err) {
+    select.innerHTML = '<option value="">Failed to load products</option>';
+  }
+}
+
+async function loadAiConsumableSuggestions() {
+  const box = document.getElementById('reorder-ai-suggestions-box');
+  const list = document.getElementById('reorder-ai-suggestions-list');
+  if (!box || !list || !state.activeStoreId) return;
+
+  const modal = document.getElementById('reorder-add-modal');
+  if (modal) modal.classList.remove('hidden');
+
+  box.classList.remove('hidden');
+  list.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">AI is scanning catalog for consumable patterns...</div>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/ai-recommendations`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to get suggestions');
+    const { data } = await res.json();
+
+    const recs = data?.recommendations || [];
+    if (recs.length === 0) {
+      list.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">No consumable patterns detected yet.</div>';
+      return;
+    }
+
+    list.innerHTML = recs.map(r => `
+      <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
+        <div>
+          <div style="font-weight: 500; font-size: 13px; color: var(--text-main);">${escapeHtml(r.title)}</div>
+          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.reasoning)} • Recommended Cycle: ${r.suggested_cycle_days}d</div>
+        </div>
+        <button type="button" class="btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="window.applyConsumableSuggestion('${r.product_id}', ${r.suggested_cycle_days})">Select</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    list.innerHTML = `<div style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+window.applyConsumableSuggestion = function(productId, cycleDays) {
+  const select = document.getElementById('reorder-select-product');
+  if (select) select.value = productId;
+  const cycleInput = document.getElementById('reorder-cycle-days');
+  if (cycleInput) cycleInput.value = cycleDays;
+  showToast('Product & cycle selected! Click Save to confirm.');
+};
+
+async function handleSaveReorderSettings(e) {
+  e.preventDefault();
+  const productId = document.getElementById('reorder-select-product').value;
+  const cycleDays = parseInt(document.getElementById('reorder-cycle-days').value, 10);
+  const reminderDays = parseInt(document.getElementById('reorder-reminder-days').value, 10);
+  const isReplenishable = document.getElementById('reorder-is-active-toggle').checked;
+
+  if (!productId) {
+    showToast('Please select a product', true);
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/product-settings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({
+        productId,
+        cycleDays,
+        reminderDaysBefore: reminderDays,
+        replenishable: isReplenishable
+      })
+    });
+    if (!res.ok) throw new Error('Failed to save settings');
+    showToast('Product replenishment settings saved!');
+    document.getElementById('reorder-add-modal')?.classList.add('hidden');
+    loadReplenishableProducts();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+// 7. Multi-Touch Ad Intelligence AI
+async function runAdAiAnalysis() {
+  const placeholder = document.getElementById('ad-ai-placeholder');
+  const resultsGrid = document.getElementById('ad-ai-results-grid');
+  if (!placeholder || !resultsGrid || !state.activeStoreId) return;
+
+  placeholder.textContent = 'Running AI multi-touch attribution analysis across campaigns...';
+  placeholder.classList.remove('hidden');
+  resultsGrid.classList.add('hidden');
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/ad-analysis`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to run ad analysis');
+    const { data } = await res.json();
+
+    placeholder.classList.add('hidden');
+    resultsGrid.classList.remove('hidden');
+
+    const fillList = (id, items) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = (items || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    };
+
+    fillList('ad-ai-working', data.what_is_working);
+    fillList('ad-ai-not-working', data.what_is_not);
+    fillList('ad-ai-why', data.why_it_happens);
+    fillList('ad-ai-test-next', data.what_to_test_next);
+  } catch (err) {
+    placeholder.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+async function askAdAi() {
+  const input = document.getElementById('ad-ai-question-input');
+  const answerBox = document.getElementById('ad-ai-question-answer');
+  if (!input || !answerBox || !state.activeStoreId) return;
+
+  const question = input.value.trim();
+  if (!question) {
+    showToast('Please type a question about your ads', true);
+    return;
+  }
+
+  answerBox.classList.remove('hidden');
+  answerBox.innerHTML = '<span style="color: var(--text-muted);">Consulting AI with current ad attribution metrics...</span>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/ai/ad-ask`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ question })
+    });
+    if (!res.ok) throw new Error('Failed to ask AI');
+    const { data } = await res.json();
+
+    answerBox.innerHTML = `
+      <div style="color: var(--text-main); margin-bottom: 8px;">${escapeHtml(data.answer)}</div>
+      ${Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0 ? `
+        <div style="font-size: 11px; color: #818cf8; margin-top: 8px;">
+          <strong>Suggested Testing Actions:</strong>
+          <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+            ${data.suggested_actions.map(a => `<li>${escapeHtml(a)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    `;
+  } catch (err) {
+    answerBox.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// 8. Growth Copilot Interactive Q&A Modal
+function openCopilotAskModal() {
+  const modal = document.getElementById('copilot-ask-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+async function submitCopilotAsk(customQuestion = '') {
+  const input = document.getElementById('copilot-ask-input');
+  const resultBox = document.getElementById('copilot-ask-result-box');
+  if (!input || !resultBox || !state.activeStoreId) return;
+
+  const question = customQuestion || input.value.trim();
+  if (!question) {
+    showToast('Please enter a question for Copilot', true);
+    return;
+  }
+
+  input.value = question;
+  resultBox.classList.remove('hidden');
+  resultBox.innerHTML = '<span style="color: var(--text-muted);">Copilot is synthesizing store metrics and formulating growth response...</span>';
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/growth/copilot/ask`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ question })
+    });
+    if (!res.ok) throw new Error('Failed to ask Copilot');
+    const { data } = await res.json();
+
+    resultBox.innerHTML = `
+      <div style="color: var(--text-main); margin-bottom: 12px; font-size: 13px; line-height: 1.6;">${escapeHtml(data.answer)}</div>
+      ${Array.isArray(data.suggested_actions) && data.suggested_actions.length > 0 ? `
+        <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; margin-top: 10px;">
+          <strong style="font-size: 12px; color: #818cf8; text-transform: uppercase;">Prioritized Actions:</strong>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+            ${data.suggested_actions.map(act => `
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 6px 10px; border-radius: 6px;">
+                <span style="font-size: 12px; color: var(--text-main);">${escapeHtml(act.title)}</span>
+                <button class="btn-secondary btn-sm" style="font-size: 10px; padding: 2px 8px;" onclick="window.navigateToModule('${act.target_module}')">Execute →</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+    `;
+  } catch (err) {
+    resultBox.innerHTML = `<span style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+function setupAiIntelligenceListeners() {
+  // Overview AI
+  document.getElementById('btn-refresh-store-insights')?.addEventListener('click', () => loadOverviewInsights(true));
+  document.getElementById('btn-run-full-audit')?.addEventListener('click', openStoreAuditModal);
+  document.getElementById('close-store-audit-modal')?.addEventListener('click', () => {
+    document.getElementById('store-audit-modal')?.classList.add('hidden');
+  });
+
+  // Catalogue AI
+  document.getElementById('btn-audit-catalogue')?.addEventListener('click', auditCatalogue);
+  document.getElementById('btn-close-catalogue-ai')?.addEventListener('click', () => {
+    document.getElementById('catalogue-ai-banner')?.classList.add('hidden');
+  });
+  document.getElementById('close-product-improvement-modal')?.addEventListener('click', () => {
+    document.getElementById('product-improvement-modal')?.classList.add('hidden');
+  });
+
+  // Funnel AI
+  document.getElementById('btn-run-funnel-ai')?.addEventListener('click', runFunnelDeepDive);
+  document.getElementById('btn-ask-funnel-ai')?.addEventListener('click', askFunnelAi);
+  document.getElementById('funnel-ai-question')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); askFunnelAi(); }
+  });
+
+  // Email Studio AI
+  document.getElementById('btn-open-email-ai-modal')?.addEventListener('click', openAiEmailModal);
+  document.getElementById('close-ai-email-modal')?.addEventListener('click', () => {
+    document.getElementById('ai-email-modal')?.classList.add('hidden');
+  });
+  document.getElementById('ai-email-form')?.addEventListener('submit', handleGenerateAiEmail);
+
+  // Smart Reorder AI
+  document.getElementById('btn-open-add-rep-modal')?.addEventListener('click', openReorderAddModal);
+  document.getElementById('btn-ai-consumable-suggestions')?.addEventListener('click', loadAiConsumableSuggestions);
+  document.getElementById('close-reorder-add-modal')?.addEventListener('click', () => {
+    document.getElementById('reorder-add-modal')?.classList.add('hidden');
+  });
+  document.getElementById('reorder-add-form')?.addEventListener('submit', handleSaveReorderSettings);
+
+  // Ad Intelligence AI
+  document.getElementById('btn-run-ad-ai-analysis')?.addEventListener('click', runAdAiAnalysis);
+  document.getElementById('btn-ask-ad-ai')?.addEventListener('click', askAdAi);
+  document.getElementById('ad-ai-question-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); askAdAi(); }
+  });
+
+  // Growth Copilot Ask Modal
+  document.getElementById('close-copilot-ask-modal')?.addEventListener('click', () => {
+    document.getElementById('copilot-ask-modal')?.classList.add('hidden');
+  });
+  document.getElementById('btn-submit-copilot-ask')?.addEventListener('click', () => submitCopilotAsk());
+  document.getElementById('copilot-ask-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitCopilotAsk(); }
+  });
+  document.querySelectorAll('.copilot-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const q = chip.getAttribute('data-q');
+      if (q) submitCopilotAsk(q);
+    });
+  });
+}

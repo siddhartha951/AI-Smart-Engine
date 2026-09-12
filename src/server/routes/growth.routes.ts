@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { GrowthService } from '../../modules/growth/growth.service';
+import { AiAnalysisService } from '../../modules/ai/ai-analysis.service';
+import { getDatabaseClient } from '../../database/client';
 import { ValidationError } from '../../utils/errors';
 
 export const growthRouter = Router({ mergeParams: true });
@@ -115,3 +117,23 @@ growthRouter.post('/explain', async (req: Request, res: Response, next: NextFunc
     next(err);
   }
 });
+
+// 8. Interactive Growth Copilot Ask AI (Phase G)
+growthRouter.post('/copilot/ask', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const question = req.body?.question as string;
+    if (!question || !question.trim()) {
+      throw new ValidationError('Question is required');
+    }
+
+    const db = getDatabaseClient();
+    const aiService = new AiAnalysisService({ db });
+    const result = await aiService.askGrowthCopilot(storeId, question);
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+

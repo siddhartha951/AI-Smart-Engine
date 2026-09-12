@@ -59,6 +59,56 @@ replenishmentRouter.put('/products/:productId', async (req: Request, res: Respon
   }
 });
 
+// POST /api/v1/dashboard/:storeId/replenishment/product-settings (Manual selection & config)
+replenishmentRouter.post('/product-settings', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = (req as any).db || getDatabaseClient();
+    const service = new ReplenishmentService({ db });
+
+    const { productId, variantId, replenishable, cycleDays, reminderDaysBefore, enabled } = req.body;
+    if (!productId) {
+      throw new ValidationError('productId is required');
+    }
+    if (cycleDays === undefined || cycleDays === null) {
+      throw new ValidationError('cycleDays is required');
+    }
+
+    const updated = await service.configureProduct(storeId, productId, {
+      variantId: variantId || '',
+      replenishable: Boolean(replenishable),
+      cycleDays: Number(cycleDays),
+      reminderDaysBefore: reminderDaysBefore !== undefined ? Number(reminderDaysBefore) : 5,
+      enabled: enabled !== undefined ? Boolean(enabled) : true,
+    });
+
+    res.json({
+      success: true,
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/v1/dashboard/:storeId/replenishment/ai-recommendations
+replenishmentRouter.get('/ai-recommendations', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = (req as any).db || getDatabaseClient();
+    const { AiAnalysisService } = await import('../../modules/ai/ai-analysis.service');
+    const aiService = new AiAnalysisService({ db });
+
+    const recommendations = await aiService.getReorderRecommendations(storeId);
+    res.json({
+      success: true,
+      data: { recommendations },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==========================================
 // 2. Replenishment Channel Settings
 // ==========================================

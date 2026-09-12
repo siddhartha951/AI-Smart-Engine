@@ -369,13 +369,42 @@ window.viewMerchant = async function(merchantId) {
   try {
     const data = (await apiFetch(`/api/v1/admin/merchants/${merchantId}`)).data;
     state.currentMerchant = data;
-    renderMerchantDetail(data);
+    const store = data.stores && data.stores[0];
+    let storeEntitlements = [];
+    if (store && store.id) {
+      try {
+        const entRes = await apiFetch(`/api/v1/admin/stores/${store.id}/features`);
+        storeEntitlements = entRes.data?.features || [];
+      } catch (e) {
+        console.warn('Failed to load store entitlements', e);
+      }
+    }
+    renderMerchantDetail(data, storeEntitlements);
     showSection('merchant-detail');
     // Fix nav highlight
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     document.querySelector('[data-section="merchant-management"]').classList.add('active');
   } catch (err) {
     showToast('Failed to load merchant: ' + err.message, 'error');
+  }
+};
+
+window.handleStoreFeatureEntitlementToggle = async function(storeId, featureKey, isChecked) {
+  try {
+    await apiFetch(`/api/v1/admin/stores/${storeId}/features/${featureKey}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: isChecked })
+    });
+    const pill = document.getElementById(`pill-feat-${featureKey}-${storeId}`);
+    if (pill) {
+      pill.textContent = isChecked ? 'ACTIVE' : 'DISABLED';
+      pill.className = `feature-status-pill ${isChecked ? 'status-pill-active' : 'status-pill-inactive'}`;
+    }
+    showToast(`Feature "${featureKey}" ${isChecked ? 'enabled' : 'disabled'}`, 'success');
+  } catch (err) {
+    showToast('Failed to update feature: ' + err.message, 'error');
+    const input = document.getElementById(`toggle-feat-${featureKey}-${storeId}`);
+    if (input) input.checked = !isChecked; // Revert
   }
 };
 
@@ -447,7 +476,7 @@ window.syncShopifyProducts = async function(storeId) {
   }
 };
 
-function renderMerchantDetail(data) {
+function renderMerchantDetail(data, storeEntitlements = []) {
   const m = data.merchant;
   const s = data.stores[0] || {};
   
@@ -492,42 +521,66 @@ function renderMerchantDetail(data) {
     </div>
   ` : '<p class="empty-state">No store connected</p>';
 
-  // Features Panel with Real iOS Sliding Switches
-  const isTrackingEnabled = s.live_tracking_enabled !== false;
-  const isAgentActive = s.agent?.is_active ?? true;
+  // Features Panel with Real Feature Entitlements Toggles
   const featuresContainer = document.getElementById('detail-features-info');
   if (featuresContainer) {
-    featuresContainer.innerHTML = s.id ? `
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-info">
-            <div class="feature-title-row">
-              <span class="feature-title">⚡ Storefront Live Telemetry & Visitor Radar</span>
-              <span id="pill-tracking-${s.id}" class="feature-status-pill ${isTrackingEnabled ? 'status-pill-active' : 'status-pill-inactive'}">${isTrackingEnabled ? 'ACTIVE' : 'DEACTIVATED'}</span>
+    if (!s.id) {
+      featuresContainer.innerHTML = '<p class="empty-state">No store available for feature configuration</p>';
+    } else if (storeEntitlements && storeEntitlements.length > 0) {
+      featuresContainer.innerHTML = `
+        <div class="features-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px;">
+          ${storeEntitlements.map(feat => `
+            <div class="feature-card" style="padding: 14px 18px; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; background: rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+              <div class="feature-info" style="flex: 1;">
+                <div class="feature-title-row" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span class="feature-title" style="font-weight: 600; font-size: 14px;">${esc(feat.name)}</span>
+                  <span id="pill-feat-${feat.key}-${s.id}" class="feature-status-pill ${feat.enabled ? 'status-pill-active' : 'status-pill-inactive'}">${feat.enabled ? 'ACTIVE' : 'DISABLED'}</span>
+                </div>
+                <div class="feature-desc" style="font-size: 12px; color: var(--text-muted); line-height: 1.4;">${esc(feat.description)}</div>
+              </div>
+              <label class="switch" title="Toggle ${esc(feat.name)}">
+                <input type="checkbox" id="toggle-feat-${feat.key}-${s.id}" ${feat.enabled ? 'checked' : ''} onchange="handleStoreFeatureEntitlementToggle('${s.id}', '${feat.key}', this.checked)">
+                <span class="slider"></span>
+              </label>
             </div>
-            <div class="feature-desc">Streams real-time active visitors, page navigation, and storefront theme Add-to-Cart events to the Merchant Live Radar.</div>
-          </div>
-          <label class="switch" title="Toggle Live Telemetry">
-            <input type="checkbox" id="toggle-tracking-${s.id}" ${isTrackingEnabled ? 'checked' : ''} onchange="handleFeatureToggle('${m.id}', '${s.id}', 'tracking', this.checked)">
-            <span class="slider"></span>
-          </label>
+          `).join('')}
         </div>
+      `;
+    } else {
+      const isTrackingEnabled = s.live_tracking_enabled !== false;
+      const isAgentActive = s.agent?.is_active ?? true;
+      featuresContainer.innerHTML = `
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-info">
+              <div class="feature-title-row">
+                <span class="feature-title">⚡ Storefront Live Telemetry & Visitor Radar</span>
+                <span id="pill-tracking-${s.id}" class="feature-status-pill ${isTrackingEnabled ? 'status-pill-active' : 'status-pill-inactive'}">${isTrackingEnabled ? 'ACTIVE' : 'DEACTIVATED'}</span>
+              </div>
+              <div class="feature-desc">Streams real-time active visitors, page navigation, and storefront theme Add-to-Cart events to the Merchant Live Radar.</div>
+            </div>
+            <label class="switch" title="Toggle Live Telemetry">
+              <input type="checkbox" id="toggle-tracking-${s.id}" ${isTrackingEnabled ? 'checked' : ''} onchange="handleFeatureToggle('${m.id}', '${s.id}', 'tracking', this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
 
-        <div class="feature-card">
-          <div class="feature-info">
-            <div class="feature-title-row">
-              <span class="feature-title">🤖 AI Conversational Assistant</span>
-              <span id="pill-agent-${s.id}" class="feature-status-pill ${isAgentActive ? 'status-pill-active' : 'status-pill-inactive'}">${isAgentActive ? 'ACTIVE' : 'PAUSED'}</span>
+          <div class="feature-card">
+            <div class="feature-info">
+              <div class="feature-title-row">
+                <span class="feature-title">🤖 AI Conversational Assistant</span>
+                <span id="pill-agent-${s.id}" class="feature-status-pill ${isAgentActive ? 'status-pill-active' : 'status-pill-inactive'}">${isAgentActive ? 'ACTIVE' : 'PAUSED'}</span>
+              </div>
+              <div class="feature-desc">Interactive on-site shopping assistant widget, automated product recommendation cards, and grounded store policies.</div>
             </div>
-            <div class="feature-desc">Interactive on-site shopping assistant widget, automated product recommendation cards, and grounded store policies.</div>
+            <label class="switch" title="Toggle AI Shopping Assistant">
+              <input type="checkbox" id="toggle-agent-${s.id}" ${isAgentActive ? 'checked' : ''} onchange="handleFeatureToggle('${m.id}', '${s.id}', 'agent', this.checked)">
+              <span class="slider"></span>
+            </label>
           </div>
-          <label class="switch" title="Toggle AI Shopping Assistant">
-            <input type="checkbox" id="toggle-agent-${s.id}" ${isAgentActive ? 'checked' : ''} onchange="handleFeatureToggle('${m.id}', '${s.id}', 'agent', this.checked)">
-            <span class="slider"></span>
-          </label>
         </div>
-      </div>
-    ` : '<p class="empty-state">No store available for feature configuration</p>';
+      `;
+    }
   }
 
   // Metrics

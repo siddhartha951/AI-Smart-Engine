@@ -794,20 +794,25 @@ When the user asks what to do next:
 
 CURRENT STATUS:
 
-PHASE 16 AI MERCHANT GROWTH COPILOT & ACTION CENTER VERIFIED & COMPLETE (INTEGRATION-FIRST IMPLEMENTATION)
-- System Integration Audit: docs/PHASE_16_INTEGRATION_AUDIT.md completed covering all 5 data flows.
-- Broken Connections Repaired:
-  * Storefront widget -> Touchpoint capture & Cart note attribute sync (`src/public/widget.js`)
-  * Cart Add -> Abandoned Cart recovery scheduling across Email & WhatsApp (`src/server/routes/widget.routes.ts`)
-  * Order Webhook -> Recovery job cancellation upon customer purchase (`src/modules/events/webhook.service.ts`)
-- Database Migration: migrations/023_growth_copilot.sql (`growth_goals`, `growth_actions`, `growth_action_history`).
-- Growth Signal Engine & Opportunity Detection: 8 deterministic rules, non-guaranteed conservative bounded opportunity estimation, dynamic merchant goal prioritization, weekly summary generator.
-- Action Center & Dashboard UI: Dedicated 🚀 Growth Copilot section with Goal selector, KPI metrics grid, Action Center with 1-click execution & dismissal, weekly performance recap, grounded AI Copilot explanation, and action audit ledger.
-- Dedicated Integration Tests: tests/integration/phase16_growth_copilot.test.ts passing 20/20 tests.
-- Full Platform Regression: 24/24 test suites, 224/224 tests passing (100%).
-- Production Build & Quality: 0 TypeScript errors (`npx tsc --noEmit`), 0 ESLint errors (`npm run lint`), clean production build (`npm run build`).
-- Documentation & ADRs: docs/PHASE_16_VERIFICATION.md, ADR-011 in docs/DECISIONS.md, and docs/DEVLOG.md complete.
-- Strict multi-tenant isolation and anti-fabrication safeguards enforced throughout.
+PHASE 17 AI INTELLIGENCE LAYER, MERCHANT AI ANALYTICS & ADMIN FEATURE ENTITLEMENTS VERIFIED & COMPLETE
+- Database Migration: migrations/024_feature_entitlements_and_ai_cache.sql (`store_feature_entitlements`, `ai_cache`).
+- Feature Entitlements Engine: 13 canonical features (`overview`, `live_pulse`, `funnel`, `catalogue`, `leads`, `email_automation`, `whatsapp`, `smart_reorder`, `ad_intelligence`, `ad_creative`, `growth_copilot`, `ai_store_analysis`, `ai_assistant`) with `enforceFeature` route middleware, admin management APIs (`GET/PUT/POST /api/v1/admin/stores/:storeId/features/*`), and Admin UI switches.
+- AI Intelligence Layer: Bounded multi-tenant context assembly (`AiContextService`), PostgreSQL caching with SHA-256 data hash invalidation (`AiCacheService`), budget-guarded JSON/text generation (`AiOrchestratorService`), and 10 domain intelligence operations in `AiAnalysisService`.
+- Multi-Tab Merchant Dashboard AI:
+  * Overview: AI Store Insights card (What, Why, Next Actions) + Comprehensive Store Deep Audit modal.
+  * Catalogue: AI Catalogue Quality Audit banner + "Improve with AI" single-product modal.
+  * Live Pulse & Funnel: Funnel AI Drop-off deep dive + Ask Funnel AI interactive Q&A.
+  * Email Automation: "Create Email with AI" card + lifecycle email generator modal (zero auto-send).
+  * Smart Reorder: AI Consumable Recommendations + product cadence settings modal.
+  * Ad Intelligence: AI Ad Performance Audit + Ask Ad AI grounded Q&A.
+  * Client-side route blocking and automatic navigation hiding for disabled features.
+- Dedicated Integration Tests:
+  * `tests/integration/phase17_feature_entitlements.test.ts`: 8/8 passing.
+  * `tests/integration/phase17_ai_intelligence.test.ts`: 13/13 passing.
+- Full Platform Regression: 26/26 test suites passing (245/245 tests passing).
+- Production Build & Quality: 0 TypeScript errors (`npm run type-check`), 0 ESLint errors (`npm run lint`), clean production build (`npm run build`).
+- Documentation & ADRs: ADR-012 in `docs/DECISIONS.md`, `docs/DEVLOG.md`, `docs/AI_INTELLIGENCE_VERIFICATION.md` complete.
+- Strict multi-tenant isolation, safe mock fallback, zero credential exposure, and anti-fabrication safeguards enforced throughout.
 
 STOPPED. Do NOT start next phase without explicit instruction.
 
@@ -822,6 +827,7 @@ STOPPED. Do NOT start next phase without explicit instruction.
 - Phase 14: Auto Replenishment & Reorder Reminders Engine (Complete & Verified)
 - Phase 15: Multi-Touch Ad Intelligence & Attribution Engine (Complete & Verified)
 - Phase 16: AI Merchant Growth Copilot & Action Center (Complete & Verified)
+- Phase 17: AI Intelligence Layer, Merchant AI Analytics & Admin Feature Entitlements (Complete & Verified)
 
 
 ==================================================

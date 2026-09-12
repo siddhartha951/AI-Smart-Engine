@@ -14,6 +14,10 @@ import { resolveProductImageUrl } from '../../providers/shopify/shopify.utils';
 import { replenishmentRouter } from './replenishment.routes';
 import { attributionRouter } from './attribution.routes';
 import { growthRouter } from './growth.routes';
+import { aiRouter } from './ai.routes';
+import { enforceFeature } from '../middlewares/entitlement.middleware';
+import { FeatureKey } from '../../modules/entitlements/entitlement.types';
+import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
 
 const router = Router();
 
@@ -35,8 +39,27 @@ router.get('/stores', async (req: Request, res: Response, next) => {
   }
 });
 
+// Feature Entitlements endpoint for frontend checks
+router.get('/:storeId/features', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+    const repo = new EntitlementRepository(db);
+    const features = await repo.getStoreEntitlements(storeId);
+    res.json({
+      success: true,
+      data: {
+        store_id: storeId,
+        features,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // 1. Overview
-router.get('/:storeId/overview', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/overview', enforceStoreAccess, enforceFeature(FeatureKey.OVERVIEW), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -358,7 +381,7 @@ router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, r
 });
 
 // 3.1 Synced Products Catalog
-router.get('/:storeId/products', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/products', enforceStoreAccess, enforceFeature(FeatureKey.CATALOGUE), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -400,7 +423,7 @@ router.get('/:storeId/products', enforceStoreAccess, async (req: Request, res: R
 });
 
 // 4.1 Leads & Opt-ins Reporting with Conversion Tracking
-router.get('/:storeId/leads', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/leads', enforceStoreAccess, enforceFeature(FeatureKey.LEADS), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -566,7 +589,7 @@ router.get('/:storeId/leads/export', enforceStoreAccess, async (req: Request, re
 });
 
 // 5. Email Automation
-router.get('/:storeId/email', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/email', enforceStoreAccess, enforceFeature(FeatureKey.EMAIL_AUTOMATION), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -730,7 +753,7 @@ router.delete('/:storeId/email/domains/:domainId', enforceStoreAccess, async (re
 });
 
 // 6. Live Analytics & Funnel Tracking (Phase 2)
-router.get('/:storeId/analytics/live', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/analytics/live', enforceStoreAccess, enforceFeature(FeatureKey.LIVE_PULSE), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -757,7 +780,7 @@ router.get('/:storeId/analytics/live', enforceStoreAccess, async (req: Request, 
   }
 });
 
-router.get('/:storeId/analytics/funnel', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/analytics/funnel', enforceStoreAccess, enforceFeature(FeatureKey.FUNNEL), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const days = parseInt((req.query.days as string) || '7', 10);
@@ -798,7 +821,7 @@ router.get('/:storeId/analytics/products', enforceStoreAccess, async (req: Reque
 // ==========================================
 
 // 8.1 Available Catalogue Products for Ad Creative Studio
-router.get('/:storeId/ad-creatives/products', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/ad-creatives/products', enforceStoreAccess, enforceFeature(FeatureKey.AD_CREATIVE), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -1015,7 +1038,7 @@ router.delete('/:storeId/ad-creatives/saved/:id', enforceStoreAccess, async (req
 // ==========================================
 
 // 9.1 WhatsApp Configuration Status
-router.get('/:storeId/whatsapp/config', enforceStoreAccess, async (req: Request, res: Response, next) => {
+router.get('/:storeId/whatsapp/config', enforceStoreAccess, enforceFeature(FeatureKey.WHATSAPP), async (req: Request, res: Response, next) => {
   try {
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
@@ -1338,13 +1361,16 @@ router.post('/:storeId/whatsapp/recovery/:id/process', enforceStoreAccess, async
 });
 
 // 10. Auto Replenishment & Reorder Reminders
-router.use('/:storeId/replenishment', enforceStoreAccess, replenishmentRouter);
+router.use('/:storeId/replenishment', enforceStoreAccess, enforceFeature(FeatureKey.SMART_REORDER), replenishmentRouter);
 
 // 11. Multi-Touch Ad Intelligence & Attribution Engine
-router.use('/:storeId/attribution', enforceStoreAccess, attributionRouter);
+router.use('/:storeId/attribution', enforceStoreAccess, enforceFeature(FeatureKey.AD_INTELLIGENCE), attributionRouter);
 
 // 12. AI Merchant Growth Copilot & Action Center
-router.use('/:storeId/growth', enforceStoreAccess, growthRouter);
+router.use('/:storeId/growth', enforceStoreAccess, enforceFeature(FeatureKey.GROWTH_COPILOT), growthRouter);
+
+// 13. AI Intelligence Layer & Domain Analytics
+router.use('/:storeId/ai', enforceStoreAccess, aiRouter);
 
 export default router;
 

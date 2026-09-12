@@ -262,6 +262,41 @@
               </div>
             </div>
           </div>
+
+          <!-- AI Store Insights -->
+          <div class="glass-card" style="margin-top: 24px; padding: 22px; border: 1px solid rgba(99,102,241,0.25); background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(15,23,42,0.4)); border-radius: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 22px;">✨</span>
+                <div>
+                  <h3 style="margin: 0; font-size: 16px; color: #a5b4fc;">AI Store Intelligence & Action Insights</h3>
+                  <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Grounded diagnostics based on active visitors, funnel conversions, and marketing efficiency.</p>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button id="btn-refresh-store-insights" class="btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px;">🔄 Refresh Insights</button>
+                <button id="btn-run-full-audit" class="btn-primary btn-sm" style="padding: 6px 14px; font-size: 12px;">🚀 Run Full Store Audit</button>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+              <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                <h4 style="margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; color: #38bdf8; font-weight: 600;">What is Happening</h4>
+                <p id="overview-ai-happening" style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-main);">Loading store telemetry analysis...</p>
+              </div>
+              <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                <h4 style="margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; color: #f59e0b; font-weight: 600;">Why It Is Happening</h4>
+                <p id="overview-ai-why" style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-main);">Analyzing catalog, funnel, and channel drivers...</p>
+              </div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #10b981; font-weight: 600;">Top 3 Recommended Next Actions</h4>
+              <div id="overview-ai-actions" style="display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-size: 13px; color: var(--text-muted);">Fetching prioritized actions...</span>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- 1.5 Live Pulse & Funnel Section (Phase 2) -->
@@ -370,6 +405,19 @@
                 <div class="insights-body" id="funnel-insights-content">
                   <div class="insight-placeholder">Analyzing store visitor patterns...</div>
                 </div>
+              </div>
+
+              <!-- Ask AI About Funnel Drop-offs -->
+              <div class="glass-card" style="margin-top: 16px; padding: 16px; border: 1px solid rgba(99,102,241,0.25); border-radius: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <h4 style="margin: 0; font-size: 13px; color: #a5b4fc;">🤖 Ask AI About This Funnel</h4>
+                  <button id="btn-run-funnel-ai" class="btn-secondary btn-sm" style="padding: 3px 8px; font-size: 11px;">✨ Drop-Off Deep Dive</button>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="funnel-ai-question" class="input-field" placeholder="e.g. Why is the drop-off highest between cart and purchase?" style="flex: 1; font-size: 12px; padding: 7px 10px;" />
+                  <button id="btn-ask-funnel-ai" class="btn-primary btn-sm" style="padding: 7px 14px; font-size: 12px;">Ask AI</button>
+                </div>
+                <div id="funnel-ai-answer-box" class="hidden" style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(99,102,241,0.2); font-size: 13px; line-height: 1.5;"></div>
               </div>
             </div>
 
@@ -656,10 +704,20 @@
             <p>Last Product Sync: <span id="shopify-last-sync">--</span></p>
             <p>Credentials Configured: <span id="shopify-creds">--</span></p>
           </div>
-          <div class="action-buttons">
+          <div class="action-buttons" style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button id="test-connection-btn" class="btn-secondary">Test Connection</button>
             <button id="sync-products-btn" class="btn-primary">Sync Products</button>
+            <button id="btn-audit-catalogue" class="btn-secondary" style="border-color: #6366f1; color: #a5b4fc;">✨ AI Catalogue Audit</button>
             <button class="btn-secondary outline" onclick="window.location.href='mailto:support@platform.com'">Request Admin Support</button>
+          </div>
+
+          <!-- AI Catalogue Audit Summary Banner -->
+          <div id="catalogue-ai-banner" class="glass-card hidden" style="margin-top: 20px; padding: 18px; border: 1px solid rgba(99,102,241,0.3); background: rgba(99,102,241,0.07); border-radius: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h4 style="margin: 0; color: #a5b4fc; font-size: 15px;">✨ AI Listing Quality Score: <span id="catalogue-quality-score">--</span>/100</h4>
+              <button id="btn-close-catalogue-ai" class="btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;">✕</button>
+            </div>
+            <p id="catalogue-ai-summary" style="margin: 0; font-size: 13px; color: var(--text-main); line-height: 1.5;">--</p>
           </div>
 
           <!-- Synced Product Catalog Display -->
@@ -741,6 +799,22 @@
             <div class="form-group row">
               <input type="email" id="test-email-input" placeholder="test@yourdomain.com">
               <button id="send-test-email-btn" class="btn-secondary">Send Preview Email</button>
+            </div>
+          </div>
+
+          <!-- AI Email Studio Card -->
+          <div class="glass-card" style="margin-top: 24px; padding: 22px; border: 1px solid rgba(99,102,241,0.3); background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(15,23,42,0.5)); border-radius: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <h3 style="margin: 0; font-size: 16px; color: #a5b4fc;">✉️ Create High-Converting Email with AI</h3>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Generate conversion-focused email copy tailored to 13 e-commerce lifecycle moments.</p>
+              </div>
+              <button type="button" id="btn-open-email-ai-modal" class="btn-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px;">
+                <span>✨</span> Open Email Studio
+              </button>
+            </div>
+            <div style="font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+              <span>🔒</span> <strong>Safe Draft Mode:</strong> AI-generated emails are strictly saved as drafts and will NEVER be automatically sent to customers without merchant confirmation.
             </div>
           </div>
         </section>
@@ -1284,13 +1358,15 @@
 
           <!-- 10.3 Replenishable Products Catalog Table -->
           <div class="card glass-panel" style="margin-top: 24px;">
-            <div class="card-header-flex">
+            <div class="card-header-flex" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
               <div>
                 <h3>📦 Replenishable Products Catalog</h3>
                 <p class="card-subtitle">Mark consumable items as replenishable, configure lifecycle days (e.g. 30, 45, 60, 90), and reminder lead time.</p>
               </div>
-              <div class="search-bar">
-                <input type="text" id="rep-product-search" placeholder="Filter products..." class="input-field" style="width: 220px;"/>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="text" id="rep-product-search" placeholder="Filter products..." class="input-field" style="width: 180px;"/>
+                <button id="btn-ai-consumable-suggestions" class="btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px;">✨ AI Suggestions</button>
+                <button id="btn-open-add-rep-modal" class="btn-primary btn-sm" style="padding: 6px 14px; font-size: 12px;">+ Add Product</button>
               </div>
             </div>
 
@@ -1513,6 +1589,49 @@
               </table>
             </div>
           </div>
+
+          <!-- Section 7: AI Ad Analysis -->
+          <div class="card glass-card" style="margin-top: 24px; padding: 22px; border: 1px solid rgba(99,102,241,0.25); border-radius: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+              <div>
+                <h3 style="margin: 0; color: #a5b4fc; font-size: 16px;">✨ AI Multi-Touch Ad Intelligence Analysis</h3>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Objective evaluation of spend efficiency, channel return, and scaling opportunities.</p>
+              </div>
+              <button id="btn-run-ad-ai-analysis" class="btn-primary btn-sm" style="padding: 7px 16px; font-size: 12px;">Run AI Ad Audit 🎯</button>
+            </div>
+            <div id="ad-ai-results-grid" class="hidden" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+              <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); padding: 14px; border-radius: 8px;">
+                <h4 style="margin: 0 0 6px 0; color: #34d399; font-size: 13px;">🟢 What is Working</h4>
+                <ul id="ad-ai-working" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              </div>
+              <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); padding: 14px; border-radius: 8px;">
+                <h4 style="margin: 0 0 6px 0; color: #f87171; font-size: 13px;">🔴 What is Not Working</h4>
+                <ul id="ad-ai-not-working" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              </div>
+              <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); padding: 14px; border-radius: 8px;">
+                <h4 style="margin: 0 0 6px 0; color: #fbbf24; font-size: 13px;">💡 Why It Happens</h4>
+                <ul id="ad-ai-why" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              </div>
+              <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); padding: 14px; border-radius: 8px;">
+                <h4 style="margin: 0 0 6px 0; color: #818cf8; font-size: 13px;">🧪 What to Test Next</h4>
+                <ul id="ad-ai-test-next" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              </div>
+            </div>
+            <div id="ad-ai-placeholder" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px;">
+              Click "Run AI Ad Audit" to analyze ad spend attribution, ROAS efficiency, and channel distribution.
+            </div>
+          </div>
+
+          <!-- Section 8: Ask AI About Ads -->
+          <div class="card glass-card" style="margin-top: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;">
+            <h4 style="margin: 0 0 6px 0; font-size: 14px; color: var(--text-main);">💬 Ask AI About Your Ads</h4>
+            <p style="margin: 0 0 12px 0; font-size: 12px; color: var(--text-muted);">Get instant answers about channel performance, spend distribution, or customer attribution.</p>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="ad-ai-question-input" class="input-field" placeholder="e.g. Which platform drove our highest ROAS this week?" style="flex: 1;" />
+              <button id="btn-ask-ad-ai" class="btn-primary btn-sm" style="padding: 7px 16px; font-size: 12px;">Ask AI</button>
+            </div>
+            <div id="ad-ai-question-answer" class="hidden" style="margin-top: 12px; padding: 14px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(99,102,241,0.2); font-size: 13px; line-height: 1.6;"></div>
+          </div>
         </section>
       </main>
     </div>
@@ -1597,6 +1716,284 @@
       </div>
       <div id="journey-timeline-container" style="max-height: 400px; overflow-y: auto; padding-left: 8px;">
         <!-- Chronological timeline items inserted here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Store Full AI Audit Modal -->
+  <div id="store-audit-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">🔍 Comprehensive AI Store Audit</h3>
+        <button id="close-store-audit-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+      
+      <!-- Score Meters -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px;">
+        <div class="stat-card" style="text-align: center; padding: 14px;">
+          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Overall Health</span>
+          <p id="audit-overall-score" style="font-size: 28px; font-weight: 700; color: #818cf8; margin: 4px 0 0 0;">--</p>
+        </div>
+        <div class="stat-card" style="text-align: center; padding: 14px;">
+          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Conversion Health</span>
+          <p id="audit-conv-score" style="font-size: 28px; font-weight: 700; color: #34d399; margin: 4px 0 0 0;">--</p>
+        </div>
+        <div class="stat-card" style="text-align: center; padding: 14px;">
+          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Listing Quality</span>
+          <p id="audit-listing-score" style="font-size: 28px; font-weight: 700; color: #38bdf8; margin: 4px 0 0 0;">--</p>
+        </div>
+        <div class="stat-card" style="text-align: center; padding: 14px;">
+          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Traffic & Ad Quality</span>
+          <p id="audit-ad-score" style="font-size: 28px; font-weight: 700; color: #f59e0b; margin: 4px 0 0 0;">--</p>
+        </div>
+      </div>
+
+      <div style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06);">
+        <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #a5b4fc; text-transform: uppercase;">Executive Summary</h4>
+        <p id="audit-summary-text" style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-main);">Running multi-dimensional store audit...</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+        <div style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #f87171; text-transform: uppercase;">Top Friction Points</h4>
+          <ul id="audit-friction-list" style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--text-main);"></ul>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+          <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #34d399; text-transform: uppercase;">Step-by-Step Recommendations</h4>
+          <div id="audit-rec-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Product AI Improvement Modal -->
+  <div id="product-improvement-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">✨ Product Listing AI Optimization</h3>
+          <span id="improve-product-subtitle" style="font-size: 12px; color: var(--text-muted);"></span>
+        </div>
+        <button id="close-product-improvement-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+
+      <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); padding: 12px 16px; border-radius: 8px; font-size: 12px; color: #a5b4fc; margin-bottom: 16px;">
+        ℹ️ <strong>Shopify Protection:</strong> These AI optimizations are suggestions. You can copy any improved fields directly to your Shopify Admin.
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Improved Product Title</label>
+            <button class="btn-secondary btn-sm" onclick="copyText('improve-title-val')" style="padding: 2px 8px; font-size: 11px;">Copy</button>
+          </div>
+          <input type="text" id="improve-title-val" class="input-field" style="width: 100%;" readonly />
+        </div>
+
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Improved Description</label>
+            <button class="btn-secondary btn-sm" onclick="copyText('improve-desc-val')" style="padding: 2px 8px; font-size: 11px;">Copy</button>
+          </div>
+          <textarea id="improve-desc-val" class="input-field" rows="4" style="width: 100%; font-size: 12px; line-height: 1.5;" readonly></textarea>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">High-Converting Selling Points</label>
+          <ul id="improve-selling-points" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.6;"></ul>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">Recommended Customer FAQs</label>
+          <div id="improve-faq-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">Discovery & Search Tags</label>
+          <div id="improve-tags-list" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Email with AI Modal -->
+  <div id="ai-email-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 750px; width: 90%; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">✉️ Create Email with AI</h3>
+        <button id="close-ai-email-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+
+      <form id="ai-email-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;">
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Email Type (13 Lifecycle Moments)</label>
+          <select id="ai-email-type" class="input-field" style="width: 100%; margin-top: 4px;">
+            <option value="welcome">👋 Welcome New Customer</option>
+            <option value="abandoned_cart">🛒 Abandoned Cart Recovery</option>
+            <option value="browse_abandonment">👀 Browse Abandonment</option>
+            <option value="replenishment">🔄 Replenishment / Reorder</option>
+            <option value="post_purchase">📦 Post-Purchase Thank You</option>
+            <option value="winback">💌 Winback Inactive Customer</option>
+            <option value="flash_sale">⚡ Flash Sale / Limited Time</option>
+            <option value="seasonal">🍂 Seasonal / Holiday Offer</option>
+            <option value="review_request">⭐ Product Review Request</option>
+            <option value="new_arrival">✨ New Arrivals Announcement</option>
+            <option value="vip_appreciation">👑 VIP Customer Appreciation</option>
+            <option value="cross_sell">🛍️ Complementary Cross-Sell</option>
+            <option value="newsletter">📰 Store Newsletter / Update</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Brand Tone</label>
+          <select id="ai-email-tone" class="input-field" style="width: 100%; margin-top: 4px;">
+            <option value="friendly">Friendly & Warm</option>
+            <option value="urgent">Urgent & Time-Sensitive</option>
+            <option value="premium">Premium & Elegant</option>
+            <option value="playful">Playful & Quirky</option>
+            <option value="direct">Direct & Benefit-Focused</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Primary Goal</label>
+          <select id="ai-email-goal" class="input-field" style="width: 100%; margin-top: 4px;">
+            <option value="conversion">Immediate Checkout Conversion</option>
+            <option value="engagement">Brand Engagement</option>
+            <option value="reorder">Repeat Purchase / Reorder</option>
+            <option value="feedback">Feedback & Review Collection</option>
+            <option value="education">Customer Education</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Length</label>
+          <select id="ai-email-length" class="input-field" style="width: 100%; margin-top: 4px;">
+            <option value="short">Short & Punchy (under 100 words)</option>
+            <option value="medium" selected>Medium (100 - 200 words)</option>
+            <option value="detailed">Detailed & Story-Driven (200+ words)</option>
+          </select>
+        </div>
+
+        <div style="grid-column: span 2;">
+          <label style="font-size: 12px; color: var(--text-muted);">Custom Context / Offer Details (Optional)</label>
+          <input type="text" id="ai-email-context" class="input-field" placeholder="e.g. Include 10% off code SAVE10, highlight organic skincare benefits..." style="width: 100%; margin-top: 4px;" />
+        </div>
+
+        <div style="grid-column: span 2; text-align: right;">
+          <button type="submit" id="btn-generate-ai-email" class="btn-primary" style="padding: 8px 18px;">⚡ Generate Email Draft</button>
+        </div>
+      </form>
+
+      <!-- AI Email Preview Output -->
+      <div id="ai-email-result" class="hidden" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="margin: 0; color: #10b981; font-size: 14px;">✅ Generated Draft</h4>
+            <span class="badge" style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3);">Draft Only — Not Sent</span>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <strong style="font-size: 12px; color: var(--text-muted);">Subject:</strong>
+            <span id="ai-email-subject" style="font-size: 14px; color: var(--text-main); font-weight: 600; margin-left: 8px;"></span>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <strong style="font-size: 12px; color: var(--text-muted);">Preview Text:</strong>
+            <span id="ai-email-preview" style="font-size: 13px; color: var(--text-muted); margin-left: 8px;"></span>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <strong style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">Email Body:</strong>
+            <div id="ai-email-body" style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; white-space: pre-line;"></div>
+          </div>
+
+          <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+            <span class="btn-primary btn-sm" id="ai-email-cta-btn" style="pointer-events: none;">Shop Now</span>
+            <span id="ai-email-cta-url" style="font-size: 12px; color: var(--text-muted);"></span>
+          </div>
+
+          <div>
+            <strong style="font-size: 12px; color: #a5b4fc; display: block; margin-bottom: 6px;">Alternative Subject Lines (for A/B Testing):</strong>
+            <ul id="ai-email-alt-subjects" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-muted); line-height: 1.6;"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart Reorder Add Product Modal -->
+  <div id="reorder-add-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">📦 Configure Replenishable Product</h3>
+        <button id="close-reorder-add-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+
+      <!-- AI Consumable Suggestions Section -->
+      <div id="reorder-ai-suggestions-box" class="glass-card hidden" style="margin-bottom: 20px; padding: 16px; border: 1px solid rgba(99,102,241,0.3); background: rgba(99,102,241,0.06); border-radius: 8px;">
+        <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #a5b4fc;">✨ AI Consumable Product Recommendations</h4>
+        <p style="margin: 0 0 12px 0; font-size: 12px; color: var(--text-muted);">Products identified from your catalog with high repeat-purchase potential.</p>
+        <div id="reorder-ai-suggestions-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+      </div>
+
+      <form id="reorder-add-form" style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted);">Select Product from Catalog</label>
+          <select id="reorder-select-product" class="input-field" style="width: 100%; margin-top: 4px;" required>
+            <option value="">Choose a product...</option>
+          </select>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-size: 12px; color: var(--text-muted);">Cycle Length (Days)</label>
+            <input type="number" id="reorder-cycle-days" class="input-field" min="7" max="365" value="30" required style="width: 100%; margin-top: 4px;" />
+          </div>
+          <div>
+            <label style="font-size: 12px; color: var(--text-muted);">Reminder Lead Time (Days Before)</label>
+            <input type="number" id="reorder-reminder-days" class="input-field" min="1" max="30" value="5" required style="width: 100%; margin-top: 4px;" />
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="reorder-is-active-toggle" checked />
+          <label for="reorder-is-active-toggle" style="font-size: 13px; color: var(--text-main);">Enable automatic replenishment reminders for this product</label>
+        </div>
+
+        <div style="text-align: right; margin-top: 8px;">
+          <button type="submit" class="btn-primary">Save Replenishment Settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Growth Copilot Ask Modal -->
+  <div id="copilot-ask-modal" class="modal-overlay hidden">
+    <div class="modal glass-panel" style="max-width: 650px; width: 90%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">🤖 Ask Growth Copilot</h3>
+        <button id="close-copilot-ask-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+      </div>
+
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+        Ask any question backed by your store's real conversions, marketing attribution, catalog data, and recovery telemetry.
+      </p>
+
+      <!-- Quick chips -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+        <button class="copilot-chip btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-q="Why did sales drop yesterday?">📉 Why did sales drop?</button>
+        <button class="copilot-chip btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-q="What is our best-performing marketing channel?">🎯 Best-performing channel?</button>
+        <button class="copilot-chip btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-q="Which products should I put on sale or promote?">🛍️ Products to promote?</button>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <input type="text" id="copilot-ask-input" class="input-field" placeholder="Ask your question..." style="flex: 1;" />
+        <button id="btn-submit-copilot-ask" class="btn-primary btn-sm" style="padding: 8px 18px;">Ask</button>
+      </div>
+
+      <div id="copilot-ask-result-box" class="hidden" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(99,102,241,0.25); border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.6;">
+        <!-- Copilot answer here -->
       </div>
     </div>
   </div>

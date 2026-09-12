@@ -125,3 +125,20 @@
   5. Action Center Execution & Audit Trail: Created `growth_actions` and `growth_action_history` tables to track status transitions (`pending`, `in_progress`, `completed`, `dismissed`) with user ID attribution and audit notes.
   6. Zero Fabricated Metrics: Opportunity estimates use documented conservative formulas and prominently disclaim revenue guarantees. The AI explanation endpoint (`/explain`) is strictly grounded in verified database numbers.
 - **Consequences**: Closed-loop platform integration, deterministic business logic, safe AI co-piloting, and an actionable merchant workflow with zero revenue fabrication.
+
+---
+
+## ADR-012: AI Intelligence Layer, Domain Analytics & Admin Feature Entitlements Architecture
+- **Context**: The platform contained rich telemetry across catalog, live visitor radar, email automation, replenishment reorders, ad attribution, and growth copilot, but lacked:
+  1. A unified AI Intelligence Layer providing grounded, actionable merchant insights across every dashboard tab.
+  2. Granular Admin Feature Entitlements allowing platform administrators to control, enable, or disable individual features on a per-store basis with full auditability.
+  3. AI response caching and budget guards protecting against redundant LLM token consumption.
+- **Decision**:
+  1. **Canonical 13-Feature Catalog**: Defined canonical feature keys (`overview`, `live_pulse`, `funnel`, `catalogue`, `leads`, `email_automation`, `whatsapp`, `smart_reorder`, `ad_intelligence`, `ad_creative`, `growth_copilot`, `ai_store_analysis`, `ai_assistant`) with granular metadata and default enablement states.
+  2. **Multi-Tenant Feature Entitlement Isolation**: Persisted in `store_feature_entitlements` table keyed by `(store_id, feature_key)` with index on `store_id`. Enforced via `enforceFeature(key)` middleware across all dashboard and AI routes, returning HTTP 403 Forbidden if disabled.
+  3. **Platform Admin Entitlement Controls**: Admin endpoints (`GET/PUT/POST /api/v1/admin/stores/:storeId/features/*`) allow individual and bulk feature toggling with audit logging in `audit_logs` table (`UPDATE_FEATURE_ENTITLEMENT`). Admin frontend renders live toggle switches in merchant details.
+  4. **Scoped Context Assembly (`AiContextService`)**: Gathers bounded store context (catalog summary, policies, visitor counts, funnel metrics, attribution revenue, ad spend) strictly scoped by `store_id` without exposing tokens or credentials.
+  5. **Structured Output & Schema Enforcement**: All AI domain operations are governed by Zod schemas and validated before returning to clients (`StoreAnalysisSchema`, `OverviewInsightsSchema`, `CatalogueAnalysisSchema`, `ProductSuggestionsSchema`, `FunnelAnalysisSchema`, `FunnelAskSchema`, `EmailGenerationResultSchema`, `ReorderRecommendationsListSchema`, `AdAnalysisSchema`, `AdAskSchema`, `CopilotAskSchema`).
+  6. **Multi-Tenant Database Caching (`ai_cache`)**: Caches heavy AI analysis in PostgreSQL with SHA-256 data hashing and TTL expiration (1–2 hours). Supports manual merchant cache refresh (`forceRefresh = true`).
+  7. **Strict Anti-Fabrication Safeguards**: Where real data is absent or sparse (e.g. ad spend), clean connect/empty states are returned without hallucinating ad impressions, clicks, or revenue.
+- **Consequences**: Fine-grained merchant feature access control, sub-second cached AI analytics responses, 0 token waste, and complete multi-tenant isolation across all 13 core modules.

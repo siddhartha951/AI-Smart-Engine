@@ -425,5 +425,98 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
       };
     }
   }
+
+  async generateStructuredJson<T>(
+    prompt: string,
+    schema: any,
+    options?: any
+  ): Promise<{ data: T; input_tokens: number; output_tokens: number; estimated_cost_usd: number; model: string }> {
+    const env = getEnvConfig();
+    const model = env.OPENAI_MODEL || 'gpt-4o-mini';
+    const temperature = options?.temperature ?? 0.3;
+    const systemPrompt =
+      options?.systemPrompt ||
+      'You are an expert e-commerce intelligence AI. You MUST reply with valid JSON matching the requested schema. Ground all recommendations strictly in provided data and never fabricate metrics.';
+
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ];
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model,
+        messages,
+        temperature,
+        response_format: { type: 'json_object' },
+      });
+
+      const choice = response.choices[0];
+      const raw = choice.message.content || '{}';
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err: any) {
+        throw new Error(`Failed to parse AI response as JSON: ${err.message}`);
+      }
+
+      const validated = schema.parse ? schema.parse(parsed) : parsed;
+      const inputTokens = response.usage?.prompt_tokens || 0;
+      const outputTokens = response.usage?.completion_tokens || 0;
+      const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
+
+      return {
+        data: validated as T,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        estimated_cost_usd: costUsd,
+        model,
+      };
+    } catch (err: any) {
+      logger.error('OpenAiProvider.generateStructuredJson error:', err);
+      throw err;
+    }
+  }
+
+  async generateText(
+    prompt: string,
+    options?: any
+  ): Promise<{ text: string; input_tokens: number; output_tokens: number; estimated_cost_usd: number; model: string }> {
+    const env = getEnvConfig();
+    const model = env.OPENAI_MODEL || 'gpt-4o-mini';
+    const temperature = options?.temperature ?? 0.7;
+    const systemPrompt = options?.systemPrompt || 'You are an expert e-commerce intelligence AI.';
+
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ];
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model,
+        messages,
+        temperature,
+      });
+
+      const choice = response.choices[0];
+      const text = choice.message.content || '';
+      const inputTokens = response.usage?.prompt_tokens || 0;
+      const outputTokens = response.usage?.completion_tokens || 0;
+      const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
+
+      return {
+        text,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        estimated_cost_usd: costUsd,
+        model,
+      };
+    } catch (err: any) {
+      logger.error('OpenAiProvider.generateText error:', err);
+      throw err;
+    }
+  }
 }
+
 

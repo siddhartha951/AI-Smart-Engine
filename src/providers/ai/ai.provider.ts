@@ -88,6 +88,29 @@ export interface AdImageGenerationResult {
   notice?: string;
 }
 
+export interface StructuredAiOptions {
+  systemPrompt?: string;
+  modelTier?: 'fast' | 'analysis' | 'smart';
+  temperature?: number;
+  storeId?: string;
+}
+
+export interface StructuredAiResult<T> {
+  data: T;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+  model: string;
+}
+
+export interface TextAiResult {
+  text: string;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+  model: string;
+}
+
 export interface IAiProvider {
   generateResponse(
     chatHistory: ChatMessage[],
@@ -101,5 +124,17 @@ export interface IAiProvider {
   generateAdImage(
     context: AdImageContext
   ): Promise<AdImageGenerationResult>;
+
+  generateStructuredJson<T>(
+    prompt: string,
+    schema: any,
+    options?: StructuredAiOptions
+  ): Promise<StructuredAiResult<T>>;
+
+  generateText(
+    prompt: string,
+    options?: StructuredAiOptions
+  ): Promise<TextAiResult>;
 }
+
 
