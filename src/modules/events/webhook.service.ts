@@ -128,6 +128,15 @@ export class WebhookService {
         }
       }
 
+      // Auto Replenishment & Reorder Engine (Phase 14)
+      try {
+        const { ReplenishmentService } = await import('../replenishment/replenishment.service');
+        const replenishService = new ReplenishmentService({ db });
+        await replenishService.handleOrderCompleted(storeId, orderData, visitorId);
+      } catch (repErr) {
+        logger.warn(`Failed to process replenishment schedules for store ${storeId}: ${repErr}`);
+      }
+
       logger.info(`Processed order webhook for store ${storeId}, order ${orderData.order_number}, utm_source: ${utmSource}`);
     } catch (err) {
       logger.error('Error processing order webhook', err);

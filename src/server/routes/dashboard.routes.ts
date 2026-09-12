@@ -11,6 +11,7 @@ import { WhatsAppRepository } from '../../modules/whatsapp/whatsapp.repository';
 import { AppError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import { resolveProductImageUrl } from '../../providers/shopify/shopify.utils';
+import { replenishmentRouter } from './replenishment.routes';
 
 const router = Router();
 
@@ -1333,6 +1334,9 @@ router.post('/:storeId/whatsapp/recovery/:id/process', enforceStoreAccess, async
     next(err);
   }
 });
+
+// 10. Auto Replenishment & Reorder Reminders
+router.use('/:storeId/replenishment', enforceStoreAccess, replenishmentRouter);
 
 export default router;
 

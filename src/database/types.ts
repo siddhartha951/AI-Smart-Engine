@@ -324,4 +324,57 @@ export interface WhatsAppWebhookEvent {
   created_at: Date;
 }
 
+export interface ReplenishmentProductSettings {
+  id: string;
+  store_id: string;
+  product_id: string;
+  variant_id: string;
+  replenishable: boolean;
+  cycle_days: number;
+  reminder_days_before: number;
+  enabled: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ReplenishmentSchedule {
+  id: string;
+  store_id: string;
+  visitor_id: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+  order_id: string;
+  order_number: string | null;
+  product_id: string;
+  variant_id: string;
+  product_title: string;
+  product_image_url: string;
+  product_price: number;
+  currency: string;
+  purchased_at: Date;
+  cycle_days: number;
+  expected_reorder_at: Date;
+  reminder_at: Date;
+  status: 'pending' | 'sent' | 'suppressed' | 'repurchased' | 'cancelled';
+  channel: 'email' | 'whatsapp' | 'both';
+  sent_at: Date | null;
+  sent_channel: string | null;
+  reorder_checkout_url: string | null;
+  cancel_reason: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ReplenishmentChannelSettings {
+  id: string;
+  store_id: string;
+  email_enabled: boolean;
+  whatsapp_enabled: boolean;
+  discount_code: string;
+  discount_percentage: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+
 

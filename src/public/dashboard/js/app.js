@@ -55,7 +55,8 @@ const sections = {
   'shopify-connection': document.getElementById('shopify-connection'),
   'ad-creative-studio': document.getElementById('ad-creative-studio'),
   'whatsapp-growth': document.getElementById('whatsapp-growth'),
-  'email-automation': document.getElementById('email-automation')
+  'email-automation': document.getElementById('email-automation'),
+  'reorder-reminders': document.getElementById('reorder-reminders')
 };
 
 let adStudioState = {
@@ -115,6 +116,9 @@ function setupEventListeners() {
 
   // WhatsApp Growth Engine controls
   setupWhatsAppEventListeners();
+
+  // Smart Reorder Reminders controls (Phase 14)
+  setupReorderRemindersEventListeners();
 
   // Login
   document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -716,6 +720,11 @@ async function loadSectionData(section) {
 
     if (section === 'whatsapp-growth') {
       await loadWhatsAppGrowthData();
+      return;
+    }
+
+    if (section === 'reorder-reminders') {
+      await loadReorderRemindersData();
       return;
     }
 
@@ -2633,4 +2642,316 @@ async function revokeWhatsAppConsent(consentId) {
     showToast(err.message, true);
   }
 }
+
+// =======================================================
+// Phase 14: Auto Replenishment & Reorder Reminders Logic
+// =======================================================
+
+function setupReorderRemindersEventListeners() {
+  const btnRunWorker = document.getElementById('btn-run-reorder-worker');
+  if (btnRunWorker) {
+    btnRunWorker.addEventListener('click', runReplenishmentWorkerNow);
+  }
+
+  const btnSaveChannels = document.getElementById('btn-save-rep-channels');
+  if (btnSaveChannels) {
+    btnSaveChannels.addEventListener('click', saveReplenishmentChannels);
+  }
+
+  const searchInput = document.getElementById('rep-product-search');
+  if (searchInput) {
+    let debounce;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        loadReplenishableProducts(e.target.value);
+      }, 300);
+    });
+  }
+
+  const statusFilter = document.getElementById('rep-schedule-status-filter');
+  if (statusFilter) {
+    statusFilter.addEventListener('change', () => {
+      loadReplenishmentSchedules();
+    });
+  }
+}
+
+async function loadReorderRemindersData() {
+  if (!state.activeStoreId) return;
+  await Promise.all([
+    loadReplenishmentAnalytics(),
+    loadReplenishmentChannelSettings(),
+    loadReplenishableProducts(),
+    loadReplenishmentSchedules(),
+  ]);
+}
+
+async function loadReplenishmentAnalytics() {
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/analytics`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    const elActive = document.getElementById('stat-rep-active');
+    const elUpcoming = document.getElementById('stat-rep-upcoming');
+    const elSent = document.getElementById('stat-rep-sent');
+    const elReordered = document.getElementById('stat-rep-reordered');
+    const elConversion = document.getElementById('stat-rep-conversion');
+
+    if (elActive) elActive.textContent = data.activeSchedules || 0;
+    if (elUpcoming) elUpcoming.textContent = data.upcomingReminders || 0;
+    if (elSent) elSent.textContent = data.remindersSent || 0;
+    if (elReordered) elReordered.textContent = data.reordersCompleted || 0;
+    if (elConversion) elConversion.textContent = `${data.conversionRate || 0}%`;
+  } catch (err) {
+    console.error('Failed to load replenishment analytics:', err);
+  }
+}
+
+async function loadReplenishmentChannelSettings() {
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/channel-settings`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    const elEmail = document.getElementById('rep-email-toggle');
+    const elWa = document.getElementById('rep-whatsapp-toggle');
+    const elDiscount = document.getElementById('rep-discount-code');
+
+    if (elEmail) elEmail.checked = data.email_enabled ?? true;
+    if (elWa) elWa.checked = data.whatsapp_enabled ?? false;
+    if (elDiscount) elDiscount.value = data.discount_code || '';
+  } catch (err) {
+    console.error('Failed to load replenishment channel settings:', err);
+  }
+}
+
+async function saveReplenishmentChannels() {
+  const btn = document.getElementById('btn-save-rep-channels');
+  if (btn) btn.disabled = true;
+
+  try {
+    const emailEnabled = document.getElementById('rep-email-toggle')?.checked ?? true;
+    const whatsappEnabled = document.getElementById('rep-whatsapp-toggle')?.checked ?? false;
+    const discountCode = document.getElementById('rep-discount-code')?.value?.trim() || '';
+
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/channel-settings`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({ emailEnabled, whatsappEnabled, discountCode })
+    });
+
+    if (!res.ok) throw new Error('Failed to save channel settings');
+    showToast('Reorder channel settings saved successfully!');
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function loadReplenishableProducts(search = '') {
+  const tbody = document.getElementById('rep-products-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/products`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    let list = data.products || [];
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(p => (p.title || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q));
+    }
+
+    if (list.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No products found matching your filter.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = list.map(p => {
+      const isReplenishable = p.replenishment?.replenishable ? 'checked' : '';
+      const cycleDays = p.replenishment?.cycle_days || 30;
+      const reminderDays = p.replenishment?.reminder_days_before || 5;
+      const priceFormatted = `${p.currency || 'GBP'} ${Number(p.price || 0).toFixed(2)}`;
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);" data-product-id="${p.id}">
+          <td style="padding: 12px; font-weight: 600; color: var(--text-main);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" style="width: 32px; height: 32px; border-radius: 4px; object-fit: cover;"/>` : ''}
+              <span>${escapeHtml(p.title)}</span>
+            </div>
+          </td>
+          <td style="padding: 12px; color: var(--text-muted); font-size: 13px;">${escapeHtml(p.category || 'General')}</td>
+          <td style="padding: 12px; color: var(--text-main); font-weight: 600;">${priceFormatted}</td>
+          <td style="padding: 12px; text-align: center;">
+            <input type="checkbox" class="rep-prod-toggle" style="width: 18px; height: 18px; cursor: pointer;" ${isReplenishable}/>
+          </td>
+          <td style="padding: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <input type="number" class="input-field rep-prod-cycle" value="${cycleDays}" min="1" max="365" style="width: 70px; padding: 4px 8px;"/>
+              <span style="font-size: 12px; color: var(--text-muted);">days</span>
+            </div>
+          </td>
+          <td style="padding: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <input type="number" class="input-field rep-prod-reminder" value="${reminderDays}" min="0" max="90" style="width: 60px; padding: 4px 8px;"/>
+              <span style="font-size: 12px; color: var(--text-muted);">days before</span>
+            </div>
+          </td>
+          <td style="padding: 12px; text-align: right;">
+            <button class="btn-sm btn-primary btn-save-product-rep" style="padding: 5px 12px; font-size: 12px;">Save</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Attach row save listeners
+    tbody.querySelectorAll('.btn-save-product-rep').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const tr = e.target.closest('tr');
+        const productId = tr.getAttribute('data-product-id');
+        const replenishable = tr.querySelector('.rep-prod-toggle')?.checked ?? false;
+        const cycleDays = parseInt(tr.querySelector('.rep-prod-cycle')?.value, 10) || 30;
+        const reminderDays = parseInt(tr.querySelector('.rep-prod-reminder')?.value, 10) || 5;
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+          const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/products/${productId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({ replenishable, cycleDays, reminderDaysBefore: reminderDays })
+          });
+          const resData = await res.json();
+          if (!res.ok) throw new Error(resData.error || 'Failed to update product');
+          showToast('Product replenishment settings saved!');
+        } catch (err) {
+          showToast(err.message, true);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Save';
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Failed to load replenishable products:', err);
+  }
+}
+
+async function loadReplenishmentSchedules() {
+  const tbody = document.getElementById('rep-schedules-tbody');
+  if (!tbody) return;
+
+  try {
+    const status = document.getElementById('rep-schedule-status-filter')?.value || '';
+    const queryUrl = status
+      ? `/api/v1/dashboard/${state.activeStoreId}/replenishment/schedules?status=${status}`
+      : `/api/v1/dashboard/${state.activeStoreId}/replenishment/schedules`;
+
+    const res = await fetch(queryUrl, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) return;
+    const { data } = await res.json();
+
+    const schedules = data.schedules || [];
+    if (schedules.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="9" style="text-align: center; padding: 25px; color: var(--text-muted);">
+            No replenishment schedules found.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = schedules.map(s => {
+      const customerStr = s.customer_email ? escapeHtml(s.customer_email) : (s.customer_phone ? escapeHtml(s.customer_phone) : 'Anonymous');
+      const purchasedDate = s.purchased_at ? new Date(s.purchased_at).toLocaleDateString() : '--';
+      const expectedDate = s.expected_reorder_at ? new Date(s.expected_reorder_at).toLocaleDateString() : '--';
+      const reminderDate = s.reminder_at ? new Date(s.reminder_at).toLocaleDateString() : '--';
+
+      let statusBadge = '<span class="status-badge"><span class="dot"></span> Pending</span>';
+      if (s.status === 'sent') {
+        statusBadge = '<span class="status-badge" style="color:#10b981;"><span class="dot active"></span> Sent</span>';
+      } else if (s.status === 'repurchased') {
+        statusBadge = '<span class="status-badge" style="color:#3b82f6;"><span class="dot" style="background:#3b82f6;"></span> Repurchased</span>';
+      } else if (s.status === 'cancelled') {
+        statusBadge = '<span class="status-badge" style="color:#ef4444;"><span class="dot inactive"></span> Cancelled</span>';
+      }
+
+      return `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <td style="padding: 12px; font-weight: 500; color: var(--text-main); font-family: var(--font-mono); font-size: 13px;">${customerStr}</td>
+          <td style="padding: 12px; color: var(--text-muted); font-size: 12px;">#${escapeHtml(s.order_number || s.order_id)}</td>
+          <td style="padding: 12px; color: var(--text-main); font-weight: 500;">${escapeHtml(s.product_title)}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted);">${purchasedDate}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-main);">${s.cycle_days}d</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted);">${expectedDate}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--warning); font-weight: 500;">${reminderDate}</td>
+          <td style="padding: 12px;">${statusBadge}</td>
+          <td style="padding: 12px; font-size: 12px; color: var(--text-muted); text-transform: capitalize;">${escapeHtml(s.sent_channel || s.channel || 'email')}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load replenishment schedules:', err);
+  }
+}
+
+async function runReplenishmentWorkerNow() {
+  const btn = document.getElementById('btn-run-reorder-worker');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Processing...';
+  }
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/replenishment/process-due`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to process reminders');
+
+    const d = data.data || {};
+    showToast(`Worker processed ${d.processed || 0} schedules (${d.sent || 0} sent, ${d.suppressed || 0} suppressed, ${d.cancelled || 0} skipped).`);
+
+    await Promise.all([
+      loadReplenishmentAnalytics(),
+      loadReplenishmentSchedules(),
+    ]);
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="btn-icon">⚡</span> Run Due Reminders Now';
+    }
+  }
+}
+
 

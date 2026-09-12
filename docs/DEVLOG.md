@@ -1,5 +1,30 @@
 # Development Log (DEVLOG)
 
+## Entry 2026-09-12 - Phase 14: Auto Replenishment & Reorder Engine
+- **Date**: 2026-09-12
+- **Status**: **COMPLETE & VERIFIED**
+- **Objective**: Implement the Auto Replenishment & Reorder Engine ("Smart Reorder" / "Reorder Reminders") allowing merchants to automate post-purchase reorder nudges for consumable products across Email and WhatsApp with deterministic cadence calculations, independent marketing consent verification, repurchase cycle reset, and 1-click Shopify cart permalinks.
+- **Components Implemented**:
+  - Database Migration `migrations/021_auto_replenishment_reorder_engine.sql`:
+    - Created `replenishment_product_settings`, `replenishment_schedules`, and `replenishment_channel_settings` tables with store cascades and indexes.
+  - Module & Service Layer (`src/modules/replenishment/`):
+    - `ReplenishmentRepository`: Scoped multi-tenant data access, pg-mem safe upserts, schedule state transitions, and metrics aggregation.
+    - `ReplenishmentService`: Deterministic scheduling math (`order_date + consumption_days - reminder_buffer_days`), webhook order ingestion (`orders/create`), repurchase suppression & cycle reset, multi-channel dispatch (Email & WhatsApp), consent checks, and 1-click cart permalink builder.
+    - `ReplenishmentWorker`: Background polling service processing due schedules periodically alongside `EmailWorker`.
+  - Integrations:
+    - Webhook service wired to trigger replenishment scheduling upon `orders/create`.
+    - Dashboard routes mounted at `/api/v1/dashboard/:storeId/replenishment/*` with `enforceStoreAccess`.
+    - Public click tracking route mounted at `/api/v1/reorder/:storeId/:scheduleId/click`.
+  - Merchant Dashboard UI:
+    - Added `🔄 Smart Reorder` navigation item and `#reorder-reminders` section to `src/public/dashboard/index.html` and `src/public/dashboard/js/app.js`.
+    - Full analytics cards, store channel configuration, product catalog configuration, and schedules ledger.
+  - Automated Tests:
+    - Created `tests/integration/phase14_replenishment.test.ts` with 22 comprehensive integration tests covering all requirements.
+    - Full regression test run: 22 test files, 184 tests passing (100%).
+    - Zero TypeScript compilation errors; clean production build.
+
+---
+
 ## Entry 2026-09-11 - Phase 13 Extension: Add WATI WhatsApp Provider Integration
 - **Date**: 2026-09-11
 - **Status**: **COMPLETE & VERIFIED**

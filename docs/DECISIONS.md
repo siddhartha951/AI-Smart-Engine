@@ -83,4 +83,18 @@
   6. Compliance & Opt-out: Strict UK GDPR/PECR compliance. Automatic opt-out on `STOP`/`UNSUBSCRIBE`, reactivation on `START`, and pre-send suppression if purchase already completed.
 - **Consequences**: Complete flexibility for merchants to integrate directly via Meta or via WATI BSP, zero provider lock-in, zero cross-tenant contamination, and robust testability.
 
+---
+
+## ADR-009: Auto Replenishment & Reorder Reminders Architecture
+- **Context**: Consumable and replenishable products (e.g. coffee, cosmetics, supplements, apparel) experience natural usage depletion cycles. Merchants lose repeat revenue if reorder nudges are not sent, but building a full recurring subscription / payment vaulting platform introduces massive regulatory and PCI/ReCharge-level scope creep.
+- **Decision**:
+  1. Position strictly as "Reorder Reminders" / "Smart Reorder" — NOT a subscription billing system or ReCharge replacement. No recurring credit card tokenization or unauthorized billing.
+  2. Ground schedule calculations in deterministic math: `scheduled_at = order_date + consumption_days - reminder_buffer_days`. LLMs are strictly forbidden from calculating dates, cadences, eligibility, or prices.
+  3. Strict multi-tenant isolation: All product settings, schedules, channel configurations, and analytics are keyed by `store_id`.
+  4. Multi-Channel dispatch with independent consent: Email dispatches check `marketing_consents.opted_in` and `suppression_list`; WhatsApp dispatches check `whatsapp_consents.opted_in`. Opting out of one does not affect the other.
+  5. Repurchase cycle reset: When an order webhook arrives, any pending/scheduled reminder for the same customer and product is cancelled with `cancel_reason = 'repurchased'`, and a new schedule is created. If already sent, it is attributed as converted.
+  6. 1-click Shopify cart permalinks: Generated via `/cart/{variant_id}:{qty}?discount={discount_code}` with click tracking via `/api/v1/reorder/:storeId/:scheduleId/click`.
+- **Consequences**: Safe, compliant, merchant-controlled repeat revenue automation without subscription complexity.
+
+
 
