@@ -746,35 +746,54 @@ table tbody tr:hover {
 /* -------------------------------------------------------------
    Modals
 ------------------------------------------------------------- */
-.modal,
-.modal-backdrop {
+.modal-overlay,
+.modal-backdrop,
+.modal:not(.modal-dialog):not(.modal-card):not(.modal-content):not(.panel) {
   position: fixed;
   inset: 0;
   background-color: var(--color-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1050;
   padding: var(--space-4);
 }
 
 .modal.hidden,
+.modal-overlay.hidden,
 .modal-backdrop.hidden {
   display: none !important;
 }
 
 .modal-content,
-.modal-container {
+.modal-container,
+.modal-dialog,
+.modal-card,
+.modal-overlay > .modal,
+.modal-overlay > .panel,
+.modal-overlay > .modal-card,
+.modal > .modal-content {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
   background: var(--color-surface);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05);
   width: 100%;
-  max-width: 540px;
+  max-width: 580px;
   max-height: calc(100vh - 64px);
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
+  margin: auto !important;
+  padding: var(--space-6);
+  color: var(--color-text-primary);
+  box-sizing: border-box !important;
 }
 
 .modal-header {

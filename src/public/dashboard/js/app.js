@@ -1647,6 +1647,18 @@ function setupAdStudioEventListeners() {
   if (btnGenImg) {
     btnGenImg.addEventListener('click', generateAiAdImageAction);
   }
+
+  // Download Ad Image button (Toolbar)
+  const btnDownloadImg = document.getElementById('btn-download-ad-image');
+  if (btnDownloadImg) {
+    btnDownloadImg.addEventListener('click', downloadActiveAdImage);
+  }
+
+  // Quick Download Button (Media Box overlay)
+  const btnQuickDownload = document.getElementById('btn-quick-download-ad-img');
+  if (btnQuickDownload) {
+    btnQuickDownload.addEventListener('click', downloadActiveAdImage);
+  }
 }
 
 async function loadAdStudioProducts() {
@@ -1880,10 +1892,15 @@ function renderActiveAdVariation() {
     badgeElMedia.classList.add('hidden');
   }
 
+  const quickDlBtn = document.getElementById('btn-quick-download-ad-img');
+  const toolbarDlBtn = document.getElementById('btn-download-ad-image');
+
   if (activeMediaUrl && imgEl && fallbackEl) {
     imgEl.src = activeMediaUrl;
     imgEl.style.display = 'block';
     fallbackEl.style.display = 'none';
+    if (quickDlBtn) quickDlBtn.classList.remove('hidden');
+    if (toolbarDlBtn) toolbarDlBtn.disabled = false;
     imgEl.onerror = () => {
       if (prodFallback && imgEl.src !== prodFallback) {
         imgEl.src = prodFallback;
@@ -1892,6 +1909,7 @@ function renderActiveAdVariation() {
         fallbackEl.style.display = 'flex';
         if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
         if (badgeElMedia) badgeElMedia.classList.add('hidden');
+        if (quickDlBtn) quickDlBtn.classList.add('hidden');
       }
     };
   } else if (imgEl && fallbackEl) {
@@ -1899,6 +1917,7 @@ function renderActiveAdVariation() {
     fallbackEl.style.display = 'flex';
     if (fallbackTitleEl && prod) fallbackTitleEl.textContent = prod.title;
     if (badgeElMedia) badgeElMedia.classList.add('hidden');
+    if (quickDlBtn) quickDlBtn.classList.add('hidden');
   }
 }
 
@@ -1991,25 +2010,102 @@ function fallbackCopyText(text, label) {
   document.body.removeChild(textArea);
 }
 
+async function downloadImageFile(url, filename = 'ad_creative.jpg') {
+  if (!url) {
+    showToast('No image URL available to download.', true);
+    return;
+  }
+
+  try {
+    showToast('Preparing image download...');
+    // If base64 or blob URL, trigger instant direct download
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Image downloaded successfully!');
+      return;
+    }
+
+    // Try fetching image as blob for authentic browser download without opening external tab
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    showToast('Image downloaded successfully!');
+  } catch (err) {
+    console.warn('Direct blob fetch failed, falling back to direct anchor download:', err);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('Opened image in tab for saving.');
+  }
+}
+
+function downloadActiveAdImage() {
+  const imgEl = document.getElementById('ad-mockup-img');
+  const prod = adStudioState.selectedProduct;
+  const prodFallback = prod ? getProductFallbackImageUrl(prod.category, prod.title) : '';
+  const currentUrl = adStudioState.generatedImageUrl || (prod?.image_url && !prod.image_url.includes('example.com') ? prod.image_url : prodFallback) || (imgEl && imgEl.src);
+
+  if (!currentUrl || (imgEl && imgEl.style.display === 'none')) {
+    showToast('No image available to download. Please select a product or generate an AI visual first.', true);
+    return;
+  }
+
+  const safeTitle = (prod?.title || 'ad_creative').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
+  const isPng = currentUrl.startsWith('data:image/png') || currentUrl.endsWith('.png');
+  const ext = isPng ? 'png' : 'jpg';
+  downloadImageFile(currentUrl, `${safeTitle}_creative.${ext}`);
+}
+
 function copyFullAdAction() {
   const current = adStudioState.variations[adStudioState.activeVariationIndex];
   if (!current) {
-    showToast('No active creative to copy', true);
+    showToast('Please generate ad copy first', true);
     return;
   }
 
-  const fullText = `[HOOK]\n${current.hook}\n\n[PRIMARY TEXT]\n${current.primary_text}\n\n[HEADLINE]\n${current.headline}\n\n[CALL TO ACTION]\n${current.cta}`;
-  copyTextToClipboard(fullText, 'Complete Ad Copy');
+  const fullText = `[HOOK / PATTERN INTERRUPT]\n${current.hook}\n\n[PRIMARY AD TEXT]\n${current.primary_text}\n\n[HEADLINE]\n${current.headline}\n\n[CALL TO ACTION]\n${current.cta}`;
+  copyTextToClipboard(fullText, 'Full Ad Copy');
+}
+
+function copyElementTextAction(e) {
+  const btn = e.currentTarget;
+  const targetId = btn.getAttribute('data-target-text');
+  const el = document.getElementById(targetId);
+  if (el) {
+    copyTextToClipboard(el.textContent.trim(), 'Ad Element');
+  }
 }
 
 async function saveCurrentCreativeAction() {
-  const current = adStudioState.variations[adStudioState.activeVariationIndex];
-  const prod = adStudioState.selectedProduct;
+  if (!state.activeStoreId) return;
 
-  if (!current || !prod) {
-    showToast('No active ad variation to save', true);
+  const current = adStudioState.variations[adStudioState.activeVariationIndex];
+  if (!current) {
+    showToast('Please generate ad copy first', true);
     return;
   }
+
+  const prod = adStudioState.selectedProduct;
+  const prodFallback = prod ? getProductFallbackImageUrl(prod.category, prod.title) : '';
+  const mediaUrl = adStudioState.generatedImageUrl || (prod?.image_url && !prod.image_url.includes('example.com') ? prod.image_url : prodFallback) || '';
 
   const btnSave = document.getElementById('btn-save-creative');
   if (btnSave) btnSave.disabled = true;
@@ -2022,30 +2118,28 @@ async function saveCurrentCreativeAction() {
         'Authorization': `Bearer ${state.token}`
       },
       body: JSON.stringify({
-        productId: prod.id,
-        productTitle: prod.title,
+        productId: prod?.id,
+        productTitle: prod?.title || 'Featured Product',
         platform: adStudioState.platform,
         objective: adStudioState.objective,
         hook: current.hook,
         primaryText: current.primary_text,
         headline: current.headline,
         cta: current.cta,
-        imageUrl: adStudioState.generatedImageUrl || prod.image_url || '',
-        metadata: {
-          variation_index: adStudioState.activeVariationIndex,
-          model: adStudioState.model || 'gpt-4o-mini',
-          ai_generated_image: Boolean(adStudioState.generatedImageUrl)
-        }
+        imageUrl: mediaUrl
       })
     });
 
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(getErrorMessage(data, 'Failed to save creative'));
+    if (!res.ok) {
+      throw new Error(getErrorMessage(data, 'Failed to save creative'));
+    }
 
-    showToast('💾 Creative saved to library!');
+    showToast('Saved to your creative library!');
     await loadSavedCreativesTable();
   } catch (err) {
-    showToast(err.message, true);
+    console.error('Failed to save creative:', err);
+    showToast(err.message || 'Failed to save creative', true);
   } finally {
     if (btnSave) btnSave.disabled = false;
   }
@@ -2100,7 +2194,7 @@ async function loadSavedCreativesTable() {
 
       return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-          <td style="padding: 10px;">${mediaHtml}</td>
+          <td class="media-cell" style="width: 56px; min-width: 56px; max-width: 56px; padding: 8px 10px; vertical-align: middle;">${mediaHtml}</td>
           <td style="padding: 12px; font-weight: 600; color: var(--text-main); max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             ${escapeHtml(c.product_title)}
           </td>
@@ -2113,6 +2207,7 @@ async function loadSavedCreativesTable() {
           <td style="padding: 12px;"><span class="badge primary" style="font-size: 11px;">${escapeHtml(c.cta)}</span></td>
           <td style="padding: 12px; font-size: 12px; color: var(--text-muted);">${dateStr}</td>
           <td style="padding: 12px; text-align: right; white-space: nowrap;">
+            <button class="btn-sm btn-secondary btn-download-saved" data-url="${escapeHtml(mediaUrl)}" data-title="${escapeHtml(c.product_title || 'creative')}" style="margin-right: 6px;" title="Download Creative Image">⬇️ Image</button>
             <button class="btn-sm btn-secondary btn-copy-saved" data-id="${c.id}" style="margin-right: 6px;" title="Copy Full Ad">📋 Copy</button>
             <button class="btn-sm btn-secondary outline btn-delete-saved" data-id="${c.id}" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.4);" title="Delete Creative">🗑️</button>
           </td>
@@ -2120,13 +2215,22 @@ async function loadSavedCreativesTable() {
       `;
     }).join('');
 
-    // Attach copy & delete event handlers
+    // Attach download, copy & delete event handlers
+    tbody.querySelectorAll('.btn-download-saved').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.getAttribute('data-url');
+        const title = btn.getAttribute('data-title') || 'saved-creative';
+        const safeTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
+        downloadImageFile(url, `${safeTitle}_creative.jpg`);
+      });
+    });
+
     tbody.querySelectorAll('.btn-copy-saved').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
         const c = creatives.find(item => item.id === id);
         if (c) {
-          const fullText = `[HOOK]\n${c.hook}\n\n[PRIMARY TEXT]\n${c.primary_text}\n\n[HEADLINE]\n${c.headline}\n\n[CALL TO ACTION]\n${c.cta}`;
+          const fullText = `[HOOK / PATTERN INTERRUPT]\n${c.hook}\n\n[PRIMARY AD TEXT]\n${c.primary_text}\n\n[HEADLINE]\n${c.headline}\n\n[CALL TO ACTION]\n${c.cta}`;
           copyTextToClipboard(fullText, 'Saved Creative Copy');
         }
       });
@@ -4419,6 +4523,15 @@ function setupAiIntelligenceListeners() {
     chip.addEventListener('click', () => {
       const q = chip.getAttribute('data-q');
       if (q) submitCopilotAsk(q);
+    });
+  });
+
+  // Modal Backdrop Click-to-Close (clicking dark overlay outside modal closes it)
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        overlay.classList.add('hidden');
+      }
     });
   });
 }

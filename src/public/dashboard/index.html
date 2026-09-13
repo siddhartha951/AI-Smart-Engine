@@ -1069,6 +1069,10 @@
 
                   <!-- Media Box -->
                   <div class="ad-media-box" id="ad-media-box" style="position: relative; border-radius: 8px; overflow: hidden; background: var(--color-surface-subtle); min-height: 200px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                    <button id="btn-quick-download-ad-img" class="btn btn-secondary btn-sm hidden" style="position: absolute; top: 10px; left: 10px; z-index: 2; padding: 4px 8px; font-size: 11px; background: rgba(255,255,255,0.92); backdrop-filter: blur(4px); box-shadow: var(--shadow-xs);" title="Download Image">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                      Download Image
+                    </button>
                     <div id="ad-media-badge" class="ad-media-badge hidden" style="position: absolute; top: 10px; right: 10px; z-index: 2;">
                       <span id="ad-media-badge-icon"></span>
                       <span id="ad-media-badge-text" class="badge badge--neutral">Catalogue Image</span>
@@ -1122,6 +1126,10 @@
                   </button>
                   <button id="btn-save-creative" class="btn btn-primary btn-sm">
                     Save Creative
+                  </button>
+                  <button id="btn-download-ad-image" class="btn btn-secondary btn-sm" title="Download Generated Creative Image">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download Image
                   </button>
                   <button id="btn-regenerate-ad" class="btn btn-secondary btn-sm">
                     Regenerate Copy
@@ -1765,7 +1773,7 @@
 
   <!-- Ad Spend Management Modal -->
   <div id="ad-spend-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 650px; width: 90%;">
+    <div class="modal-card panel" style="max-width: 650px; width: 100%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Manage Ad Spend</h3>
         <button id="close-ad-spend-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
@@ -1832,7 +1840,7 @@
 
   <!-- Customer Journey Modal -->
   <div id="customer-journey-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 700px; width: 90%;">
+    <div class="modal-card panel" style="max-width: 700px; width: 100%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 id="journey-modal-title" style="margin: 0; font-size: 17px; font-weight: 600;">Multi-Touch Customer Journey</h3>
         <button id="close-journey-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
@@ -1848,7 +1856,7 @@
 
   <!-- Store Full AI Audit Modal -->
   <div id="store-audit-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-card panel" style="max-width: 800px; width: 100%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Comprehensive AI Store Audit</h3>
         <button id="close-store-audit-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
@@ -1894,7 +1902,7 @@
 
   <!-- Product AI Improvement Modal -->
   <div id="product-improvement-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-card panel" style="max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <div>
           <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Product Listing AI Optimization</h3>
@@ -1944,7 +1952,7 @@
 
   <!-- Create Email with AI Modal -->
   <div id="ai-email-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 750px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-card panel" style="max-width: 750px; width: 100%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Create Email with AI</h3>
         <button id="close-ai-email-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
@@ -2050,7 +2058,7 @@
 
   <!-- Smart Reorder Add Product Modal -->
   <div id="reorder-add-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-card panel" style="max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Configure Replenishable Product</h3>
         <button id="close-reorder-add-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
@@ -2099,7 +2107,7 @@
 
   <!-- Growth Copilot Ask Modal -->
   <div id="copilot-ask-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 650px; width: 90%;">
+    <div class="modal-card panel" style="max-width: 650px; width: 100%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Ask Growth Copilot</h3>
         <button id="close-copilot-ask-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
@@ -2132,7 +2140,7 @@
 
   <!-- Confirmation Modal -->
   <div id="confirm-modal" class="modal-overlay hidden">
-    <div class="modal panel" style="max-width: 440px;">
+    <div class="modal-card panel" style="max-width: 440px; width: 100%;">
       <h3 id="confirm-title" style="margin-bottom: 8px;">Confirm Action</h3>
       <p id="confirm-message" class="section-subtitle" style="margin-bottom: 20px;">Are you sure you want to proceed?</p>
       <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 8px;">
