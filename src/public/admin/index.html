@@ -5,28 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard | AI Smart Engine</title>
   <meta name="description" content="Internal admin dashboard for AI Smart Engine platform management">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../common/css/design-system.css">
   <link rel="stylesheet" href="css/admin.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
   <canvas id="three-canvas"></canvas>
 
   <div id="app-container">
     <!-- Login View -->
-    <main id="login-view" class="view glass-panel active">
+    <main id="login-view" class="view panel active">
       <div class="login-header">
-        <div class="logo-mark">⚡</div>
+        <div class="logo-mark" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
         <h1>AI Smart Engine</h1>
-        <p class="subtitle">Platform Administration</p>
+        <p class="subtitle">Platform administration</p>
       </div>
       <form id="login-form">
         <div class="form-group">
           <label for="admin-email">Email</label>
-          <input type="email" id="admin-email" name="email" required placeholder="admin@platform.com">
+          <input type="email" id="admin-email" name="email" required placeholder="admin@platform.com" autocomplete="email">
         </div>
         <div class="form-group">
           <label for="admin-password">Password</label>
-          <input type="password" id="admin-password" name="password" required placeholder="••••••••">
+          <input type="password" id="admin-password" name="password" required placeholder="••••••••" autocomplete="current-password">
         </div>
         <button type="submit" class="btn-primary" id="login-btn">Sign In</button>
         <div id="login-error" class="error-msg"></div>
@@ -35,21 +42,62 @@
 
     <!-- Admin Dashboard View -->
     <div id="admin-view" class="view hidden">
-      <nav class="sidebar glass-panel">
+      <nav class="sidebar">
         <div class="brand">
-          <div class="brand-icon">⚡</div>
-          <h2>Admin Panel</h2>
+          <div class="brand-header">
+            <span class="brand-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </span>
+            <div class="brand-text">
+              <h2>AI Smart Engine</h2>
+              <span class="brand-sub">Admin OS</span>
+            </div>
+          </div>
           <span id="admin-role-badge" class="badge badge-admin">Super Admin</span>
         </div>
         <ul class="nav-menu">
-          <li><a href="#" class="nav-link active" data-section="admin-overview"><span class="nav-icon">📊</span> Overview</a></li>
-          <li><a href="#" class="nav-link" data-section="merchant-management"><span class="nav-icon">🏪</span> Merchants</a></li>
-          <li><a href="#" class="nav-link" data-section="platform-controls"><span class="nav-icon">⚙️</span> Platform Controls</a></li>
-          <li><a href="#" class="nav-link" data-section="alerts-section"><span class="nav-icon">🔔</span> Alerts <span id="alert-count-badge" class="count-badge hidden">0</span></a></li>
+          <li>
+            <a href="#" class="nav-link active" data-section="admin-overview">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              </span>
+              Overview
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-section="merchant-management">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+              </span>
+              Merchants
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-section="platform-controls">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+              </span>
+              Platform Controls
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-link" data-section="alerts-section">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              </span>
+              Alerts
+              <span id="alert-count-badge" class="count-badge hidden">0</span>
+            </a>
+          </li>
         </ul>
         <div class="sidebar-footer">
-          <p id="admin-user-email" class="user-email">admin@platform.com</p>
-          <button id="admin-logout-btn" class="btn-ghost">Sign Out</button>
+          <div class="user-meta">
+            <span class="user-label">Logged in as</span>
+            <p id="admin-user-email" class="user-email">admin@platform.com</p>
+          </div>
+          <button id="admin-logout-btn" class="btn-ghost btn-sm">Sign Out</button>
         </div>
       </nav>
 
@@ -57,65 +105,86 @@
         <!-- Admin Overview Section -->
         <section id="admin-overview" class="content-section active">
           <div class="section-header">
-            <h1>Platform Overview</h1>
+            <div>
+              <h1>Platform Overview</h1>
+              <p class="section-desc">Global platform health, merchant states, and real-time operational telemetry</p>
+            </div>
             <div class="header-actions">
-              <span id="global-pause-indicator" class="status-badge hidden">⚠️ Global Pause Active</span>
-              <button id="refresh-overview-btn" class="btn-secondary btn-sm">↻ Refresh</button>
+              <span id="global-pause-indicator" class="status-badge badge-warning hidden">
+                <span class="status-dot status-dot--warning"></span> Global pause active
+              </span>
+              <button id="refresh-overview-btn" class="btn-secondary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                Refresh
+              </button>
             </div>
           </div>
 
-          <!-- Status Cards Row -->
-          <div class="metrics-grid" id="merchant-status-cards">
-            <div class="metric-card glass-panel accent-green">
-              <div class="metric-value" id="stat-active">0</div>
-              <div class="metric-label">Active</div>
-            </div>
-            <div class="metric-card glass-panel accent-yellow">
-              <div class="metric-value" id="stat-paused">0</div>
-              <div class="metric-label">Paused</div>
-            </div>
-            <div class="metric-card glass-panel accent-blue">
-              <div class="metric-value" id="stat-onboarding">0</div>
-              <div class="metric-label">Onboarding</div>
-            </div>
-            <div class="metric-card glass-panel accent-red">
-              <div class="metric-value" id="stat-connection-error">0</div>
-              <div class="metric-label">Errors</div>
-            </div>
-          </div>
-
-          <!-- Global Metrics -->
-          <div class="metrics-grid metrics-grid-6" id="global-metrics">
-            <div class="metric-card glass-panel">
-              <div class="metric-value" id="stat-total-chats">0</div>
-              <div class="metric-label">Total Chats</div>
-            </div>
-            <div class="metric-card glass-panel">
-              <div class="metric-value" id="stat-total-leads">0</div>
-              <div class="metric-label">Leads</div>
-            </div>
-            <div class="metric-card glass-panel">
-              <div class="metric-value" id="stat-total-optins">0</div>
-              <div class="metric-label">Opt-Ins</div>
-            </div>
-            <div class="metric-card glass-panel">
-              <div class="metric-value" id="stat-total-atc">0</div>
-              <div class="metric-label">Add to Cart</div>
-            </div>
-            <div class="metric-card glass-panel">
-              <div class="metric-value" id="stat-total-purchases">0</div>
-              <div class="metric-label">Purchases</div>
-            </div>
-            <div class="metric-card glass-panel">
-              <div class="metric-value" id="stat-total-emails">0</div>
-              <div class="metric-label">Emails Sent</div>
+          <!-- Group 1: Merchant Status -->
+          <div class="content-group">
+            <h2 class="group-title">Merchant Status</h2>
+            <div class="metrics-grid" id="merchant-status-cards">
+              <div class="metric-card">
+                <div class="metric-label">Active</div>
+                <div class="metric-value status-active-val" id="stat-active">0</div>
+                <div class="metric-context">Live stores running agents</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Paused</div>
+                <div class="metric-value status-paused-val" id="stat-paused">0</div>
+                <div class="metric-context">Temporarily paused agents</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Onboarding</div>
+                <div class="metric-value status-onboard-val" id="stat-onboarding">0</div>
+                <div class="metric-context">In setup or invited</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Errors</div>
+                <div class="metric-value status-error-val" id="stat-connection-error">0</div>
+                <div class="metric-context">Credential or connection errors</div>
+              </div>
             </div>
           </div>
 
-          <!-- AI Budget Section -->
+          <!-- Group 2: Platform Activity -->
+          <div class="content-group">
+            <h2 class="group-title">Platform Activity</h2>
+            <div class="metrics-grid metrics-grid-6" id="global-metrics">
+              <div class="metric-card">
+                <div class="metric-label">Total Chats</div>
+                <div class="metric-value" id="stat-total-chats">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Leads</div>
+                <div class="metric-value" id="stat-total-leads">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Opt-Ins</div>
+                <div class="metric-value" id="stat-total-optins">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Add to Cart</div>
+                <div class="metric-value" id="stat-total-atc">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Purchases</div>
+                <div class="metric-value" id="stat-total-purchases">0</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Emails Sent</div>
+                <div class="metric-value" id="stat-total-emails">0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Budget & Top Consumers -->
           <div class="panel-row">
-            <div class="panel glass-panel flex-2">
-              <h3>AI Budget</h3>
+            <div class="panel flex-2">
+              <div class="panel-header">
+                <h3>Global AI Budget</h3>
+                <span class="badge badge-neutral">Monthly Allocation</span>
+              </div>
               <div class="budget-bar-container">
                 <div class="budget-bar">
                   <div id="budget-fill" class="budget-fill" style="width: 0%"></div>
@@ -123,20 +192,24 @@
                   <div id="budget-stop-marker" class="budget-marker budget-stop" style="left: 93%"></div>
                 </div>
                 <div class="budget-labels">
-                  <span id="budget-spent">$0.00</span>
-                  <span id="budget-remaining">$15.00 remaining</span>
+                  <span id="budget-spent" class="tabular-num">$0.00</span>
+                  <span id="budget-remaining" class="tabular-num">$15.00 remaining</span>
                 </div>
               </div>
             </div>
-            <div class="panel glass-panel flex-1">
-              <h3>Top AI Consumers</h3>
+            <div class="panel flex-1">
+              <div class="panel-header">
+                <h3>Top AI Consumers</h3>
+              </div>
               <ul id="top-consumers-list" class="consumer-list"></ul>
             </div>
           </div>
 
           <!-- Recent Alerts -->
-          <div class="panel glass-panel">
-            <h3>Recent Alerts</h3>
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Recent Alerts</h3>
+            </div>
             <div id="overview-alerts" class="alerts-feed">
               <p class="empty-state">No active alerts</p>
             </div>
@@ -146,10 +219,16 @@
         <!-- Merchant Management Section -->
         <section id="merchant-management" class="content-section hidden">
           <div class="section-header">
-            <h1>Merchant Management</h1>
+            <div>
+              <h1>Merchant Management</h1>
+              <p class="section-desc">Search, inspect, and configure all platform stores and agent statuses</p>
+            </div>
             <div class="header-actions">
-              <input type="text" id="merchant-search" class="search-input" placeholder="Search merchants...">
-              <select id="merchant-status-filter" class="filter-select">
+              <div class="search-input-wrapper">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="merchant-search" class="form-input search-input" placeholder="Search merchants...">
+              </div>
+              <select id="merchant-status-filter" class="form-select filter-select">
                 <option value="">All Statuses</option>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
@@ -163,15 +242,15 @@
             </div>
           </div>
 
-          <div class="table-container glass-panel">
+          <div class="table-container">
             <table class="data-table" id="merchants-table">
               <thead>
                 <tr>
                   <th>Merchant</th>
-                  <th>Store</th>
+                  <th>Store Domain</th>
                   <th>Status</th>
                   <th>Agent</th>
-                  <th>Actions</th>
+                  <th class="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody id="merchants-tbody"></tbody>
@@ -182,11 +261,16 @@
         <!-- Merchant Detail Section -->
         <section id="merchant-detail" class="content-section hidden">
           <div class="section-header">
-            <button id="back-to-merchants-btn" class="btn-ghost">← Back to Merchants</button>
-            <h1 id="detail-merchant-name">Merchant Detail</h1>
+            <div class="header-nav-title">
+              <button id="back-to-merchants-btn" class="btn-ghost btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                Back to Merchants
+              </button>
+              <h1 id="detail-merchant-name">Merchant Detail</h1>
+            </div>
           </div>
 
-          <div class="detail-tabs">
+          <div class="detail-tabs tabs-nav">
             <button class="tab-btn active" data-tab="detail-info">Details</button>
             <button class="tab-btn" data-tab="detail-usage">Usage</button>
             <button class="tab-btn" data-tab="detail-audit">Audit Log</button>
@@ -194,25 +278,28 @@
 
           <div id="detail-info" class="tab-content active">
             <div class="detail-grid">
-              <div class="panel glass-panel">
-                <h3>Merchant Info</h3>
+              <div class="panel">
+                <div class="panel-header"><h3>Merchant Info</h3></div>
                 <div id="detail-merchant-info"></div>
               </div>
-              <div class="panel glass-panel">
-                <h3>Store & Agent</h3>
+              <div class="panel">
+                <div class="panel-header"><h3>Store & Agent</h3></div>
                 <div id="detail-store-info"></div>
               </div>
-              <div class="panel glass-panel">
-                <h3>Shopify Connection</h3>
+              <div class="panel">
+                <div class="panel-header"><h3>Shopify Connection</h3></div>
                 <div id="detail-shopify-info"></div>
               </div>
-              <div class="panel glass-panel">
-                <h3>Metrics</h3>
+              <div class="panel">
+                <div class="panel-header"><h3>Metrics</h3></div>
                 <div id="detail-metrics-info"></div>
               </div>
-              <div class="panel glass-panel full-width" style="grid-column: 1 / -1;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                  <h3 style="margin-bottom: 0;">⚡ Store Feature Controls & Platform Toggles</h3>
+              <div class="panel full-width" style="grid-column: 1 / -1;">
+                <div class="panel-header" style="margin-bottom: var(--space-4);">
+                  <div>
+                    <h3>Store Feature Controls & Platform Toggles</h3>
+                    <p class="panel-desc">Configure entitlements and service gates for this merchant store</p>
+                  </div>
                   <span class="badge badge-admin">Live Feature Management</span>
                 </div>
                 <div id="detail-features-info"></div>
@@ -221,15 +308,15 @@
           </div>
 
           <div id="detail-usage" class="tab-content hidden">
-            <div class="panel glass-panel">
-              <h3>Token & Chat Usage</h3>
+            <div class="panel">
+              <div class="panel-header"><h3>Token & Chat Usage</h3></div>
               <div id="detail-usage-info"></div>
             </div>
           </div>
 
           <div id="detail-audit" class="tab-content hidden">
-            <div class="panel glass-panel">
-              <h3>Activity & Audit Log</h3>
+            <div class="panel">
+              <div class="panel-header"><h3>Activity & Audit Log</h3></div>
               <div id="detail-audit-log"></div>
             </div>
           </div>
@@ -238,89 +325,97 @@
         <!-- Platform Controls Section -->
         <section id="platform-controls" class="content-section hidden">
           <div class="section-header">
-            <h1>Platform Controls</h1>
-            <span id="super-admin-required" class="info-badge hidden">🔒 Super Admin required for changes</span>
+            <div>
+              <h1>Platform Controls</h1>
+              <p class="section-desc">Manage platform defaults, AI usage ceilings, and emergency controls</p>
+            </div>
+            <span id="super-admin-required" class="badge badge-warning hidden">Super Admin required for changes</span>
           </div>
 
           <div class="controls-grid">
-            <div class="panel glass-panel">
-              <h3>Global AI Budget</h3>
+            <div class="panel">
+              <div class="panel-header"><h3>Global AI Budget</h3></div>
               <form id="budget-config-form" class="settings-form">
                 <div class="form-group">
-                  <label>Monthly AI Budget (USD)</label>
+                  <label for="cfg-monthly-budget">Monthly AI Budget (USD)</label>
                   <input type="number" id="cfg-monthly-budget" step="0.01" min="0">
                 </div>
                 <div class="form-group">
-                  <label>Warning Threshold (USD)</label>
+                  <label for="cfg-warn-threshold">Warning Threshold (USD)</label>
                   <input type="number" id="cfg-warn-threshold" step="0.01" min="0">
                 </div>
                 <div class="form-group">
-                  <label>Stop Threshold (USD)</label>
+                  <label for="cfg-stop-threshold">Stop Threshold (USD)</label>
                   <input type="number" id="cfg-stop-threshold" step="0.01" min="0">
                 </div>
                 <button type="submit" class="btn-primary btn-sm" id="save-budget-btn">Save Budget Config</button>
               </form>
             </div>
 
-            <div class="panel glass-panel">
-              <h3>Default Limits</h3>
+            <div class="panel">
+              <div class="panel-header"><h3>Default Limits</h3></div>
               <form id="limits-config-form" class="settings-form">
                 <div class="form-group">
-                  <label>Default Chats per Store</label>
+                  <label for="cfg-chat-limit">Default Chats per Store</label>
                   <input type="number" id="cfg-chat-limit" min="0">
                 </div>
                 <div class="form-group">
-                  <label>Default Token Limit per Store</label>
+                  <label for="cfg-token-limit">Default Token Limit per Store</label>
                   <input type="number" id="cfg-token-limit" min="0">
                 </div>
                 <button type="submit" class="btn-primary btn-sm" id="save-limits-btn">Save Limits</button>
               </form>
             </div>
 
-            <div class="panel glass-panel">
-              <h3>Default Email Recovery</h3>
+            <div class="panel">
+              <div class="panel-header"><h3>Default Email Recovery</h3></div>
               <form id="email-config-form" class="settings-form">
                 <div class="form-group">
-                  <label class="toggle-label">
-                    <input type="checkbox" id="cfg-email-enabled"> Email Recovery Enabled
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfg-email-enabled">
+                    <span class="switch-slider"></span>
+                    <span>Email Recovery Enabled</span>
                   </label>
                 </div>
                 <div class="form-group">
-                  <label>Max Recovery Emails</label>
+                  <label for="cfg-max-recovery">Max Recovery Emails</label>
                   <input type="number" id="cfg-max-recovery" min="1" max="10">
                 </div>
                 <div class="form-group">
-                  <label>Interval (minutes)</label>
+                  <label for="cfg-email-interval">Interval (minutes)</label>
                   <input type="number" id="cfg-email-interval" min="1">
                 </div>
                 <button type="submit" class="btn-primary btn-sm" id="save-email-btn">Save Email Config</button>
               </form>
             </div>
 
-            <div class="panel glass-panel">
-              <h3>Default Widget</h3>
+            <div class="panel">
+              <div class="panel-header"><h3>Default Widget</h3></div>
               <form id="widget-config-form" class="settings-form">
                 <div class="form-group">
-                  <label>Default Position</label>
+                  <label for="cfg-widget-position">Default Position</label>
                   <select id="cfg-widget-position">
                     <option value="bottom-right">Bottom Right</option>
                     <option value="bottom-left">Bottom Left</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Default Primary Colour</label>
-                  <input type="color" id="cfg-widget-colour" value="#1a1a1a">
+                  <label for="cfg-widget-colour">Default Primary Colour</label>
+                  <input type="color" id="cfg-widget-colour" value="#635bff" style="height: 40px; padding: 2px;">
                 </div>
                 <button type="submit" class="btn-primary btn-sm" id="save-widget-btn">Save Widget Defaults</button>
               </form>
             </div>
 
-            <div class="panel glass-panel danger-panel">
-              <h3>Emergency Controls</h3>
-              <p class="warning-text">These actions affect ALL merchants on the platform.</p>
+            <div class="panel danger-panel">
+              <div class="panel-header">
+                <h3>Emergency Controls</h3>
+                <span class="badge badge-danger">Global Action</span>
+              </div>
+              <p class="warning-text">These actions immediately affect all connected merchants and stores across the platform.</p>
               <div class="emergency-buttons">
-                <button id="global-pause-btn" class="btn-danger">⏸ Global Pause All Agents</button>
-                <button id="global-resume-btn" class="btn-success">▶ Global Resume All Agents</button>
+                <button id="global-pause-btn" class="btn-danger">Pause All Agents</button>
+                <button id="global-resume-btn" class="btn-secondary">Resume All Agents</button>
               </div>
             </div>
           </div>
@@ -329,9 +424,12 @@
         <!-- Alerts Section -->
         <section id="alerts-section" class="content-section hidden">
           <div class="section-header">
-            <h1>Alerts</h1>
+            <div>
+              <h1>Alerts</h1>
+              <p class="section-desc">Active platform notifications and operational warnings</p>
+            </div>
           </div>
-          <div class="panel glass-panel">
+          <div class="panel">
             <div id="alerts-list" class="alerts-full-list">
               <p class="empty-state">No alerts</p>
             </div>
@@ -342,28 +440,33 @@
 
     <!-- Create Merchant Modal -->
     <div id="create-merchant-modal" class="modal hidden">
-      <div class="modal-overlay"></div>
-      <div class="modal-content glass-panel">
-        <h2>Create New Merchant</h2>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Create New Merchant</h2>
+          <button type="button" class="modal-close" onclick="toggleModal('create-merchant-modal', false)" aria-label="Close">✕</button>
+        </div>
         <form id="create-merchant-form">
-          <div class="form-group">
-            <label>Merchant Name *</label>
-            <input type="text" id="new-merchant-name" required>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="new-merchant-name">Merchant Name *</label>
+              <input type="text" id="new-merchant-name" required placeholder="Acme Brands">
+            </div>
+            <div class="form-group">
+              <label for="new-merchant-email">Contact Email *</label>
+              <input type="email" id="new-merchant-email" required placeholder="contact@acme.com">
+            </div>
+            <div class="form-group">
+              <label for="new-merchant-domain">Shop Domain</label>
+              <input type="text" id="new-merchant-domain" placeholder="acme.myshopify.com">
+            </div>
+            <div class="form-group">
+              <label for="new-merchant-brand">Brand Name</label>
+              <input type="text" id="new-merchant-brand" placeholder="Acme">
+            </div>
           </div>
-          <div class="form-group">
-            <label>Contact Email *</label>
-            <input type="email" id="new-merchant-email" required>
-          </div>
-          <div class="form-group">
-            <label>Shop Domain</label>
-            <input type="text" id="new-merchant-domain" placeholder="store.myshopify.com">
-          </div>
-          <div class="form-group">
-            <label>Brand Name</label>
-            <input type="text" id="new-merchant-brand">
-          </div>
-          <div class="modal-actions">
-            <button type="button" class="btn-ghost" id="cancel-create-btn">Cancel</button>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" id="cancel-create-btn">Cancel</button>
             <button type="submit" class="btn-primary">Create Merchant</button>
           </div>
         </form>
@@ -372,12 +475,16 @@
 
     <!-- Confirm Modal -->
     <div id="confirm-modal" class="modal hidden">
-      <div class="modal-overlay"></div>
-      <div class="modal-content glass-panel">
-        <h2 id="confirm-title">Confirm Action</h2>
-        <p id="confirm-message">Are you sure?</p>
-        <div class="modal-actions">
-          <button class="btn-ghost" id="confirm-cancel-btn">Cancel</button>
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="confirm-title">Confirm Action</h2>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-message">Are you sure?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" id="confirm-cancel-btn">Cancel</button>
           <button class="btn-danger" id="confirm-action-btn">Confirm</button>
         </div>
       </div>
@@ -385,17 +492,21 @@
 
     <!-- Onboarding Invite Modal -->
     <div id="invite-link-modal" class="modal hidden">
-      <div class="modal-overlay"></div>
-      <div class="modal-content glass-panel">
-        <h2>Merchant Onboarding Link</h2>
-        <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 1rem;">Share this secure link with the merchant to complete onboarding and connect their Shopify store.</p>
-        <div class="form-group">
-          <input type="text" id="invite-link-input" readonly style="font-family: monospace; font-size: 0.85rem;" />
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Merchant Onboarding Link</h2>
+          <button type="button" class="modal-close" id="close-invite-modal-btn" aria-label="Close">✕</button>
         </div>
-        <div class="modal-actions" style="margin-top: 1.5rem; display: flex; gap: 0.5rem; justify-content: flex-end;">
-          <button class="btn-ghost" id="close-invite-modal-btn">Close</button>
+        <div class="modal-body">
+          <p class="modal-desc">Share this secure link with the merchant to complete onboarding and connect their Shopify store.</p>
+          <div class="form-group">
+            <input type="text" id="invite-link-input" readonly class="form-input tabular-num" style="font-family: var(--font-mono); font-size: 12px;" />
+          </div>
+        </div>
+        <div class="modal-footer">
           <button class="btn-secondary" id="copy-invite-link-btn">Copy Link</button>
-          <a id="open-invite-link-btn" href="#" target="_blank" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 500;">Open Wizard</a>
+          <a id="open-invite-link-btn" href="#" target="_blank" class="btn-primary" style="text-decoration: none;">Open Wizard</a>
         </div>
       </div>
     </div>
@@ -405,6 +516,6 @@
   </div>
 
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="js/admin.js?v=10.2"></script>
+  <script src="js/admin.js?v=11.0"></script>
 </body>
 </html>

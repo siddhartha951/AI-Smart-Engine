@@ -686,12 +686,18 @@ function showSection(sectionName) {
     return;
   }
 
-  Object.values(sections).forEach(s => { if (s) s.classList.add('hidden'); });
+  Object.values(sections).forEach(s => { 
+    if (s) {
+      s.classList.add('hidden');
+      s.classList.remove('active');
+    }
+  });
   const targetSection = sections[sectionName];
   if (targetSection) {
     targetSection.classList.remove('hidden');
+    targetSection.classList.add('active');
     if (window.gsap) {
-      const animTargets = targetSection.querySelectorAll('.stat-card, .mini-stat-card, .glass-card, .live-pulse-hero-card, .table-container, form');
+      const animTargets = targetSection.querySelectorAll('.stat-card, .mini-stat-card, .glass-card, .panel, .live-pulse-hero-card, .table-container, form');
       if (animTargets.length > 0) {
         window.gsap.fromTo(animTargets, 
           { opacity: 0, y: 14 },

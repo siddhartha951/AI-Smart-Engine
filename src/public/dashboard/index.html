@@ -4,10 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Merchant Dashboard | AI Smart Engine</title>
-  <link rel="stylesheet" href="css/styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../common/css/design-system.css">
+  <link rel="stylesheet" href="css/styles.css">
   <!-- GSAP & ScrollTrigger Animation Engine -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
@@ -18,21 +19,26 @@
 
   <div id="app-container">
     <!-- Login View -->
-    <main id="login-view" class="view glass-panel active">
+    <main id="login-view" class="view panel active">
       <div class="login-header">
+        <div class="login-logo-mark" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
         <h1>AI Smart Engine</h1>
-        <p>Merchant Portal</p>
+        <p class="login-subtitle">Merchant operations portal</p>
       </div>
       <form id="login-form">
         <div class="form-group">
           <label for="email">Email</label>
-          <input type="email" id="email" name="email" required placeholder="admin@platform.com">
+          <input type="email" id="email" name="email" required placeholder="merchant@store.com" autocomplete="email">
         </div>
         <div class="form-group">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" required placeholder="password123">
+          <input type="password" id="password" name="password" required placeholder="••••••••" autocomplete="current-password">
         </div>
-        <button type="submit" class="btn-primary">Sign In</button>
+        <button type="submit" class="btn-primary" id="merchant-login-btn">Sign In</button>
         <div id="login-error" class="error-msg"></div>
       </form>
     </main>
@@ -40,7 +46,7 @@
     <!-- Dashboard View -->
     <div id="dashboard-view" class="view hidden">
       <!-- Mobile Top Navbar -->
-      <div class="mobile-top-bar glass-panel">
+      <div class="mobile-top-bar">
         <button id="mobile-menu-toggle" class="mobile-hamburger-btn" aria-label="Open Navigation Menu">
           <span class="bar"></span>
           <span class="bar"></span>
@@ -50,175 +56,264 @@
           <span class="mobile-brand-title">AI Smart Engine</span>
         </div>
         <div class="mobile-live-badge" id="mobile-live-badge">
-          <span class="pulse-dot-mini"></span>
-          <span id="mobile-live-count">0</span> live
+          <span class="status-dot status-dot--success"></span>
+          <span id="mobile-live-count" class="tabular-num">0</span> live
         </div>
       </div>
 
       <!-- Backdrop overlay for mobile drawer -->
       <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
-      <nav class="sidebar glass-panel" id="dashboard-sidebar">
+      <nav class="sidebar" id="dashboard-sidebar">
         <div class="brand">
           <div class="brand-header-row">
-            <h2>AI Smart Engine</h2>
+            <div class="brand-title-wrap">
+              <span class="brand-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+              </span>
+              <h2>AI Smart Engine</h2>
+            </div>
             <button id="mobile-sidebar-close" class="mobile-close-btn" aria-label="Close Menu">&times;</button>
           </div>
           <div class="brand-meta-row">
-            <p id="user-role-badge" class="badge">Merchant</p>
+            <p id="user-role-badge" class="badge badge-neutral">Merchant</p>
             <span class="live-pulse-badge" id="sidebar-live-pill">
-              <span class="pulse-dot-ping"></span>
-              <span class="pulse-dot-center"></span>
-              <span id="sidebar-live-count">0</span> Shoppers
+              <span class="status-dot status-dot--success"></span>
+              <span id="sidebar-live-count" class="tabular-num">0</span> Shoppers
             </span>
           </div>
         </div>
         
         <div id="store-selector-container" class="store-selector hidden">
-          <label for="store-selector">Active Store:</label>
-          <select id="store-selector"></select>
+          <label for="store-selector">Active Store</label>
+          <select id="store-selector" class="form-select"></select>
         </div>
 
         <ul class="nav-links">
-          <li><a href="#" data-target="growth-copilot" class="active"><span class="nav-icon">🚀</span> Growth Copilot</a></li>
-          <li><a href="#" data-target="overview"><span class="nav-icon">📊</span> Overview</a></li>
-          <li><a href="#" data-target="live-analytics"><span class="nav-icon">⚡</span> Live Pulse & Funnel</a></li>
-          <li><a href="#" data-target="my-agent"><span class="nav-icon">🤖</span> My Agent</a></li>
-          <li><a href="#" data-target="leads-optins"><span class="nav-icon">👥</span> Leads & Opt-ins</a></li>
-          <li><a href="#" data-target="widget-settings"><span class="nav-icon">🎨</span> Widget Settings</a></li>
-          <li><a href="#" data-target="shopify-connection"><span class="nav-icon">🛍️</span> Shopify Catalog</a></li>
-          <li><a href="#" data-target="ad-creative-studio"><span class="nav-icon">📢</span> Ad Creative Studio</a></li>
-          <li><a href="#" data-target="whatsapp-growth"><span class="nav-icon">💬</span> WhatsApp Growth</a></li>
-          <li><a href="#" data-target="email-automation"><span class="nav-icon">✉️</span> Email Automation</a></li>
-          <li><a href="#" data-target="reorder-reminders"><span class="nav-icon">🔄</span> Smart Reorder</a></li>
-          <li><a href="#" data-target="ad-intelligence"><span class="nav-icon">🎯</span> Ad Intelligence</a></li>
+          <li>
+            <a href="#" data-target="growth-copilot" class="active">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+              </span>
+              Growth Copilot
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="overview">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              </span>
+              Overview
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="live-analytics">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              </span>
+              Live Pulse & Funnel
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="my-agent">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8.01" y2="16"></line><line x1="16" y1="16" x2="16.01" y2="16"></line></svg>
+              </span>
+              My Agent
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="leads-optins">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+              </span>
+              Leads & Opt-ins
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="widget-settings">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+              </span>
+              Widget Settings
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="shopify-connection">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+              </span>
+              Shopify Catalog
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="ad-creative-studio">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              </span>
+              Ad Creative Studio
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="whatsapp-growth">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+              </span>
+              WhatsApp Growth
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="email-automation">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+              </span>
+              Email Automation
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="reorder-reminders">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              </span>
+              Smart Reorder
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="ad-intelligence">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+              </span>
+              Ad Intelligence
+            </a>
+          </li>
         </ul>
         <div class="sidebar-footer">
-          <button id="logout-btn" class="btn-secondary outline">Log Out</button>
+          <button id="logout-btn" class="btn-secondary btn-sm" style="width: 100%;">Sign Out</button>
         </div>
       </nav>
 
-      <main class="dashboard-content glass-panel">
+      <main class="dashboard-content">
         <!-- 0. Growth Copilot Section (Phase 16) -->
         <section id="growth-copilot" class="content-section active">
           <header class="section-header-flex">
             <div>
-              <div class="live-badge-wrapper">
-                <span class="pulse-radar-dot" style="background:#6366f1;"></span>
-                <span class="live-title-tag" style="color:#818cf8;border-color:rgba(99,102,241,0.3);">UNIFIED GROWTH COPILOT</span>
+              <div class="status-badge status-badge--info" style="margin-bottom: 8px;">
+                <span class="status-dot"></span> UNIFIED GROWTH COPILOT
               </div>
-              <h2>AI Merchant Growth Copilot & Action Center</h2>
+              <h2>Merchant Growth Copilot & Action Center</h2>
               <p class="section-subtitle">Real-time deterministic intelligence and prioritized actions across conversion, marketing, recovery, and retention.</p>
             </div>
-            <div class="analytics-controls" style="display:flex;gap:12px;align-items:center;">
+            <div class="analytics-controls">
               <div class="timeframe-select-wrap">
-                <label for="merchant-goal-select" style="font-size:12px;font-weight:600;color:var(--text-muted);">Primary Goal:</label>
-                <select id="merchant-goal-select" class="custom-select-sm" style="padding:6px 12px;border-radius:6px;background:rgba(255,255,255,0.06);color:var(--text-main);border:1px solid rgba(255,255,255,0.15);">
-                  <option value="increase_revenue">📈 Increase Revenue</option>
-                  <option value="improve_roas">🎯 Improve ROAS</option>
-                  <option value="improve_conversion">⚡ Improve Conversion</option>
-                  <option value="increase_repeat_purchases">🔄 Increase Repeat Purchases</option>
-                  <option value="recover_abandoned_carts">🛒 Recover Abandoned Carts</option>
-                  <option value="improve_ai_conversion">🤖 Improve AI Conversion</option>
+                <label for="merchant-goal-select">Primary Goal:</label>
+                <select id="merchant-goal-select" class="form-control form-control-sm">
+                  <option value="increase_revenue">Increase Revenue</option>
+                  <option value="improve_roas">Improve ROAS</option>
+                  <option value="improve_conversion">Improve Conversion</option>
+                  <option value="increase_repeat_purchases">Increase Repeat Purchases</option>
+                  <option value="recover_abandoned_carts">Recover Abandoned Carts</option>
+                  <option value="improve_ai_conversion">Improve AI Conversion</option>
                 </select>
               </div>
-              <button id="refresh-growth-btn" class="btn-secondary btn-sm" style="padding:7px 14px;font-size:12px;">Refresh Actions 🔄</button>
+              <button id="refresh-growth-btn" class="btn btn-secondary btn-sm">Refresh Actions</button>
             </div>
           </header>
 
           <!-- Growth Pulse KPIs -->
-          <div class="metrics-grid" style="margin-bottom: 24px;">
-            <div class="stat-card" style="border: 1px solid rgba(99,102,241,0.3); background: linear-gradient(135deg, rgba(99,102,241,0.08), rgba(20,20,35,0.4));">
-              <h3 style="color: #a5b4fc;">Estimated Opportunity</h3>
-              <p id="copilot-estimated-opp" style="color: #818cf8; font-size: 26px; font-weight: 700;">--</p>
-              <span style="font-size: 11px; color: var(--text-muted);">Model-based estimate</span>
+          <div class="metrics-grid">
+            <div class="stat-card stat-card--highlight">
+              <h3>Estimated Opportunity</h3>
+              <p id="copilot-estimated-opp">--</p>
+              <span>Model-based estimate</span>
             </div>
             <div class="stat-card">
               <h3>Attributed Revenue</h3>
               <p id="copilot-revenue">--</p>
-              <span id="copilot-orders" style="font-size: 11px; color: var(--text-muted);">-- orders</span>
+              <span id="copilot-orders">-- orders</span>
             </div>
             <div class="stat-card">
               <h3>Blended ROAS</h3>
               <p id="copilot-roas">--</p>
-              <span id="copilot-spend" style="font-size: 11px; color: var(--text-muted);">on -- spend</span>
+              <span id="copilot-spend">on -- spend</span>
             </div>
             <div class="stat-card">
               <h3>Store Conversion</h3>
               <p id="copilot-conv-rate">--</p>
-              <span style="font-size: 11px; color: var(--text-muted);">funnel conversion</span>
+              <span>funnel conversion</span>
             </div>
             <div class="stat-card">
               <h3>AI-Assisted Sales</h3>
               <p id="copilot-ai-revenue">--</p>
-              <span style="font-size: 11px; color: var(--text-muted);">influenced by AI</span>
+              <span>influenced by AI</span>
             </div>
           </div>
 
           <!-- Today's High-Priority Growth Actions -->
-          <div class="glass-card" style="padding: 20px; margin-bottom: 24px; border: 1px solid rgba(255,255,255,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div class="panel copilot-actions-panel" style="margin-bottom: 24px;">
+            <div class="panel-header-clean">
               <div>
-                <h3 style="font-size: 18px; color: var(--text-main); margin: 0;">⚡ Today's Growth Actions</h3>
-                <p style="font-size: 13px; color: var(--text-muted); margin: 4px 0 0 0;">High-impact opportunities detected from your live store signals. Click to execute in the relevant module.</p>
+                <h3 style="font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0;">Today's Growth Actions</h3>
+                <p style="font-size: 13px; color: var(--color-text-secondary); margin: 4px 0 0 0;">High-impact opportunities detected from your live store signals. Click to execute in the relevant module.</p>
               </div>
-              <span id="copilot-actions-count" class="badge" style="background: rgba(99,102,241,0.2); color: #818cf8; border: 1px solid rgba(99,102,241,0.4); font-size: 12px; padding: 4px 10px;">0 Actions</span>
+              <span id="copilot-actions-count" class="badge badge--neutral">0 Actions</span>
             </div>
 
-            <div id="copilot-actions-container" style="display: flex; flex-direction: column; gap: 12px;">
-              <div style="text-align: center; padding: 30px; color: var(--text-muted);">Analyzing growth signals...</div>
+            <div id="copilot-actions-container" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+              <div style="text-align: center; padding: 30px; color: var(--color-text-secondary);">Analyzing growth signals...</div>
             </div>
           </div>
 
           <!-- Weekly Growth Summary & AI Analysis Split Grid -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+          <div class="split-layout" style="margin-bottom: 24px;">
             <!-- Weekly Growth Summary -->
-            <div class="glass-card" style="padding: 20px;">
-              <h3 style="font-size: 16px; margin: 0 0 12px 0; color: var(--text-main);">📅 Weekly Growth Summary</h3>
-              <div id="copilot-summary-metrics" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
-                <div><span style="font-size: 11px; color: var(--text-muted);">Revenue:</span> <strong id="summary-rev">--</strong></div>
-                <div><span style="font-size: 11px; color: var(--text-muted);">Orders:</span> <strong id="summary-orders">--</strong></div>
-                <div><span style="font-size: 11px; color: var(--text-muted);">ROAS:</span> <strong id="summary-roas">--</strong></div>
-                <div><span style="font-size: 11px; color: var(--text-muted);">Conversion:</span> <strong id="summary-conv">--</strong></div>
+            <div class="panel">
+              <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 14px 0; color: var(--color-text-primary);">Weekly Growth Summary</h3>
+              <div id="copilot-summary-metrics" class="summary-metrics-grid">
+                <div><span>Revenue:</span> <strong id="summary-rev">--</strong></div>
+                <div><span>Orders:</span> <strong id="summary-orders">--</strong></div>
+                <div><span>ROAS:</span> <strong id="summary-roas">--</strong></div>
+                <div><span>Conversion:</span> <strong id="summary-conv">--</strong></div>
               </div>
-              <h4 style="font-size: 13px; color: #94a3b8; margin: 0 0 8px 0; text-transform: uppercase;">What Changed?</h4>
-              <ul id="copilot-what-changed" style="font-size: 13px; color: var(--text-muted); line-height: 1.6; padding-left: 18px; margin: 0 0 16px 0;">
+              <h4 style="font-size: 12px; font-weight: 600; color: var(--color-text-tertiary); margin: 14px 0 8px 0; text-transform: uppercase; letter-spacing: 0.04em;">What Changed?</h4>
+              <ul id="copilot-what-changed" class="summary-bullet-list">
                 <li>Analyzing recent performance changes...</li>
               </ul>
             </div>
 
             <!-- AI Growth Explanation -->
-            <div class="glass-card" style="padding: 20px; border: 1px solid rgba(99,102,241,0.25);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h3 style="font-size: 16px; margin: 0; color: #a5b4fc;">🤖 AI Growth Copilot Insights</h3>
-                <button id="copilot-ask-ai-btn" class="btn-secondary btn-sm" style="padding: 3px 10px; font-size: 11px; border-color: rgba(99,102,241,0.4);">Ask Copilot ✨</button>
+            <div class="panel">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0; color: var(--color-text-primary);">AI Growth Copilot Insights</h3>
+                <button id="copilot-ask-ai-btn" class="btn btn-secondary btn-sm">Ask Copilot</button>
               </div>
-              <div id="copilot-ai-explanation-box" style="font-size: 13px; line-height: 1.6; color: var(--text-main); background: rgba(99,102,241,0.06); padding: 14px; border-radius: 8px; border: 1px solid rgba(99,102,241,0.15); margin-bottom: 12px;">
+              <div id="copilot-ai-explanation-box" class="callout-box">
                 Click "Ask Copilot" to generate an executive AI analysis of your verified store telemetry.
               </div>
-              <h4 style="font-size: 13px; color: #94a3b8; margin: 0 0 8px 0; text-transform: uppercase;">Strategic Key Takeaways</h4>
-              <ul id="copilot-ai-takeaways" style="font-size: 13px; color: var(--text-muted); line-height: 1.6; padding-left: 18px; margin: 0;">
+              <h4 style="font-size: 12px; font-weight: 600; color: var(--color-text-tertiary); margin: 14px 0 8px 0; text-transform: uppercase; letter-spacing: 0.04em;">Strategic Key Takeaways</h4>
+              <ul id="copilot-ai-takeaways" class="summary-bullet-list">
                 <li>Review high-priority actions above to capture immediate revenue lift.</li>
               </ul>
             </div>
           </div>
 
           <!-- Growth Action History -->
-          <div class="glass-card" style="padding: 20px;">
-            <h3 style="font-size: 16px; margin: 0 0 12px 0; color: var(--text-main);">📋 Action Execution History</h3>
+          <div class="panel">
+            <h3 style="font-size: 15px; font-weight: 600; margin: 0 0 14px 0; color: var(--color-text-primary);">Action Execution History</h3>
             <div class="table-container">
-              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <table class="data-table">
                 <thead>
-                  <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: var(--text-muted);">
-                    <th style="padding: 10px;">Date</th>
-                    <th style="padding: 10px;">Action Key</th>
-                    <th style="padding: 10px;">Type</th>
-                    <th style="padding: 10px;">Status</th>
-                    <th style="padding: 10px;">Notes</th>
+                  <tr>
+                    <th>Date</th>
+                    <th>Action Key</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Notes</th>
                   </tr>
                 </thead>
                 <tbody id="copilot-history-tbody">
-                  <tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">No action history recorded yet.</td></tr>
+                  <tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--color-text-secondary);">No action history recorded yet.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -228,10 +323,13 @@
         <!-- 1. Overview Section -->
         <section id="overview" class="content-section hidden">
           <header>
-            <h2>Store Overview</h2>
+            <div>
+              <h2>Store Overview</h2>
+              <p class="section-subtitle">Real-time performance across conversation, sales attribution, and resource utilization.</p>
+            </div>
             <div class="status-indicators">
-              <span class="status-badge" id="agent-status-badge"><span class="dot"></span> Agent Status: Loading...</span>
-              <span class="status-badge" id="widget-status-badge"><span class="dot"></span> Widget Status: Loading...</span>
+              <span class="status-badge" id="agent-status-badge"><span class="status-dot"></span> Agent Status: Loading...</span>
+              <span class="status-badge" id="widget-status-badge"><span class="status-dot"></span> Widget Status: Loading...</span>
             </div>
           </header>
           
@@ -255,7 +353,7 @@
               <div class="split-stats">
                 <div><span>Input Tokens:</span> <strong id="stat-ai-input">--</strong></div>
                 <div><span>Output Tokens:</span> <strong id="stat-ai-output">--</strong></div>
-                <div><span>Estimated Cost:</span> <strong id="stat-ai-cost">--</strong> <small>(Limit: $14.00)</small></div>
+                <div><span>Estimated Cost:</span> <strong id="stat-ai-cost">--</strong> <small style="color: var(--color-text-secondary);">(Limit: $14.00)</small></div>
               </div>
               <div class="progress-bar-container">
                 <div class="progress-bar" id="ai-budget-progress" style="width: 0%"></div>
@@ -264,36 +362,33 @@
           </div>
 
           <!-- AI Store Insights -->
-          <div class="glass-card" style="margin-top: 24px; padding: 22px; border: 1px solid rgba(99,102,241,0.25); background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(15,23,42,0.4)); border-radius: 12px;">
+          <div class="panel" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-size: 22px;">✨</span>
-                <div>
-                  <h3 style="margin: 0; font-size: 16px; color: #a5b4fc;">AI Store Intelligence & Action Insights</h3>
-                  <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Grounded diagnostics based on active visitors, funnel conversions, and marketing efficiency.</p>
-                </div>
+              <div>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--color-text-primary);">AI Store Intelligence & Action Insights</h3>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--color-text-secondary);">Grounded diagnostics based on active visitors, funnel conversions, and marketing efficiency.</p>
               </div>
               <div style="display: flex; gap: 8px;">
-                <button id="btn-refresh-store-insights" class="btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px;">🔄 Refresh Insights</button>
-                <button id="btn-run-full-audit" class="btn-primary btn-sm" style="padding: 6px 14px; font-size: 12px;">🚀 Run Full Store Audit</button>
+                <button id="btn-refresh-store-insights" class="btn btn-secondary btn-sm">Refresh Insights</button>
+                <button id="btn-run-full-audit" class="btn btn-primary btn-sm">Run Full Store Audit</button>
               </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-              <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-                <h4 style="margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; color: #38bdf8; font-weight: 600;">What is Happening</h4>
-                <p id="overview-ai-happening" style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-main);">Loading store telemetry analysis...</p>
+            <div class="split-layout" style="margin-bottom: 16px;">
+              <div class="callout-box">
+                <h4 style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: var(--color-info); font-weight: 600; letter-spacing: 0.04em;">What is Happening</h4>
+                <p id="overview-ai-happening" style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-text-primary);">Loading store telemetry analysis...</p>
               </div>
-              <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-                <h4 style="margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; color: #f59e0b; font-weight: 600;">Why It Is Happening</h4>
-                <p id="overview-ai-why" style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-main);">Analyzing catalog, funnel, and channel drivers...</p>
+              <div class="callout-box">
+                <h4 style="margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: var(--color-warning); font-weight: 600; letter-spacing: 0.04em;">Why It Is Happening</h4>
+                <p id="overview-ai-why" style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-text-primary);">Analyzing catalog, funnel, and channel drivers...</p>
               </div>
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-              <h4 style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; color: #10b981; font-weight: 600;">Top 3 Recommended Next Actions</h4>
+            <div class="callout-box">
+              <h4 style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; color: var(--color-success); font-weight: 600; letter-spacing: 0.04em;">Top 3 Recommended Next Actions</h4>
               <div id="overview-ai-actions" style="display: flex; flex-direction: column; gap: 8px;">
-                <span style="font-size: 13px; color: var(--text-muted);">Fetching prioritized actions...</span>
+                <span style="font-size: 13px; color: var(--color-text-secondary);">Fetching prioritized actions...</span>
               </div>
             </div>
           </div>
@@ -303,9 +398,8 @@
         <section id="live-analytics" class="content-section hidden">
           <header class="section-header-flex">
             <div>
-              <div class="live-badge-wrapper">
-                <span class="pulse-radar-dot"></span>
-                <span class="live-title-tag">REAL-TIME TELEMETRY</span>
+              <div class="status-badge status-badge--success" style="margin-bottom: 8px;">
+                <span class="status-dot"></span> REAL-TIME TELEMETRY
               </div>
               <h2>Live Shopper Pulse & Conversion Funnel</h2>
               <p class="section-subtitle">Monitor real-time shoppers browsing your store, live engagement events, and step-by-step funnel drop-offs.</p>
@@ -313,23 +407,22 @@
             <div class="analytics-controls">
               <div class="timeframe-select-wrap">
                 <label for="funnel-timeframe">Funnel Window:</label>
-                <select id="funnel-timeframe" class="custom-select-sm">
+                <select id="funnel-timeframe" class="form-control form-control-sm">
                   <option value="1">Last 24 Hours</option>
                   <option value="7" selected>Last 7 Days</option>
                   <option value="30">Last 30 Days</option>
                   <option value="0">All Time</option>
                 </select>
               </div>
-              <button id="btn-refresh-live" class="btn-refresh-live" title="Refresh Live Data">
-                <span class="refresh-icon">🔄</span> Refresh
+              <button id="btn-refresh-live" class="btn btn-secondary btn-sm" title="Refresh Live Data">
+                Refresh
               </button>
             </div>
           </header>
 
           <!-- Deactivation Banner (Shown when admin toggles feature off) -->
-          <div id="live-tracking-deactivated-banner" class="deactivated-banner glass-card hidden">
-            <div class="deactivated-banner-content">
-              <span class="deactivated-icon">⚠️</span>
+          <div id="live-tracking-deactivated-banner" class="alert-banner alert-banner--warning hidden">
+            <div class="alert-banner-content">
               <div>
                 <h4>Real-Time Telemetry Paused by Platform Admin</h4>
                 <p>Storefront live tracking has been deactivated for this store by your administrator. Contact support to re-enable live visitor radar and telemetry.</p>
@@ -339,38 +432,35 @@
 
           <!-- Top Hero: Active Shopper Radar & High-Impact Metrics -->
           <div class="live-pulse-hero-grid">
-            <div class="live-pulse-hero-card">
+            <div class="live-pulse-hero-card panel">
               <div class="hero-radar-indicator">
                 <div class="radar-ping"></div>
                 <div class="radar-center"></div>
               </div>
               <div class="hero-pulse-content">
-                <span class="hero-pulse-label">ACTIVE SHOPPERS RIGHT NOW</span>
+                <span class="hero-pulse-label">Active Shoppers Right Now</span>
                 <div class="hero-pulse-value-row">
                   <h1 class="hero-pulse-number" id="live-active-shoppers-count">0</h1>
-                  <span class="hero-pulse-tag">5m inactivity window</span>
+                  <span class="badge badge--neutral">5m inactivity window</span>
                 </div>
                 <p class="hero-pulse-subtext">Visitors actively exploring products, conversing with your assistant, or updating carts within the last 5 minutes.</p>
               </div>
             </div>
 
             <div class="live-mini-stats-grid">
-              <div class="mini-stat-card">
-                <span class="mini-stat-icon">💬</span>
+              <div class="mini-stat-card panel">
                 <div>
                   <span class="mini-stat-label">AI Chats Today</span>
                   <strong class="mini-stat-val" id="live-chats-today">0</strong>
                 </div>
               </div>
-              <div class="mini-stat-card">
-                <span class="mini-stat-icon">🛒</span>
+              <div class="mini-stat-card panel">
                 <div>
                   <span class="mini-stat-label">Cart Additions</span>
                   <strong class="mini-stat-val" id="live-carts-today">0</strong>
                 </div>
               </div>
-              <div class="mini-stat-card">
-                <span class="mini-stat-icon">🎯</span>
+              <div class="mini-stat-card panel">
                 <div>
                   <span class="mini-stat-label">Funnel Conversion</span>
                   <strong class="mini-stat-val" id="live-overall-conversion">0%</strong>
@@ -382,13 +472,13 @@
           <!-- Dual Column: Visual Conversion Funnel & Real-Time Event Feed -->
           <div class="analytics-dual-layout">
             <!-- Left: Conversion Funnel -->
-            <div class="funnel-container glass-card">
-              <div class="card-header-clean">
+            <div class="funnel-container panel">
+              <div class="panel-header-clean">
                 <div>
                   <h3>Storefront Conversion Funnel</h3>
-                  <p class="card-subtext">How shoppers flow through AI engagement to checkout.</p>
+                  <p class="section-subtitle" style="margin-top: 2px;">How shoppers flow through AI engagement to checkout.</p>
                 </div>
-                <span class="card-badge" id="funnel-visitors-count">0 Visitors</span>
+                <span class="badge badge--neutral" id="funnel-visitors-count">0 Visitors</span>
               </div>
               
               <div id="funnel-stages-list" class="funnel-stages-list">
@@ -397,75 +487,74 @@
               </div>
 
               <!-- Actionable Funnel Diagnostics & Optimization Insights -->
-              <div class="funnel-insights-card" id="funnel-action-insights">
+              <div class="funnel-insights-card callout-box" id="funnel-action-insights" style="margin-top: 16px;">
                 <div class="insights-header">
-                  <span class="insights-icon">💡</span>
-                  <h4>Funnel Diagnostics & Recommended Actions</h4>
+                  <h4 style="font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin: 0 0 6px 0;">Funnel Diagnostics & Recommended Actions</h4>
                 </div>
                 <div class="insights-body" id="funnel-insights-content">
-                  <div class="insight-placeholder">Analyzing store visitor patterns...</div>
+                  <div class="insight-placeholder" style="color: var(--color-text-secondary); font-size: 13px;">Analyzing store visitor patterns...</div>
                 </div>
               </div>
 
               <!-- Ask AI About Funnel Drop-offs -->
-              <div class="glass-card" style="margin-top: 16px; padding: 16px; border: 1px solid rgba(99,102,241,0.25); border-radius: 10px;">
+              <div class="callout-box" style="margin-top: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                  <h4 style="margin: 0; font-size: 13px; color: #a5b4fc;">🤖 Ask AI About This Funnel</h4>
-                  <button id="btn-run-funnel-ai" class="btn-secondary btn-sm" style="padding: 3px 8px; font-size: 11px;">✨ Drop-Off Deep Dive</button>
+                  <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--color-text-primary);">Ask AI About This Funnel</h4>
+                  <button id="btn-run-funnel-ai" class="btn btn-secondary btn-sm">Drop-Off Deep Dive</button>
                 </div>
                 <div style="display: flex; gap: 8px;">
-                  <input type="text" id="funnel-ai-question" class="input-field" placeholder="e.g. Why is the drop-off highest between cart and purchase?" style="flex: 1; font-size: 12px; padding: 7px 10px;" />
-                  <button id="btn-ask-funnel-ai" class="btn-primary btn-sm" style="padding: 7px 14px; font-size: 12px;">Ask AI</button>
+                  <input type="text" id="funnel-ai-question" class="form-control form-control-sm" placeholder="e.g. Why is the drop-off highest between cart and purchase?" style="flex: 1;" />
+                  <button id="btn-ask-funnel-ai" class="btn btn-primary btn-sm">Ask AI</button>
                 </div>
-                <div id="funnel-ai-answer-box" class="hidden" style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(99,102,241,0.2); font-size: 13px; line-height: 1.5;"></div>
+                <div id="funnel-ai-answer-box" class="callout-box hidden" style="margin-top: 12px;"></div>
               </div>
             </div>
 
             <!-- Right: Real-Time Shopper Activity Feed -->
-            <div class="activity-feed-container glass-card">
-              <div class="card-header-clean">
+            <div class="activity-feed-container panel">
+              <div class="panel-header-clean">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="pulse-dot-green"></span>
+                  <span class="status-dot status-dot--success"></span>
                   <h3>Live Activity Ticker</h3>
                 </div>
-                <span class="live-stream-badge">LIVE STREAM</span>
+                <span class="badge badge--success">LIVE STREAM</span>
               </div>
-              <p class="card-subtext">Real-time actions streaming from active shoppers on your storefront.</p>
+              <p class="section-subtitle" style="margin-bottom: 14px;">Real-time actions streaming from active shoppers on your storefront.</p>
 
               <div id="live-activity-feed" class="live-activity-feed">
                 <!-- Dynamically populated -->
-                <div class="feed-empty-state">Waiting for real-time shopper activity...</div>
+                <div class="feed-empty-state" style="text-align: center; padding: 40px 0; color: var(--color-text-secondary); font-size: 13px;">Waiting for real-time shopper activity...</div>
               </div>
             </div>
           </div>
 
           <!-- Recommendation Performance Section -->
-          <div class="rec-performance-container glass-card" style="margin-top: 24px;">
-            <div class="card-header-clean">
+          <div class="rec-performance-container panel" style="margin-top: 24px;">
+            <div class="panel-header-clean">
               <div>
                 <h3>AI Recommendation Performance</h3>
-                <p class="card-subtext" style="margin-top: 2px;">Direct attribution analytics for items suggested by your AI shopping assistant.</p>
+                <p class="section-subtitle" style="margin-top: 2px;">Direct attribution analytics for items suggested by your AI shopping assistant.</p>
               </div>
-              <span class="card-badge">Top Suggested Products</span>
+              <span class="badge badge--neutral">Top Suggested Products</span>
             </div>
 
-            <div class="table-container" style="overflow-x: auto; padding: 12px 0;">
-              <table class="data-table" style="width: 100%; border-collapse: collapse;">
+            <div class="table-container">
+              <table class="data-table">
                 <thead>
-                  <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 12px;">
-                    <th style="padding: 12px 10px; width: 60px;">Product</th>
-                    <th style="padding: 12px 10px;">Title</th>
-                    <th style="padding: 12px 10px;">Price</th>
-                    <th style="padding: 12px 10px; text-align: center;">Times Recommended</th>
-                    <th style="padding: 12px 10px; text-align: center;">Clicks</th>
-                    <th style="padding: 12px 10px; text-align: center;">Cart Adds</th>
-                    <th style="padding: 12px 10px; text-align: center;">Purchases</th>
-                    <th style="padding: 12px 10px; text-align: right;">Conversion Rate</th>
+                  <tr>
+                    <th style="width: 60px;">Product</th>
+                    <th>Title</th>
+                    <th>Price</th>
+                    <th style="text-align: center;">Times Recommended</th>
+                    <th style="text-align: center;">Clicks</th>
+                    <th style="text-align: center;">Cart Adds</th>
+                    <th style="text-align: center;">Purchases</th>
+                    <th style="text-align: right;">Conversion Rate</th>
                   </tr>
                 </thead>
                 <tbody id="rec-performance-table-body">
                   <tr>
-                    <td colspan="8" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="8" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       Loading AI product performance...
                     </td>
                   </tr>
@@ -478,10 +567,12 @@
         <!-- 2. My Agent Section -->
         <section id="my-agent" class="content-section hidden">
           <header>
-            <h2>My Agent</h2>
-            <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">Customize how your AI sales assistant interacts with shoppers and train it with custom prompts or product catalogs.</p>
+            <div>
+              <h2>My Agent</h2>
+              <p class="section-subtitle">Customize how your AI sales assistant interacts with shoppers and train it with custom prompts or product catalogs.</p>
+            </div>
           </header>
-          <form id="agent-form">
+          <form id="agent-form" class="panel" style="display: flex; flex-direction: column; gap: 16px;">
             <div class="form-group toggle-group">
               <label for="agent-is-active">Enable Assistant</label>
               <label class="switch">
@@ -491,88 +582,90 @@
             </div>
             <div class="form-group">
               <label for="agent-name">Agent Name</label>
-              <input type="text" id="agent-name">
+              <input type="text" id="agent-name" class="form-control">
             </div>
             <div class="form-group">
               <label for="agent-welcome">Welcome Message</label>
-              <textarea id="agent-welcome" rows="2"></textarea>
+              <textarea id="agent-welcome" class="form-control" rows="2"></textarea>
             </div>
             <div class="form-group">
               <label for="agent-tone">Tone</label>
-              <select id="agent-tone">
+              <select id="agent-tone" class="form-control">
                 <option value="friendly and helpful">Friendly and Helpful</option>
                 <option value="professional and concise">Professional and Concise</option>
                 <option value="enthusiastic and persuasive">Enthusiastic and Persuasive</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="agent-support">Support Email/WhatsApp</label>
-              <input type="text" id="agent-support">
+              <label for="agent-support">Support Email / WhatsApp</label>
+              <input type="text" id="agent-support" class="form-control">
             </div>
 
             <div class="form-group">
               <label for="agent-custom-prompt">Custom Persona & Instructions (Prompt Training)</label>
-              <textarea id="agent-custom-prompt" rows="4" placeholder="Give your AI assistant specific behavioral rules, phrases to use, discounts to pitch, or brand voice guidelines..."></textarea>
-              <small>Explain exactly how the agent should speak, rules for recommending items, or special sales promotions.</small>
+              <textarea id="agent-custom-prompt" class="form-control" rows="4" placeholder="Give your AI assistant specific behavioral rules, phrases to use, discounts to pitch, or brand voice guidelines..."></textarea>
+              <small class="form-hint">Explain exactly how the agent should speak, rules for recommending items, or special sales promotions.</small>
             </div>
 
             <div class="form-group">
               <label for="agent-doc-upload">Train with Documents / Catalog (Upload PDF or Text File)</label>
-              <input type="file" id="agent-doc-upload" accept=".pdf,.txt,.md,.json">
-              <small>Upload product catalog sheets, brand story, or FAQs to train your agent automatically.</small>
+              <input type="file" id="agent-doc-upload" class="form-control" accept=".pdf,.txt,.md,.json">
+              <small class="form-hint">Upload product catalog sheets, brand story, or FAQs to train your agent automatically.</small>
             </div>
 
             <div class="form-group">
               <label for="agent-knowledge-base">Knowledge Base & Reference Data</label>
-              <textarea id="agent-knowledge-base" rows="6" placeholder="Document guidelines, product details, or catalog text extracted for the AI to reference..."></textarea>
-              <small>The AI assistant directly references this knowledge when conversing with customers.</small>
+              <textarea id="agent-knowledge-base" class="form-control" rows="5" placeholder="Document guidelines, product details, or catalog text extracted for the AI to reference..."></textarea>
+              <small class="form-hint">The AI assistant directly references this knowledge when conversing with customers.</small>
             </div>
 
             <div class="form-group">
               <label for="store-faq">Store Policies & FAQ</label>
-              <textarea id="store-faq" rows="4"></textarea>
-              <small>Provide your delivery rules, returns policy, and common FAQs so the agent won't hallucinate.</small>
+              <textarea id="store-faq" class="form-control" rows="4"></textarea>
+              <small class="form-hint">Provide your delivery rules, returns policy, and common FAQs so the agent will not hallucinate.</small>
             </div>
-            <button type="submit" class="btn-primary">Save Agent Settings</button>
+            <div>
+              <button type="submit" class="btn btn-primary">Save Agent Settings</button>
+            </div>
           </form>
         </section>
 
         <!-- 2.5 Leads & Opt-ins Section -->
         <section id="leads-optins" class="content-section hidden">
-          <header style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+          <header class="section-header-flex">
             <div>
               <h2>Marketing Opt-ins & Leads</h2>
-              <p style="color: var(--text-muted); font-size: 14px; margin-top: 4px;">
+              <p class="section-subtitle">
                 Track visitors who opted in for marketing messages and monitor real-time purchase conversions.
               </p>
             </div>
-            <button id="btn-export-leads" class="btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 500; padding: 9px 16px; cursor: pointer; border-radius: 8px;">
-              <span>📥</span> Export Leads (CSV)
+            <button id="btn-export-leads" class="btn btn-secondary btn-sm">
+              Export Leads (CSV)
             </button>
           </header>
 
-          <div class="metrics-grid" style="margin-bottom: 24px;">
+          <div class="metrics-grid">
             <div class="stat-card"><h3>Total Captured Leads</h3><p id="stat-leads-total">--</p></div>
             <div class="stat-card"><h3>Opted-In</h3><p id="stat-leads-opted">--</p></div>
             <div class="stat-card"><h3>Converted Purchases</h3><p id="stat-leads-converted">--</p></div>
             <div class="stat-card"><h3>Conversion Rate</h3><p id="stat-leads-rate">--%</p></div>
           </div>
 
-          <div class="table-container glass-panel" style="padding: 20px; overflow-x: auto; border-radius: 12px;">
-            <table class="data-table" style="width: 100%; border-collapse: collapse;">
+          <div class="panel table-container">
+            <table class="data-table">
               <thead>
-                <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 13px;">
-                  <th style="padding: 12px 10px;">Contact / Email</th>
-                  <th style="padding: 12px 10px;">Phone</th>
-                  <th style="padding: 12px 10px;">Status</th>
-                  <th style="padding: 12px 10px;">Captured Date</th>
-                  <th style="padding: 12px 10px;">Source</th>
-                  <th style="padding: 12px 10px;">Conversion</th>
+                <tr>
+                  <th>Contact / Email</th>
+                  <th>Phone</th>
+                  <th>Status</th>
+                  <th>Captured Date</th>
+                  <th>Source</th>
+                  <th>Conversion</th>
                 </tr>
               </thead>
               <tbody id="leads-table-body">
                 <tr>
-                  <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                  <td colspan="6" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                     Loading leads data...
                   </td>
                 </tr>
@@ -583,34 +676,39 @@
 
         <!-- 3. Widget Settings Section -->
         <section id="widget-settings" class="content-section hidden">
-          <header><h2>Widget Customization & Styling</h2></header>
+          <header>
+            <div>
+              <h2>Widget Customization & Styling</h2>
+              <p class="section-subtitle">Configure the look, feel, and position of the storefront conversational widget.</p>
+            </div>
+          </header>
           <div class="split-layout">
-            <form id="widget-form" class="half-width">
+            <form id="widget-form" class="panel">
               <div class="form-group">
                 <label for="widget-btn-text">Floating Launcher Button Text</label>
-                <input type="text" id="widget-btn-text" placeholder="Ask our shopping assistant">
+                <input type="text" id="widget-btn-text" class="form-control" placeholder="Ask our shopping assistant">
               </div>
 
               <div class="form-group">
                 <label for="widget-header-title">Chat Window Header Title</label>
-                <input type="text" id="widget-header-title" placeholder="e.g. AI Shopping Concierge">
-                <small style="color: var(--text-muted); font-size: 12px;">Displayed prominently at the top of the chat popup window.</small>
+                <input type="text" id="widget-header-title" class="form-control" placeholder="e.g. AI Shopping Concierge">
+                <small class="form-hint">Displayed prominently at the top of the chat popup window.</small>
               </div>
 
               <div class="form-group row">
                 <div class="col">
                   <label for="widget-primary-color">Primary Colour</label>
-                  <input type="color" id="widget-primary-color" value="#1a1a1a">
+                  <input type="color" id="widget-primary-color" class="form-control" value="#1a1a1a" style="height: 40px; padding: 2px;">
                 </div>
                 <div class="col">
                   <label for="widget-secondary-color">Secondary / Text Colour</label>
-                  <input type="color" id="widget-secondary-color" value="#ffffff">
+                  <input type="color" id="widget-secondary-color" class="form-control" value="#ffffff" style="height: 40px; padding: 2px;">
                 </div>
               </div>
 
               <div class="form-group">
                 <label for="widget-position">Screen Position</label>
-                <select id="widget-position">
+                <select id="widget-position" class="form-control">
                   <option value="bottom-right">Bottom Right</option>
                   <option value="bottom-left">Bottom Left</option>
                 </select>
@@ -618,37 +716,37 @@
 
               <!-- 3D Bot Avatars Gallery -->
               <div class="form-group">
-                <label style="display: flex; justify-content: space-between; align-items: center;">
-                  <span>Readymade 3D Bot Avatars</span>
-                  <span style="font-size: 11px; color: var(--primary); font-weight: 500;">Click to select</span>
-                </label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label style="margin: 0;">Readymade 3D Bot Avatars</label>
+                  <span style="font-size: 11px; color: var(--color-accent); font-weight: 500;">Click to select</span>
+                </div>
                 <div id="avatar-presets-grid" class="avatar-presets-grid">
                   <!-- Populated by app.js -->
                 </div>
 
-                <label for="widget-avatar-url" style="font-size: 12px; margin-top: 8px; color: var(--text-muted);">
+                <label for="widget-avatar-url" style="font-size: 12px; margin-top: 10px; color: var(--color-text-secondary); display: block;">
                   Or Custom Avatar URL (Image / GIF)
                 </label>
                 <div style="display: flex; gap: 8px;">
-                  <input type="url" id="widget-avatar-url" placeholder="https://... (or select a 3D avatar above)">
-                  <button type="button" id="btn-clear-avatar" class="btn-secondary outline" style="white-space: nowrap; padding: 0 14px; font-size: 12px;">Clear</button>
+                  <input type="url" id="widget-avatar-url" class="form-control" placeholder="https://... (or select a 3D avatar above)">
+                  <button type="button" id="btn-clear-avatar" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Clear</button>
                 </div>
-                <small style="color: var(--text-muted); font-size: 11px;">Supports 3D avatars, brand logos, animated GIFs, or image URLs.</small>
+                <small class="form-hint">Supports 3D avatars, brand logos, animated GIFs, or image URLs.</small>
               </div>
 
               <!-- Custom CSS Editor -->
               <div class="form-group">
                 <label for="widget-custom-css">Custom CSS (Widget Shadow DOM)</label>
-                <textarea id="widget-custom-css" rows="4" style="font-family: monospace; font-size: 12px;" placeholder="/* Custom CSS overrides injected directly into widget shadow DOM */&#10;.chat-popup { border-radius: 20px; }&#10;.header-bar { background: linear-gradient(135deg, #4f46e5, #7c3aed); }&#10;.bot-msg { font-size: 14px; }"></textarea>
-                <small style="color: var(--text-muted); font-size: 11px;">Full CSS power: customize borders, glassmorphism, fonts, or animations.</small>
+                <textarea id="widget-custom-css" class="form-control" rows="4" style="font-family: var(--font-mono); font-size: 12px;" placeholder="/* Custom CSS overrides injected directly into widget shadow DOM */&#10;.chat-popup { border-radius: 12px; }&#10;.header-bar { background: var(--color-accent); }"></textarea>
+                <small class="form-hint">Full CSS power: customize borders, surfaces, fonts, or animations.</small>
               </div>
 
-              <button type="submit" class="btn-primary" style="margin-top: 10px;">Save Widget Settings</button>
+              <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Save Widget Settings</button>
             </form>
             
-            <div class="live-preview-container half-width">
-              <h3>Live Widget Preview</h3>
-              <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">Real-time preview of launcher button & chat popup header.</p>
+            <div class="live-preview-container panel">
+              <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 4px;">Live Widget Preview</h3>
+              <p class="section-subtitle" style="margin-bottom: 16px;">Real-time preview of launcher button & chat popup header.</p>
               
               <!-- Floating Button Preview -->
               <div class="preview-box" style="margin-bottom: 16px;">
@@ -658,8 +756,8 @@
               </div>
 
               <!-- Chat Header Preview -->
-              <div class="preview-header-card">
-                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 8px 14px; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border);">
+              <div class="preview-header-card panel" style="padding: 0; overflow: hidden;">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); padding: 8px 14px; background: var(--color-surface-subtle); border-bottom: 1px solid var(--color-border-default);">
                   Chat Window Header Preview
                 </div>
                 <div id="preview-chat-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #1a1a1a; color: #fff; transition: all 0.2s ease;">
@@ -669,7 +767,7 @@
                     <div>
                       <div id="preview-header-title-text" style="font-size: 13px; font-weight: 600;">AI Shopping Assistant</div>
                       <div style="display: flex; align-items: center; gap: 4px; font-size: 10px; opacity: 0.85;">
-                        <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; display: inline-block;"></span> Online
+                        <span style="width: 6px; height: 6px; border-radius: 50%; background: #087f5b; display: inline-block;"></span> Online
                       </div>
                     </div>
                   </div>
@@ -679,83 +777,88 @@
             </div>
           </div>
           
-          <hr class="divider">
-          
-          <div class="snippet-section">
-            <h3>Installation Snippet</h3>
-            <p>Paste this inside your Shopify theme's <code>&lt;head&gt;</code> or just before <code>&lt;/body&gt;</code>:</p>
-            <div class="code-block">
-              <code id="snippet-code">&lt;script src="https://yourdomain.com/widget.js" data-widget-key="LOADING" defer&gt;&lt;/script&gt;</code>
-              <button id="copy-snippet-btn" class="btn-secondary">Copy</button>
-            </div>
-            <div class="danger-zone">
-              <p>If your key is compromised, you can regenerate it. This immediately invalidates the old snippet.</p>
-              <button id="regenerate-key-btn" class="btn-danger outline">Regenerate Key</button>
+          <div class="panel" style="margin-top: 24px;">
+            <div class="snippet-section">
+              <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">Installation Snippet</h3>
+              <p class="section-subtitle" style="margin-bottom: 12px;">Paste this inside your Shopify theme's <code>&lt;head&gt;</code> or just before <code>&lt;/body&gt;</code>:</p>
+              <div class="code-block">
+                <code id="snippet-code">&lt;script src="https://yourdomain.com/widget.js" data-widget-key="LOADING" defer&gt;&lt;/script&gt;</code>
+                <button id="copy-snippet-btn" class="btn btn-secondary btn-sm">Copy</button>
+              </div>
+              <div class="danger-zone" style="margin-top: 16px;">
+                <p>If your key is compromised, you can regenerate it. This immediately invalidates the old snippet.</p>
+                <button id="regenerate-key-btn" class="btn btn-danger btn-sm">Regenerate Key</button>
+              </div>
             </div>
           </div>
         </section>
 
         <!-- 4. Shopify Connection Section -->
         <section id="shopify-connection" class="content-section hidden">
-          <header><h2>Shopify Connection</h2></header>
-          <div class="status-card">
-            <h3>Domain: <span id="shopify-domain" class="highlight">--</span></h3>
-            <p>Status: <span id="shopify-status" class="badge">--</span></p>
-            <p>Last Product Sync: <span id="shopify-last-sync">--</span></p>
-            <p>Credentials Configured: <span id="shopify-creds">--</span></p>
+          <header>
+            <div>
+              <h2>Shopify Connection</h2>
+              <p class="section-subtitle">Manage store connection credentials, monitor webhook synchronization, and audit catalog health.</p>
+            </div>
+          </header>
+          <div class="status-card panel">
+            <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 8px;">Domain: <span id="shopify-domain" style="color: var(--color-accent);">--</span></h3>
+            <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Status: <span id="shopify-status" class="badge badge--neutral">--</span></p>
+            <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Last Product Sync: <span id="shopify-last-sync" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
+            <p style="font-size: 13px; color: var(--color-text-secondary);">Credentials Configured: <span id="shopify-creds" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
           </div>
-          <div class="action-buttons" style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button id="test-connection-btn" class="btn-secondary">Test Connection</button>
-            <button id="sync-products-btn" class="btn-primary">Sync Products</button>
-            <button id="btn-audit-catalogue" class="btn-secondary" style="border-color: #6366f1; color: #a5b4fc;">✨ AI Catalogue Audit</button>
-            <button class="btn-secondary outline" onclick="window.location.href='mailto:support@platform.com'">Request Admin Support</button>
+          <div class="action-buttons" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+            <button id="test-connection-btn" class="btn btn-secondary btn-sm">Test Connection</button>
+            <button id="sync-products-btn" class="btn btn-primary btn-sm">Sync Products</button>
+            <button id="btn-audit-catalogue" class="btn btn-secondary btn-sm">AI Catalogue Audit</button>
+            <button class="btn btn-ghost btn-sm" onclick="window.location.href='mailto:support@platform.com'">Request Admin Support</button>
           </div>
 
           <!-- AI Catalogue Audit Summary Banner -->
-          <div id="catalogue-ai-banner" class="glass-card hidden" style="margin-top: 20px; padding: 18px; border: 1px solid rgba(99,102,241,0.3); background: rgba(99,102,241,0.07); border-radius: 10px;">
+          <div id="catalogue-ai-banner" class="callout-box hidden" style="margin-top: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <h4 style="margin: 0; color: #a5b4fc; font-size: 15px;">✨ AI Listing Quality Score: <span id="catalogue-quality-score">--</span>/100</h4>
-              <button id="btn-close-catalogue-ai" class="btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;">✕</button>
+              <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: var(--color-text-primary);">AI Listing Quality Score: <span id="catalogue-quality-score">--</span>/100</h4>
+              <button id="btn-close-catalogue-ai" class="btn btn-ghost btn-sm" style="padding: 2px 6px;">✕</button>
             </div>
-            <p id="catalogue-ai-summary" style="margin: 0; font-size: 13px; color: var(--text-main); line-height: 1.5;">--</p>
+            <p id="catalogue-ai-summary" style="margin: 0; font-size: 13px; color: var(--color-text-secondary); line-height: 1.5;">--</p>
           </div>
 
           <!-- Synced Product Catalog Display -->
-          <div class="products-catalog-container" style="margin-top: 32px;">
+          <div class="products-catalog-container" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
               <div>
-                <h3 style="font-size: 1.15rem; font-weight: 600;">Synced Products Catalog</h3>
-                <p style="color: var(--text-muted); font-size: 13px; margin-top: 2px;">
+                <h3 style="font-size: 15px; font-weight: 600;">Synced Products Catalog</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">
                   Products synced from your Shopify store that your AI assistant references to answer shopper questions and pitch recommendations.
                 </p>
               </div>
               <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="product-search-input" placeholder="Search catalog..." style="padding: 8px 12px; font-size: 13px; width: 220px; border-radius: 8px; border: 1px solid var(--border); background: rgba(15,23,42,0.5); color: var(--text-main);">
-                <button id="refresh-products-btn" class="btn-secondary" style="padding: 8px 14px; font-size: 13px;">Refresh</button>
+                <input type="text" id="product-search-input" placeholder="Search catalog..." class="form-control form-control-sm" style="width: 220px;">
+                <button id="refresh-products-btn" class="btn btn-secondary btn-sm">Refresh</button>
               </div>
             </div>
 
-            <div class="metrics-grid" style="margin-bottom: 20px;">
+            <div class="metrics-grid">
               <div class="stat-card"><h3>Total Products</h3><p id="stat-products-total">--</p></div>
               <div class="stat-card"><h3>In Stock</h3><p id="stat-products-instock">--</p></div>
               <div class="stat-card"><h3>Categories</h3><p id="stat-products-categories">--</p></div>
             </div>
 
-            <div class="table-container glass-panel" style="padding: 16px; overflow-x: auto; border-radius: 12px;">
-              <table class="data-table" style="width: 100%; border-collapse: collapse;">
+            <div class="panel table-container">
+              <table class="data-table">
                 <thead>
-                  <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); font-size: 12px;">
-                    <th style="padding: 10px; width: 60px;">Image</th>
-                    <th style="padding: 10px;">Product Title</th>
-                    <th style="padding: 10px;">Category</th>
-                    <th style="padding: 10px;">Price</th>
-                    <th style="padding: 10px;">Stock Status</th>
-                    <th style="padding: 10px; text-align: right;">Storefront</th>
+                  <tr>
+                    <th style="width: 60px;">Image</th>
+                    <th>Product Title</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                    <th>Stock Status</th>
+                    <th style="text-align: right;">Storefront</th>
                   </tr>
                 </thead>
                 <tbody id="products-table-body">
                   <tr>
-                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       Click "Sync Products" above to import your Shopify catalog.
                     </td>
                   </tr>
@@ -767,8 +870,13 @@
 
         <!-- 5. Email Automation Section -->
         <section id="email-automation" class="content-section hidden">
-          <header><h2>Email Automation</h2></header>
-          <form id="email-form">
+          <header>
+            <div>
+              <h2>Email Automation</h2>
+              <p class="section-subtitle">Configure abandoned cart recovery intervals, UK PECR consent disclosures, and generate AI campaigns.</p>
+            </div>
+          </header>
+          <form id="email-form" class="panel" style="display: flex; flex-direction: column; gap: 16px;">
             <div class="form-group toggle-group">
               <label for="email-is-enabled">Enable Abandoned Cart Recovery</label>
               <label class="switch">
@@ -778,57 +886,60 @@
             </div>
             <div class="form-group">
               <label for="email-interval">Follow-up Interval (Minutes)</label>
-              <input type="number" id="email-interval" min="15" max="1440">
+              <input type="number" id="email-interval" class="form-control" min="15" max="1440">
             </div>
             <div class="form-group">
               <label for="email-max">Maximum Recovery Emails per Session</label>
-              <input type="number" id="email-max" min="1" max="3">
+              <input type="number" id="email-max" class="form-control" min="1" max="3">
             </div>
             <div class="form-group">
               <label for="email-consent">Consent Checkbox Wording</label>
-              <textarea id="email-consent" rows="2"></textarea>
-              <small>UK PECR requires explicit, unambiguous wording.</small>
+              <textarea id="email-consent" class="form-control" rows="2"></textarea>
+              <small class="form-hint">UK PECR requires explicit, unambiguous wording.</small>
             </div>
-            <button type="submit" class="btn-primary">Save Email Settings</button>
+            <div>
+              <button type="submit" class="btn btn-primary">Save Email Settings</button>
+            </div>
           </form>
 
-          <hr class="divider">
-
-          <div class="test-email-section">
-            <h3>Send Test Email</h3>
-            <div class="form-group row">
-              <input type="email" id="test-email-input" placeholder="test@yourdomain.com">
-              <button id="send-test-email-btn" class="btn-secondary">Send Preview Email</button>
+          <div class="panel" style="margin-top: 24px;">
+            <div class="test-email-section">
+              <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">Send Test Email</h3>
+              <p class="section-subtitle" style="margin-bottom: 12px;">Dispatch a preview abandoned cart recovery template to verify formatting.</p>
+              <div class="form-group row" style="max-width: 480px;">
+                <input type="email" id="test-email-input" class="form-control" placeholder="test@yourdomain.com">
+                <button id="send-test-email-btn" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Send Preview Email</button>
+              </div>
             </div>
           </div>
 
           <!-- AI Email Studio Card -->
-          <div class="glass-card" style="margin-top: 24px; padding: 22px; border: 1px solid rgba(99,102,241,0.3); background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(15,23,42,0.5)); border-radius: 12px;">
+          <div class="panel" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
               <div>
-                <h3 style="margin: 0; font-size: 16px; color: #a5b4fc;">✉️ Create High-Converting Email with AI</h3>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Generate conversion-focused email copy tailored to 13 e-commerce lifecycle moments.</p>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--color-text-primary);">Create High-Converting Email with AI</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Generate conversion-focused email copy tailored to 13 e-commerce lifecycle moments.</p>
               </div>
-              <button type="button" id="btn-open-email-ai-modal" class="btn-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px;">
-                <span>✨</span> Open Email Studio
+              <button type="button" id="btn-open-email-ai-modal" class="btn btn-primary btn-sm">
+                Open Email Studio
               </button>
             </div>
-            <div style="font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
-              <span>🔒</span> <strong>Safe Draft Mode:</strong> AI-generated emails are strictly saved as drafts and will NEVER be automatically sent to customers without merchant confirmation.
+            <div style="font-size: 12px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px;">
+              <strong>Safe Draft Mode:</strong> AI-generated emails are strictly saved as drafts and will never be automatically sent to customers without merchant confirmation.
             </div>
           </div>
         </section>
 
         <!-- 8. AI Ad Creative Studio Section -->
         <section id="ad-creative-studio" class="content-section hidden">
-          <header class="section-header">
+          <header class="section-header-flex">
             <div>
               <h2>AI Ad Creative Studio</h2>
               <p class="section-subtitle">Generate high-converting, catalogue-grounded ad copy & hooks for Meta & Instagram</p>
             </div>
             <div class="header-actions">
-              <button id="btn-refresh-products" class="btn-secondary outline btn-sm">
-                <span>🔄</span> Refresh Catalogue
+              <button id="btn-refresh-products" class="btn btn-secondary btn-sm">
+                Refresh Catalogue
               </button>
             </div>
           </header>
@@ -836,8 +947,8 @@
           <!-- Studio Two-Column Grid -->
           <div class="ad-studio-grid">
             <!-- Left Column: Controls & Product Selection -->
-            <div class="glass-card ad-controls-card">
-              <h3 class="card-title"><span class="icon">🎯</span> Campaign Configuration</h3>
+            <div class="panel ad-controls-card">
+              <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Campaign Configuration</h3>
               
               <div class="form-group">
                 <label for="ad-product-select">Select Product from Catalogue</label>
@@ -848,17 +959,17 @@
               </div>
 
               <!-- Product Summary Card -->
-              <div id="ad-selected-product-card" class="selected-product-preview hidden">
+              <div id="ad-selected-product-card" class="selected-product-preview hidden callout-box" style="margin-bottom: 16px;">
                 <div class="product-thumb-container">
                   <img id="ad-prod-thumb" alt="Product Thumbnail" class="product-thumb" style="display: none;">
-                  <div id="ad-prod-no-thumb" class="product-thumb-fallback">🛍️</div>
+                  <div id="ad-prod-no-thumb" class="product-thumb-fallback">📦</div>
                 </div>
                 <div class="product-meta">
-                  <h4 id="ad-prod-title">Product Title</h4>
-                  <div class="product-tags">
-                    <span id="ad-prod-price" class="tag-price">£0.00</span>
-                    <span id="ad-prod-category" class="tag-category">Category</span>
-                    <span id="ad-prod-stock" class="tag-stock">In Stock</span>
+                  <h4 id="ad-prod-title" style="font-size: 13px; font-weight: 600; margin: 0 0 6px 0;">Product Title</h4>
+                  <div class="product-tags" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <span id="ad-prod-price" class="badge badge--neutral">£0.00</span>
+                    <span id="ad-prod-category" class="badge badge--neutral">Category</span>
+                    <span id="ad-prod-stock" class="badge badge--success">In Stock</span>
                   </div>
                 </div>
               </div>
@@ -868,11 +979,11 @@
                 <div class="platform-selector-group">
                   <label class="platform-pill active" id="pill-platform-facebook">
                     <input type="radio" name="ad-platform" value="facebook" checked>
-                    <span class="platform-label"><span class="platform-icon">🌐</span> Meta / Facebook</span>
+                    <span class="platform-label">Meta / Facebook</span>
                   </label>
                   <label class="platform-pill" id="pill-platform-instagram">
                     <input type="radio" name="ad-platform" value="instagram">
-                    <span class="platform-label"><span class="platform-icon">📸</span> Instagram</span>
+                    <span class="platform-label">Instagram</span>
                   </label>
                 </div>
               </div>
@@ -880,28 +991,28 @@
               <div class="form-group">
                 <label for="ad-objective-select">Campaign Objective</label>
                 <select id="ad-objective-select" class="form-control">
-                  <option value="product_sales">🛍️ Product Sales (Direct Conversion)</option>
-                  <option value="traffic">🚀 Store Traffic (Clicks & Exploration)</option>
-                  <option value="retargeting">🎯 Retargeting (Cart Abandoners & Repeat Shoppers)</option>
-                  <option value="product_launch">✨ Product Launch (New Arrival & Awareness)</option>
+                  <option value="product_sales">Product Sales (Direct Conversion)</option>
+                  <option value="traffic">Store Traffic (Clicks & Exploration)</option>
+                  <option value="retargeting">Retargeting (Cart Abandoners & Repeat Shoppers)</option>
+                  <option value="product_launch">Product Launch (New Arrival & Awareness)</option>
                 </select>
               </div>
 
-              <div class="studio-action-row">
-                <button id="btn-generate-creatives" class="btn-primary btn-block">
-                  <span class="btn-sparkle">✨</span> Generate Ad Creatives
+              <div class="studio-action-row" style="margin-top: 20px;">
+                <button id="btn-generate-creatives" class="btn btn-primary" style="width: 100%;">
+                  Generate Ad Creatives
                 </button>
               </div>
 
-              <div id="ad-budget-note" class="budget-guard-note">
-                <span class="icon">🛡️</span> Protected by AI BudgetGuard. Real-time cost tracked to usage ledger.
+              <div id="ad-budget-note" class="budget-guard-note" style="margin-top: 14px; font-size: 12px; color: var(--color-text-secondary); text-align: center;">
+                Protected by AI BudgetGuard. Real-time cost tracked to usage ledger.
               </div>
             </div>
 
             <!-- Right Column: Generated Creatives & Realistic Preview -->
-            <div class="glass-card ad-preview-card">
-              <div class="preview-header-bar">
-                <h3 class="card-title"><span class="icon">📱</span> Ad Mockup & Variations</h3>
+            <div class="panel ad-preview-card">
+              <div class="preview-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin: 0;">Ad Mockup & Variations</h3>
                 <div id="ad-variations-nav" class="variations-tabs hidden">
                   <button class="variation-tab active" data-variation="0">Variation 1</button>
                   <button class="variation-tab" data-variation="1">Variation 2</button>
@@ -910,111 +1021,110 @@
               </div>
 
               <!-- Empty State -->
-              <div id="ad-empty-state" class="ad-empty-container">
-                <div class="empty-icon">🎨</div>
-                <h4>No Creatives Generated Yet</h4>
-                <p>Select a product on the left and click <strong>Generate Ad Creatives</strong> to preview instant, multi-angle Meta & Instagram ad copy.</p>
+              <div id="ad-empty-state" class="ad-empty-container" style="text-align: center; padding: 60px 20px; color: var(--color-text-secondary);">
+                <h4 style="font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 6px;">No Creatives Generated Yet</h4>
+                <p style="font-size: 13px; max-width: 360px; margin: 0 auto;">Select a product on the left and click <strong>Generate Ad Creatives</strong> to preview instant, multi-angle Meta & Instagram ad copy.</p>
               </div>
 
               <!-- Loading State -->
-              <div id="ad-loading-state" class="ad-loading-container hidden">
-                <div class="spinner-pulse"></div>
-                <h4>Crafting High-Converting Copy...</h4>
-                <p>Grounded in authentic catalogue specifications and Meta direct-response standards.</p>
+              <div id="ad-loading-state" class="ad-loading-container hidden" style="text-align: center; padding: 60px 20px;">
+                <div class="spinner-pulse" style="margin: 0 auto 16px auto;"></div>
+                <h4 style="font-size: 15px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 6px;">Crafting High-Converting Copy...</h4>
+                <p style="font-size: 13px; color: var(--color-text-secondary);">Grounded in authentic catalogue specifications and Meta direct-response standards.</p>
               </div>
 
               <!-- Active Ad Feed Mockup -->
               <div id="ad-mockup-container" class="ad-mockup-wrapper hidden">
                 <!-- Platform-specific Social Feed Card -->
-                <div class="social-feed-card" id="social-ad-card">
+                <div class="social-feed-card panel" id="social-ad-card" style="padding: 16px; border: 1px solid var(--color-border-default);">
                   <!-- Ad Header -->
-                  <div class="ad-card-header">
+                  <div class="ad-card-header" style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
                     <div class="ad-brand-avatar" id="ad-brand-avatar">AI</div>
                     <div class="ad-brand-info">
-                      <div class="ad-brand-name-row">
-                        <span id="ad-brand-name" class="brand-name">Brand Name</span>
-                        <span class="ad-sponsored-pill">Sponsored</span>
+                      <div class="ad-brand-name-row" style="display: flex; align-items: center; gap: 6px;">
+                        <span id="ad-brand-name" class="brand-name" style="font-weight: 600; font-size: 13px;">Brand Name</span>
+                        <span class="ad-sponsored-pill badge badge--neutral" style="font-size: 10px; padding: 1px 6px;">Sponsored</span>
                       </div>
-                      <span class="ad-platform-badge" id="ad-platform-badge">🌐 Meta / Facebook</span>
+                      <span class="ad-platform-badge" id="ad-platform-badge" style="font-size: 11px; color: var(--color-text-tertiary);">Meta / Facebook</span>
                     </div>
                   </div>
 
                   <!-- Hook callout banner -->
-                  <div class="ad-hook-banner">
-                    <div class="hook-label-row">
-                      <span class="hook-tag">⚡ HOOK / PATTERN INTERRUPT</span>
-                      <button class="btn-copy-elem" data-target-text="ad-mockup-hook" title="Copy Hook">📋 Copy</button>
+                  <div class="ad-hook-banner callout-box" style="margin-bottom: 12px;">
+                    <div class="hook-label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <span class="hook-tag" style="font-size: 11px; font-weight: 600; color: var(--color-accent); text-transform: uppercase;">HOOK / PATTERN INTERRUPT</span>
+                      <button class="btn-copy-elem btn btn-ghost btn-sm" data-target-text="ad-mockup-hook" title="Copy Hook" style="padding: 2px 6px; font-size: 11px;">Copy</button>
                     </div>
-                    <div class="hook-text" id="ad-mockup-hook">Hook text goes here...</div>
+                    <div class="hook-text" id="ad-mockup-hook" style="font-size: 13px; font-weight: 500;">Hook text goes here...</div>
                   </div>
 
                   <!-- Primary Text -->
-                  <div class="ad-primary-text-box">
-                    <div class="text-label-row">
-                      <span class="sub-label">PRIMARY AD TEXT</span>
-                      <button class="btn-copy-elem" data-target-text="ad-mockup-primary" title="Copy Primary Text">📋 Copy</button>
+                  <div class="ad-primary-text-box" style="margin-bottom: 12px;">
+                    <div class="text-label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                      <span class="sub-label" style="font-size: 11px; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase;">PRIMARY AD TEXT</span>
+                      <button class="btn-copy-elem btn btn-ghost btn-sm" data-target-text="ad-mockup-primary" title="Copy Primary Text" style="padding: 2px 6px; font-size: 11px;">Copy</button>
                     </div>
-                    <p id="ad-mockup-primary" class="primary-text">Primary ad text...</p>
+                    <p id="ad-mockup-primary" class="primary-text" style="font-size: 13px; line-height: 1.5; color: var(--color-text-primary);">Primary ad text...</p>
                   </div>
 
                   <!-- Media Box -->
-                  <div class="ad-media-box" id="ad-media-box">
-                    <div id="ad-media-badge" class="ad-media-badge hidden">
-                      <span id="ad-media-badge-icon">📸</span>
-                      <span id="ad-media-badge-text">Catalogue Image</span>
+                  <div class="ad-media-box" id="ad-media-box" style="position: relative; border-radius: 8px; overflow: hidden; background: var(--color-surface-subtle); min-height: 200px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                    <div id="ad-media-badge" class="ad-media-badge hidden" style="position: absolute; top: 10px; right: 10px; z-index: 2;">
+                      <span id="ad-media-badge-icon"></span>
+                      <span id="ad-media-badge-text" class="badge badge--neutral">Catalogue Image</span>
                     </div>
-                    <div id="ad-media-generating-overlay" class="ad-media-overlay hidden">
+                    <div id="ad-media-generating-overlay" class="ad-media-overlay hidden" style="position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; z-index: 3;">
                       <div class="spinner"></div>
-                      <div style="font-weight: 600;">Generating AI Ad Visual with OpenAI DALL-E 3...</div>
+                      <div style="font-weight: 600; margin-top: 8px;">Generating AI Ad Visual with OpenAI DALL-E 3...</div>
                       <div style="font-size: 11px; opacity: 0.8;">Creating studio commercial photography for your product</div>
                     </div>
-                    <img id="ad-mockup-img" src="" alt="Product Creative" class="ad-creative-img">
-                    <div id="ad-media-fallback" class="ad-media-fallback">
-                      <span class="fallback-icon">🛍️</span>
-                      <span id="ad-media-fallback-title">Product Preview</span>
+                    <img id="ad-mockup-img" src="" alt="Product Creative" class="ad-creative-img" style="width: 100%; height: auto; object-fit: cover;">
+                    <div id="ad-media-fallback" class="ad-media-fallback" style="text-align: center; color: var(--color-text-secondary);">
+                      <div class="fallback-icon" style="font-size: 28px; margin-bottom: 4px;">📦</div>
+                      <span id="ad-media-fallback-title" style="font-size: 12px;">Product Preview</span>
                     </div>
                   </div>
 
                   <!-- Link Bar -->
-                  <div class="ad-link-bar">
+                  <div class="ad-link-bar" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: var(--color-surface-subtle); border-radius: 6px;">
                     <div class="link-info">
-                      <span class="ad-domain-tag" id="ad-domain-tag">STORE.COM</span>
-                      <h5 id="ad-mockup-headline" class="ad-headline">Headline goes here</h5>
+                      <span class="ad-domain-tag" id="ad-domain-tag" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-tertiary); display: block;">STORE.COM</span>
+                      <h5 id="ad-mockup-headline" class="ad-headline" style="font-size: 13px; font-weight: 600; margin: 2px 0 0 0;">Headline goes here</h5>
                     </div>
                     <div class="link-action">
-                      <span class="ad-cta-button" id="ad-mockup-cta">Shop Now</span>
+                      <span class="ad-cta-button btn btn-primary btn-sm" id="ad-mockup-cta">Shop Now</span>
                     </div>
                   </div>
                 </div>
 
                 <!-- AI Ad Image Generator Panel -->
-                <div class="ai-image-generator-panel">
-                  <div class="panel-left">
-                    <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">🎨 Visual Style:</span>
-                    <select id="ad-ai-image-style" class="ai-style-select">
-                      <option value="commercial_studio">✨ Commercial Studio</option>
-                      <option value="lifestyle">🏡 Lifestyle Setting</option>
-                      <option value="vibrant_gradient">⚡ Vibrant Gradient Banner</option>
-                      <option value="minimalist_luxury">💎 Minimalist Luxury</option>
+                <div class="ai-image-generator-panel panel" style="margin-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                  <div class="panel-left" style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px; font-weight: 600; color: var(--color-text-primary);">Visual Style:</span>
+                    <select id="ad-ai-image-style" class="form-control form-control-sm" style="width: auto;">
+                      <option value="commercial_studio">Commercial Studio</option>
+                      <option value="lifestyle">Lifestyle Setting</option>
+                      <option value="vibrant_gradient">Vibrant Gradient Banner</option>
+                      <option value="minimalist_luxury">Minimalist Luxury</option>
                     </select>
                   </div>
                   <div class="panel-right">
-                    <button id="btn-generate-ai-image" class="btn-generate-ai-image">
-                      <span>✨</span> Generate AI Ad Image (OpenAI)
+                    <button id="btn-generate-ai-image" class="btn btn-secondary btn-sm">
+                      Generate AI Ad Image (OpenAI)
                     </button>
                   </div>
                 </div>
 
                 <!-- Ad Action Controls Bar -->
-                <div class="ad-actions-toolbar" style="margin-top: 1rem;">
-                  <button id="btn-copy-full-ad" class="btn-secondary">
-                    <span>📋</span> Copy Full Ad
+                <div class="ad-actions-toolbar" style="margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button id="btn-copy-full-ad" class="btn btn-secondary btn-sm">
+                    Copy Full Ad
                   </button>
-                  <button id="btn-save-creative" class="btn-primary">
-                    <span>💾</span> Save Creative
+                  <button id="btn-save-creative" class="btn btn-primary btn-sm">
+                    Save Creative
                   </button>
-                  <button id="btn-regenerate-ad" class="btn-secondary outline">
-                    <span>🔄</span> Regenerate Copy
+                  <button id="btn-regenerate-ad" class="btn btn-secondary btn-sm">
+                    Regenerate Copy
                   </button>
                 </div>
               </div>
@@ -1022,14 +1132,14 @@
           </div>
 
           <!-- Saved Creatives Library Section -->
-          <div class="glass-card saved-creatives-card">
-            <div class="saved-header-row">
+          <div class="panel saved-creatives-card" style="margin-top: 24px;">
+            <div class="saved-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div>
-                <h3 class="card-title"><span class="icon">📚</span> Saved Creatives Library</h3>
-                <p class="card-subtitle">Stored copy variations ready for deployment to Meta Ads Manager</p>
+                <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin: 0;">Saved Creatives Library</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Stored copy variations ready for deployment to Meta Ads Manager</p>
               </div>
               <div class="saved-filter-row">
-                <span class="saved-counter" id="saved-creatives-count">0 saved</span>
+                <span class="badge badge--neutral" id="saved-creatives-count">0 saved</span>
               </div>
             </div>
 
@@ -1049,7 +1159,7 @@
                 </thead>
                 <tbody id="saved-creatives-tbody">
                   <tr>
-                    <td colspan="8" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="8" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       No saved creatives yet. Generate ad copy above and click "Save Creative" to build your library.
                     </td>
                   </tr>
@@ -1061,58 +1171,58 @@
 
         <!-- 9. WhatsApp Growth Engine Section -->
         <section id="whatsapp-growth" class="content-section hidden">
-          <header class="section-header">
+          <header class="section-header-flex">
             <div>
               <h2>WhatsApp Growth Engine</h2>
               <p class="section-subtitle">Official Meta WhatsApp Cloud API — Two-way AI shopping, cart recovery & order updates</p>
             </div>
             <div class="header-actions">
-              <span id="wa-connection-pill" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 6px 14px; font-size: 13px;">
-                ● Disconnected
+              <span id="wa-connection-pill" class="badge badge--danger">
+                Disconnected
               </span>
             </div>
           </header>
 
           <!-- WhatsApp Metrics Bar -->
-          <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
-            <div class="metric-card glass-card">
-              <span class="metric-title">Active Conversations</span>
-              <span class="metric-value" id="wa-stat-conversations">0</span>
-              <span class="metric-trend">Live two-way chats</span>
+          <div class="metrics-grid">
+            <div class="stat-card">
+              <h3>Active Conversations</h3>
+              <p id="wa-stat-conversations">0</p>
+              <span>Live two-way chats</span>
             </div>
-            <div class="metric-card glass-card">
-              <span class="metric-title">Inbound Messages</span>
-              <span class="metric-value" id="wa-stat-inbound">0</span>
-              <span class="metric-trend">From customers</span>
+            <div class="stat-card">
+              <h3>Inbound Messages</h3>
+              <p id="wa-stat-inbound">0</p>
+              <span>From customers</span>
             </div>
-            <div class="metric-card glass-card">
-              <span class="metric-title">Outbound AI Replies</span>
-              <span class="metric-value" id="wa-stat-outbound">0</span>
-              <span class="metric-trend">Catalogue grounded</span>
+            <div class="stat-card">
+              <h3>Outbound AI Replies</h3>
+              <p id="wa-stat-outbound">0</p>
+              <span>Catalogue grounded</span>
             </div>
-            <div class="metric-card glass-card">
-              <span class="metric-title">Recovered Carts</span>
-              <span class="metric-value" id="wa-stat-recovered">0</span>
-              <span class="metric-trend">Via WhatsApp follow-up</span>
+            <div class="stat-card">
+              <h3>Recovered Carts</h3>
+              <p id="wa-stat-recovered">0</p>
+              <span>Via WhatsApp follow-up</span>
             </div>
-            <div class="metric-card glass-card">
-              <span class="metric-title">Consented Contacts</span>
-              <span class="metric-value" id="wa-stat-consents">0</span>
-              <span class="metric-trend">Verified opt-ins</span>
+            <div class="stat-card">
+              <h3>Consented Contacts</h3>
+              <p id="wa-stat-consents">0</p>
+              <span>Verified opt-ins</span>
             </div>
           </div>
 
           <!-- Main WhatsApp Grid: Connection & Live Messenger -->
           <div class="ad-studio-grid">
             <!-- Left: Meta WhatsApp Configuration Card -->
-            <div class="glass-card ad-controls-card">
-              <h3 class="card-title"><span class="icon">⚙️</span> Meta Cloud API Connection</h3>
-              <p class="form-hint" style="margin-bottom: 16px;">Connect your WhatsApp Business Account (WABA) via Meta Graph API credentials. Tokens are encrypted at rest with AES-256-GCM.</p>
+            <div class="panel ad-controls-card">
+              <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">Meta Cloud API Connection</h3>
+              <p class="section-subtitle" style="margin-bottom: 16px;">Connect your WhatsApp Business Account (WABA) via Meta Graph API credentials. Tokens are encrypted at rest with AES-256-GCM.</p>
 
               <form id="wa-config-form">
                 <div class="form-group">
                   <label for="wa-provider-select">WhatsApp Provider</label>
-                  <select id="wa-provider-select" class="form-control" style="font-weight: 500;">
+                  <select id="wa-provider-select" class="form-control">
                     <option value="meta">Meta WhatsApp Cloud API (Direct)</option>
                     <option value="wati">WATI (Official WhatsApp BSP)</option>
                     <option value="mock">Mock / Development Mode</option>
@@ -1152,8 +1262,8 @@
                   <div class="form-group">
                     <label>Meta Webhook Callback URL</label>
                     <div style="display: flex; gap: 8px;">
-                      <input type="text" id="wa-webhook-url" class="form-control" readonly style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 12px;" value="">
-                      <button type="button" id="btn-copy-wa-webhook" class="btn-secondary" style="white-space: nowrap;">📋 Copy</button>
+                      <input type="text" id="wa-webhook-url" class="form-control" readonly style="font-family: var(--font-mono); font-size: 12px;" value="">
+                      <button type="button" id="btn-copy-wa-webhook" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Copy</button>
                     </div>
                   </div>
                 </div>
@@ -1185,56 +1295,56 @@
                   <div class="form-group">
                     <label>WATI Webhook Callback URL</label>
                     <div style="display: flex; gap: 8px;">
-                      <input type="text" id="wa-wati-webhook-url" class="form-control" readonly style="background: rgba(0,0,0,0.2); font-family: monospace; font-size: 12px;" value="">
-                      <button type="button" id="btn-copy-wati-webhook" class="btn-secondary" style="white-space: nowrap;">📋 Copy</button>
+                      <input type="text" id="wa-wati-webhook-url" class="form-control" readonly style="font-family: var(--font-mono); font-size: 12px;" value="">
+                      <button type="button" id="btn-copy-wati-webhook" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Copy</button>
                     </div>
                     <small class="form-hint">Enter this URL in WATI Dashboard → Connectors → Webhooks.</small>
                   </div>
                 </div>
 
                 <!-- Mock Fields Note -->
-                <div id="wa-mock-fields" class="hidden" style="padding: 12px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; margin-bottom: 16px;">
-                  <span style="font-size: 13px; color: #93c5fd;">🧪 <strong>Development Mode:</strong> Simulated in-memory provider. No external API credentials required.</span>
+                <div id="wa-mock-fields" class="callout-box hidden" style="margin-bottom: 16px;">
+                  <span style="font-size: 13px; color: var(--color-info);"><strong>Development Mode:</strong> Simulated in-memory provider. No external API credentials required.</span>
                 </div>
 
-                <div class="studio-action-row" style="margin-top: 20px;">
-                  <button type="submit" id="btn-save-wa-config" class="btn-primary btn-block">
-                    <span>💾</span> Save WhatsApp Configuration
+                <div class="studio-action-row" style="margin-top: 16px;">
+                  <button type="submit" id="btn-save-wa-config" class="btn btn-primary" style="width: 100%;">
+                    Save WhatsApp Configuration
                   </button>
                 </div>
               </form>
 
               <!-- Test Message Dispatcher -->
-              <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08);">
-                <h4 style="font-size: 14px; margin-bottom: 8px; color: var(--text-main);">📲 Send Test WhatsApp Dispatch</h4>
+              <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--color-border-subtle);">
+                <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--color-text-primary);">Send Test WhatsApp Dispatch</h4>
                 <div style="display: flex; gap: 8px;">
-                  <input type="text" id="wa-test-phone" class="form-control" placeholder="+447123456789">
-                  <button type="button" id="btn-send-wa-test" class="btn-secondary outline" style="white-space: nowrap;">Send Test</button>
+                  <input type="text" id="wa-test-phone" class="form-control form-control-sm" placeholder="+447123456789">
+                  <button type="button" id="btn-send-wa-test" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Send Test</button>
                 </div>
               </div>
             </div>
 
             <!-- Right: Live Conversations & Messenger -->
-            <div class="glass-card ad-preview-card" style="display: flex; flex-direction: column; height: 100%; min-height: 520px;">
-              <div class="preview-header-bar">
-                <h3 class="card-title"><span class="icon">💬</span> Live WhatsApp Customer Chats</h3>
-                <span class="saved-counter" id="wa-conv-count">0 conversations</span>
+            <div class="panel ad-preview-card" style="display: flex; flex-direction: column; height: 100%; min-height: 520px;">
+              <div class="preview-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin: 0;">Live WhatsApp Customer Chats</h3>
+                <span class="badge badge--neutral" id="wa-conv-count">0 conversations</span>
               </div>
 
               <div style="display: grid; grid-template-columns: 200px 1fr; gap: 12px; flex: 1; min-height: 380px;">
                 <!-- Conversation List -->
-                <div id="wa-conversation-list" style="border-right: 1px solid rgba(255,255,255,0.06); padding-right: 10px; overflow-y: auto; max-height: 440px;">
-                  <div style="text-align: center; color: var(--text-muted); font-size: 12px; padding: 20px 0;">No conversations yet</div>
+                <div id="wa-conversation-list" style="border-right: 1px solid var(--color-border-subtle); padding-right: 10px; overflow-y: auto; max-height: 440px;">
+                  <div style="text-align: center; color: var(--color-text-secondary); font-size: 12px; padding: 20px 0;">No conversations yet</div>
                 </div>
 
                 <!-- Chat Messages Stream -->
                 <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
                   <div id="wa-messages-container" style="flex: 1; overflow-y: auto; max-height: 390px; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
-                    <div style="text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 13px;">
+                    <div style="text-align: center; color: var(--color-text-secondary); padding: 40px 0; font-size: 13px;">
                       Select a conversation on the left to view the message transcript.
                     </div>
                   </div>
-                  <div id="wa-chat-active-indicator" style="font-size: 11px; color: var(--text-muted); padding: 6px 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                  <div id="wa-chat-active-indicator" style="font-size: 11px; color: var(--color-text-secondary); padding: 8px 10px; border-top: 1px solid var(--color-border-subtle);">
                     Two-way conversational AI actively responds to inbound customer inquiries using verified catalogue inventory.
                   </div>
                 </div>
@@ -1243,14 +1353,14 @@
           </div>
 
           <!-- Bottom: Consented Contacts Table -->
-          <div class="glass-card saved-creatives-card" style="margin-top: 24px;">
-            <div class="saved-header-row">
+          <div class="panel saved-creatives-card" style="margin-top: 24px;">
+            <div class="saved-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div>
-                <h3 class="card-title"><span class="icon">📋</span> Verified WhatsApp Opt-In Directory</h3>
-                <p class="card-subtitle">GDPR & PECR compliant consent records. Separate from email marketing consent.</p>
+                <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin: 0;">Verified WhatsApp Opt-In Directory</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">GDPR & PECR compliant consent records. Separate from email marketing consent.</p>
               </div>
               <div class="saved-filter-row">
-                <span class="saved-counter" id="wa-consents-count">0 contacts</span>
+                <span class="badge badge--neutral" id="wa-consents-count">0 contacts</span>
               </div>
             </div>
 
@@ -1268,7 +1378,7 @@
                 </thead>
                 <tbody id="wa-consents-tbody">
                   <tr>
-                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       No opted-in WhatsApp contacts recorded yet.
                     </td>
                   </tr>
@@ -1282,12 +1392,12 @@
         <section id="reorder-reminders" class="content-section hidden">
           <header class="section-header-flex">
             <div>
-              <h2>🔄 Smart Reorder & Replenishment</h2>
+              <h2>Smart Reorder & Replenishment</h2>
               <p class="section-subtitle">Automated, consent-gated reorder reminders for consumable and replenishable products.</p>
             </div>
             <div class="header-actions">
-              <button id="btn-run-reorder-worker" class="btn-secondary">
-                <span class="btn-icon">⚡</span> Run Due Reminders Now
+              <button id="btn-run-reorder-worker" class="btn btn-secondary btn-sm">
+                Run Due Reminders Now
               </button>
             </div>
           </header>
@@ -1297,80 +1407,84 @@
             <div class="stat-card">
               <h3>Active Schedules</h3>
               <p id="stat-rep-active">0</p>
-              <span class="stat-sub">Waiting for reminder window</span>
+              <span>Waiting for reminder window</span>
             </div>
             <div class="stat-card">
               <h3>Upcoming (7 Days)</h3>
               <p id="stat-rep-upcoming">0</p>
-              <span class="stat-sub">Due to be dispatched soon</span>
+              <span>Due to be dispatched soon</span>
             </div>
             <div class="stat-card">
               <h3>Reminders Sent</h3>
               <p id="stat-rep-sent">0</p>
-              <span class="stat-sub">Dispatched via Email / WhatsApp</span>
+              <span>Dispatched via Email / WhatsApp</span>
             </div>
             <div class="stat-card">
               <h3>Reorders Completed</h3>
               <p id="stat-rep-reordered">0</p>
-              <span class="stat-sub">Converted customers</span>
+              <span>Converted customers</span>
             </div>
             <div class="stat-card">
               <h3>Conversion Rate</h3>
               <p id="stat-rep-conversion">0%</p>
-              <span class="stat-sub">Reorder completion rate</span>
+              <span>Reorder completion rate</span>
             </div>
           </div>
 
           <!-- 10.2 Channel Settings Card -->
-          <div class="card glass-panel" style="margin-top: 24px;">
-            <div class="card-header-flex">
+          <div class="panel" style="margin-top: 24px;">
+            <div class="panel-header-clean" style="margin-bottom: 16px;">
               <div>
-                <h3>⚙️ Reorder Channel & Loyalty Configuration</h3>
-                <p class="card-subtitle">Control reminder dispatch channels and configure optional reorder incentive codes.</p>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Reorder Channel & Loyalty Configuration</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Control reminder dispatch channels and configure optional reorder incentive codes.</p>
               </div>
-              <button id="btn-save-rep-channels" class="btn-primary">Save Channel Settings</button>
+              <button id="btn-save-rep-channels" class="btn btn-primary btn-sm">Save Channel Settings</button>
             </div>
 
-            <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 16px;">
-              <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                  <input type="checkbox" id="rep-email-toggle" checked style="width: 18px; height: 18px;"/>
-                  <span><strong>Email Reminders</strong> (Grounded 1-click email)</span>
+            <div class="form-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
+              <div class="form-group toggle-group" style="margin-bottom: 0;">
+                <label for="rep-email-toggle" style="cursor: pointer;">
+                  <strong>Email Reminders</strong> (Grounded 1-click email)
                 </label>
-                <small class="help-text">Requires customer email marketing consent.</small>
+                <label class="switch">
+                  <input type="checkbox" id="rep-email-toggle" checked>
+                  <span class="slider round"></span>
+                </label>
               </div>
 
-              <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                  <input type="checkbox" id="rep-whatsapp-toggle" style="width: 18px; height: 18px;"/>
-                  <span><strong>WhatsApp Reminders</strong> (Meta / WATI)</span>
+              <div class="form-group toggle-group" style="margin-bottom: 0;">
+                <label for="rep-whatsapp-toggle" style="cursor: pointer;">
+                  <strong>WhatsApp Reminders</strong> (Meta / WATI)
                 </label>
-                <small class="help-text">Requires explicit WhatsApp marketing consent.</small>
+                <label class="switch">
+                  <input type="checkbox" id="rep-whatsapp-toggle">
+                  <span class="slider round"></span>
+                </label>
               </div>
 
-              <div class="form-group">
+              <div class="form-group" style="margin-bottom: 0;">
                 <label for="rep-discount-code"><strong>Loyalty Discount Code (Optional)</strong></label>
-                <input type="text" id="rep-discount-code" placeholder="e.g. REORDER10" class="input-field" style="max-width: 250px;"/>
-                <small class="help-text">Automatically applied to the Shopify 1-click cart permalink.</small>
+                <input type="text" id="rep-discount-code" placeholder="e.g. REORDER10" class="form-control form-control-sm"/>
+                <small class="form-hint">Automatically applied to the Shopify 1-click cart permalink.</small>
               </div>
             </div>
           </div>
 
           <!-- 10.3 Replenishable Products Catalog Table -->
-          <div class="card glass-panel" style="margin-top: 24px;">
-            <div class="card-header-flex" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div class="panel" style="margin-top: 24px;">
+            <div class="panel-header-clean" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
               <div>
-                <h3>📦 Replenishable Products Catalog</h3>
-                <p class="card-subtitle">Mark consumable items as replenishable, configure lifecycle days (e.g. 30, 45, 60, 90), and reminder lead time.</p>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Replenishable Products Catalog</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Mark consumable items as replenishable, configure lifecycle days, and reminder lead time.</p>
               </div>
               <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="text" id="rep-product-search" placeholder="Filter products..." class="input-field" style="width: 180px;"/>
-                <button id="btn-ai-consumable-suggestions" class="btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px;">✨ AI Suggestions</button>
-                <button id="btn-open-add-rep-modal" class="btn-primary btn-sm" style="padding: 6px 14px; font-size: 12px;">+ Add Product</button>
+                <input type="text" id="rep-product-search" placeholder="Filter products..." class="form-control form-control-sm" style="width: 180px;"/>
+                <button id="btn-ai-consumable-suggestions" class="btn btn-secondary btn-sm">AI Suggestions</button>
+                <button id="btn-open-add-rep-modal" class="btn btn-primary btn-sm">+ Add Product</button>
               </div>
             </div>
 
-            <div class="table-container" style="margin-top: 16px;">
+            <div class="table-container">
               <table class="data-table" id="rep-products-table">
                 <thead>
                   <tr>
@@ -1385,7 +1499,7 @@
                 </thead>
                 <tbody id="rep-products-tbody">
                   <tr>
-                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       Loading synced catalog products...
                     </td>
                   </tr>
@@ -1395,14 +1509,14 @@
           </div>
 
           <!-- 10.4 Active & Recent Reorder Schedules Table -->
-          <div class="card glass-panel" style="margin-top: 24px;">
-            <div class="card-header-flex">
+          <div class="panel" style="margin-top: 24px;">
+            <div class="panel-header-clean" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div>
-                <h3>📋 Customer Reorder Schedules</h3>
-                <p class="card-subtitle">Deterministic schedule lifecycle tracking across all customer purchases.</p>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Customer Reorder Schedules</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Deterministic schedule lifecycle tracking across all customer purchases.</p>
               </div>
               <div class="filter-controls">
-                <select id="rep-schedule-status-filter" class="input-field" style="width: 150px;">
+                <select id="rep-schedule-status-filter" class="form-control form-control-sm" style="width: 150px;">
                   <option value="">All Statuses</option>
                   <option value="pending">Pending</option>
                   <option value="sent">Sent</option>
@@ -1412,7 +1526,7 @@
               </div>
             </div>
 
-            <div class="table-container" style="margin-top: 16px;">
+            <div class="table-container">
               <table class="data-table" id="rep-schedules-table">
                 <thead>
                   <tr>
@@ -1429,7 +1543,7 @@
                 </thead>
                 <tbody id="rep-schedules-tbody">
                   <tr>
-                    <td colspan="9" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="9" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       No replenishment schedules recorded yet.
                     </td>
                   </tr>
@@ -1440,79 +1554,83 @@
         </section>
 
         <!-- 11. Multi-Touch Ad Intelligence & Attribution Section -->
-        <section id="ad-intelligence" class="content-section">
-          <header class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+        <section id="ad-intelligence" class="content-section hidden">
+          <header class="section-header-flex">
             <div>
               <h2>Multi-Touch Ad Intelligence & Attribution</h2>
-              <p class="section-desc">Track customer acquisition journeys from initial ad clicks (Meta, Google, TikTok) through AI chats to Shopify purchase. Evaluate ROAS across First-Touch, Last-Touch, and Linear models.</p>
+              <p class="section-subtitle">Track customer acquisition journeys from initial ad clicks through AI chats to Shopify purchase. Evaluate ROAS across models.</p>
             </div>
-            <div style="display: flex; gap: 10px;">
-              <button id="btn-open-ad-spend-modal" class="btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
-                <span>💰</span> Manage Ad Spend
+            <div class="header-actions">
+              <button id="btn-open-ad-spend-modal" class="btn btn-primary btn-sm">
+                Manage Ad Spend
               </button>
             </div>
           </header>
 
           <!-- Model Switcher Toolbar -->
-          <div class="card glass-card" style="margin-bottom: 24px; padding: 18px 24px;">
+          <div class="panel" style="margin-bottom: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <span style="font-weight: 600; color: var(--text-main); font-size: 14px;">Attribution Model:</span>
-                <div class="model-toggle-group" style="display: flex; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                  <button class="model-btn active" data-model="last_touch" style="padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: var(--primary, #6366f1); color: #fff;">
+                <span style="font-weight: 600; color: var(--color-text-primary); font-size: 13px;">Attribution Model:</span>
+                <div class="model-toggle-group" style="display: flex; gap: 6px;">
+                  <button class="model-btn btn btn-primary btn-sm" data-model="last_touch">
                     Last-Touch (Default)
                   </button>
-                  <button class="model-btn" data-model="first_touch" style="padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">
+                  <button class="model-btn btn btn-secondary btn-sm" data-model="first_touch">
                     First-Touch
                   </button>
-                  <button class="model-btn" data-model="linear" style="padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: transparent; color: var(--text-muted);">
+                  <button class="model-btn btn btn-secondary btn-sm" data-model="linear">
                     Linear Multi-Touch
                   </button>
                 </div>
               </div>
-              <div id="attr-model-explanation" style="font-size: 12px; color: var(--text-muted); background: rgba(99, 102, 241, 0.1); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(99, 102, 241, 0.2);">
-                ✨ <strong>Last-Touch</strong>: Attributes 100% of order revenue to the latest marketing touchpoint prior to checkout.
+              <div id="attr-model-explanation" class="badge badge--neutral" style="font-size: 12px; font-weight: normal; padding: 6px 12px;">
+                <strong>Last-Touch</strong>: Attributes 100% of order revenue to the latest marketing touchpoint prior to checkout.
               </div>
             </div>
           </div>
 
           <!-- Attribution Overview KPI Cards -->
-          <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Total Ad Spend</div>
-              <div class="metric-value" id="attr-stat-spend" style="font-size: 28px; font-weight: 700; color: #f59e0b; margin-top: 6px;">£0.00</div>
-              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Across all platforms</div>
+          <div class="metrics-grid">
+            <div class="stat-card">
+              <h3>Total Ad Spend</h3>
+              <div class="metric-value" id="attr-stat-spend" style="font-size: 26px; font-weight: 700; color: var(--color-warning);">£0.00</div>
+              <span>Across all platforms</span>
             </div>
 
-            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Attributed Revenue</div>
-              <div class="metric-value" id="attr-stat-revenue" style="font-size: 28px; font-weight: 700; color: #10b981; margin-top: 6px;">£0.00</div>
-              <div class="metric-sub" id="attr-stat-model-label" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Via Last-Touch model</div>
+            <div class="stat-card">
+              <h3>Attributed Revenue</h3>
+              <div class="metric-value" id="attr-stat-revenue" style="font-size: 26px; font-weight: 700; color: var(--color-success);">£0.00</div>
+              <span id="attr-stat-model-label">Via Last-Touch model</span>
             </div>
 
-            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Blended ROAS</div>
-              <div class="metric-value" id="attr-stat-roas" style="font-size: 28px; font-weight: 700; color: #6366f1; margin-top: 6px;">0.00x</div>
-              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Attributed Rev / Spend</div>
+            <div class="stat-card">
+              <h3>Blended ROAS</h3>
+              <div class="metric-value" id="attr-stat-roas" style="font-size: 26px; font-weight: 700; color: var(--color-accent);">0.00x</div>
+              <span>Attributed Rev / Spend</span>
             </div>
 
-            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">Attributed Orders</div>
-              <div class="metric-value" id="attr-stat-orders" style="font-size: 28px; font-weight: 700; color: var(--text-main); margin-top: 6px;">0</div>
-              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Connected conversions</div>
+            <div class="stat-card">
+              <h3>Attributed Orders</h3>
+              <div class="metric-value" id="attr-stat-orders" style="font-size: 26px; font-weight: 700; color: var(--color-text-primary);">0</div>
+              <span>Connected conversions</span>
             </div>
 
-            <div class="metric-card glass-panel" style="padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
-              <div class="metric-title" style="color: var(--text-muted); font-size: 13px;">AI-Assisted Revenue</div>
-              <div class="metric-value" id="attr-stat-ai-rev" style="font-size: 28px; font-weight: 700; color: #ec4899; margin-top: 6px;">£0.00</div>
-              <div class="metric-sub" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Chat & recommendation assists</div>
+            <div class="stat-card">
+              <h3>AI-Assisted Revenue</h3>
+              <div class="metric-value" id="attr-stat-ai-rev" style="font-size: 26px; font-weight: 700; color: var(--color-info);">£0.00</div>
+              <span>Chat & recommendation assists</span>
             </div>
           </div>
 
           <!-- Channel Performance Table -->
-          <div class="card glass-card" style="margin-bottom: 24px;">
-            <h3 style="margin-bottom: 6px;">Channel Performance & ROAS</h3>
-            <p class="section-desc" style="margin-bottom: 16px;">Spend, conversion volume, attributed revenue, and ROAS broken down by traffic channel.</p>
+          <div class="panel" style="margin-bottom: 24px;">
+            <div class="panel-header-clean" style="margin-bottom: 14px;">
+              <div>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Channel Performance & ROAS</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Spend, conversion volume, attributed revenue, and ROAS broken down by traffic channel.</p>
+              </div>
+            </div>
             <div class="table-container">
               <table class="data-table">
                 <thead>
@@ -1526,7 +1644,7 @@
                 </thead>
                 <tbody id="attr-channels-tbody">
                   <tr>
-                    <td colspan="5" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="5" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       Loading channel performance...
                     </td>
                   </tr>
@@ -1536,9 +1654,13 @@
           </div>
 
           <!-- Campaign Performance Table -->
-          <div class="card glass-card" style="margin-bottom: 24px;">
-            <h3 style="margin-bottom: 6px;">Campaign Performance</h3>
-            <p class="section-desc" style="margin-bottom: 16px;">Efficiency and return across marketing campaigns.</p>
+          <div class="panel" style="margin-bottom: 24px;">
+            <div class="panel-header-clean" style="margin-bottom: 14px;">
+              <div>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Campaign Performance</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Efficiency and return across marketing campaigns.</p>
+              </div>
+            </div>
             <div class="table-container">
               <table class="data-table">
                 <thead>
@@ -1553,7 +1675,7 @@
                 </thead>
                 <tbody id="attr-campaigns-tbody">
                   <tr>
-                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="6" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       Loading campaign performance...
                     </td>
                   </tr>
@@ -1563,9 +1685,13 @@
           </div>
 
           <!-- Customer Journey Timeline Explorer -->
-          <div class="card glass-card">
-            <h3 style="margin-bottom: 6px;">Attributed Customer Journeys</h3>
-            <p class="section-desc" style="margin-bottom: 16px;">Inspect multi-touch journeys connecting initial ad clicks, AI shopping chats, and Shopify checkouts.</p>
+          <div class="panel">
+            <div class="panel-header-clean" style="margin-bottom: 14px;">
+              <div>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Attributed Customer Journeys</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Inspect multi-touch journeys connecting initial ad clicks, AI shopping chats, and Shopify checkouts.</p>
+              </div>
+            </div>
             <div class="table-container">
               <table class="data-table">
                 <thead>
@@ -1581,7 +1707,7 @@
                 </thead>
                 <tbody id="attr-orders-tbody">
                   <tr>
-                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
+                    <td colspan="7" style="text-align: center; padding: 25px; color: var(--color-text-secondary);">
                       Loading customer journeys...
                     </td>
                   </tr>
@@ -1591,46 +1717,46 @@
           </div>
 
           <!-- Section 7: AI Ad Analysis -->
-          <div class="card glass-card" style="margin-top: 24px; padding: 22px; border: 1px solid rgba(99,102,241,0.25); border-radius: 12px;">
+          <div class="panel" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
               <div>
-                <h3 style="margin: 0; color: #a5b4fc; font-size: 16px;">✨ AI Multi-Touch Ad Intelligence Analysis</h3>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-muted);">Objective evaluation of spend efficiency, channel return, and scaling opportunities.</p>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--color-text-primary);">AI Multi-Touch Ad Intelligence Analysis</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Objective evaluation of spend efficiency, channel return, and scaling opportunities.</p>
               </div>
-              <button id="btn-run-ad-ai-analysis" class="btn-primary btn-sm" style="padding: 7px 16px; font-size: 12px;">Run AI Ad Audit 🎯</button>
+              <button id="btn-run-ad-ai-analysis" class="btn btn-primary btn-sm">Run AI Ad Audit</button>
             </div>
             <div id="ad-ai-results-grid" class="hidden" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
-              <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); padding: 14px; border-radius: 8px;">
-                <h4 style="margin: 0 0 6px 0; color: #34d399; font-size: 13px;">🟢 What is Working</h4>
-                <ul id="ad-ai-working" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              <div class="callout-box" style="border-left: 3px solid var(--color-success);">
+                <h4 style="margin: 0 0 6px 0; color: var(--color-success); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">What is Working</h4>
+                <ul id="ad-ai-working" class="summary-bullet-list"></ul>
               </div>
-              <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); padding: 14px; border-radius: 8px;">
-                <h4 style="margin: 0 0 6px 0; color: #f87171; font-size: 13px;">🔴 What is Not Working</h4>
-                <ul id="ad-ai-not-working" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              <div class="callout-box" style="border-left: 3px solid var(--color-danger);">
+                <h4 style="margin: 0 0 6px 0; color: var(--color-danger); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">What is Not Working</h4>
+                <ul id="ad-ai-not-working" class="summary-bullet-list"></ul>
               </div>
-              <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); padding: 14px; border-radius: 8px;">
-                <h4 style="margin: 0 0 6px 0; color: #fbbf24; font-size: 13px;">💡 Why It Happens</h4>
-                <ul id="ad-ai-why" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              <div class="callout-box" style="border-left: 3px solid var(--color-warning);">
+                <h4 style="margin: 0 0 6px 0; color: var(--color-warning); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">Why It Happens</h4>
+                <ul id="ad-ai-why" class="summary-bullet-list"></ul>
               </div>
-              <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); padding: 14px; border-radius: 8px;">
-                <h4 style="margin: 0 0 6px 0; color: #818cf8; font-size: 13px;">🧪 What to Test Next</h4>
-                <ul id="ad-ai-test-next" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.5;"></ul>
+              <div class="callout-box" style="border-left: 3px solid var(--color-accent);">
+                <h4 style="margin: 0 0 6px 0; color: var(--color-accent); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">What to Test Next</h4>
+                <ul id="ad-ai-test-next" class="summary-bullet-list"></ul>
               </div>
             </div>
-            <div id="ad-ai-placeholder" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            <div id="ad-ai-placeholder" style="padding: 24px; text-align: center; color: var(--color-text-secondary); font-size: 13px;">
               Click "Run AI Ad Audit" to analyze ad spend attribution, ROAS efficiency, and channel distribution.
             </div>
           </div>
 
           <!-- Section 8: Ask AI About Ads -->
-          <div class="card glass-card" style="margin-top: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;">
-            <h4 style="margin: 0 0 6px 0; font-size: 14px; color: var(--text-main);">💬 Ask AI About Your Ads</h4>
-            <p style="margin: 0 0 12px 0; font-size: 12px; color: var(--text-muted);">Get instant answers about channel performance, spend distribution, or customer attribution.</p>
+          <div class="panel" style="margin-top: 16px;">
+            <h4 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: var(--color-text-primary);">Ask AI About Your Ads</h4>
+            <p class="section-subtitle" style="margin-bottom: 12px;">Get instant answers about channel performance, spend distribution, or customer attribution.</p>
             <div style="display: flex; gap: 8px;">
-              <input type="text" id="ad-ai-question-input" class="input-field" placeholder="e.g. Which platform drove our highest ROAS this week?" style="flex: 1;" />
-              <button id="btn-ask-ad-ai" class="btn-primary btn-sm" style="padding: 7px 16px; font-size: 12px;">Ask AI</button>
+              <input type="text" id="ad-ai-question-input" class="form-control form-control-sm" placeholder="e.g. Which platform drove our highest ROAS this week?" style="flex: 1;" />
+              <button id="btn-ask-ad-ai" class="btn btn-primary btn-sm">Ask AI</button>
             </div>
-            <div id="ad-ai-question-answer" class="hidden" style="margin-top: 12px; padding: 14px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid rgba(99,102,241,0.2); font-size: 13px; line-height: 1.6;"></div>
+            <div id="ad-ai-question-answer" class="callout-box hidden" style="margin-top: 12px;"></div>
           </div>
         </section>
       </main>
@@ -1639,23 +1765,23 @@
 
   <!-- Ad Spend Management Modal -->
   <div id="ad-spend-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 650px; width: 90%;">
+    <div class="modal panel" style="max-width: 650px; width: 90%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3>💰 Manage Ad Spend</h3>
-        <button id="close-ad-spend-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Manage Ad Spend</h3>
+        <button id="close-ad-spend-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
-      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+      <p class="section-subtitle" style="margin-bottom: 16px;">
         Record your marketing spend per platform and campaign. This spend is deterministically used to compute ROAS.
       </p>
 
       <form id="ad-spend-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Date</label>
-          <input type="date" id="spend-date" class="input-field" required style="width: 100%; margin-top: 4px;" />
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Date</label>
+          <input type="date" id="spend-date" class="form-control form-control-sm" required style="width: 100%;" />
         </div>
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Platform / Source</label>
-          <select id="spend-platform" class="input-field" required style="width: 100%; margin-top: 4px;">
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Platform / Source</label>
+          <select id="spend-platform" class="form-control form-control-sm" required style="width: 100%;">
             <option value="facebook">Meta (Facebook / Instagram)</option>
             <option value="google">Google Ads</option>
             <option value="tiktok">TikTok Ads</option>
@@ -1664,24 +1790,24 @@
           </select>
         </div>
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Campaign Name</label>
-          <input type="text" id="spend-campaign" class="input-field" placeholder="e.g. summer_boost_2026" required style="width: 100%; margin-top: 4px;" />
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Campaign Name</label>
+          <input type="text" id="spend-campaign" class="form-control form-control-sm" placeholder="e.g. summer_boost_2026" required style="width: 100%;" />
         </div>
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Spend Amount</label>
-          <input type="number" id="spend-amount" class="input-field" step="0.01" min="0" placeholder="0.00" required style="width: 100%; margin-top: 4px;" />
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Spend Amount</label>
+          <input type="number" id="spend-amount" class="form-control form-control-sm" step="0.01" min="0" placeholder="0.00" required style="width: 100%;" />
         </div>
         <div style="grid-column: span 2;">
-          <label style="font-size: 12px; color: var(--text-muted);">Notes (Optional)</label>
-          <input type="text" id="spend-notes" class="input-field" placeholder="e.g. Meta Advantage+ Shopping Campaign" style="width: 100%; margin-top: 4px;" />
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Notes (Optional)</label>
+          <input type="text" id="spend-notes" class="form-control form-control-sm" placeholder="e.g. Meta Advantage+ Shopping Campaign" style="width: 100%;" />
         </div>
         <div style="grid-column: span 2; text-align: right; margin-top: 8px;">
-          <button type="submit" class="btn-primary" id="btn-save-spend">Save Spend Entry</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="btn-save-spend">Save Spend Entry</button>
         </div>
       </form>
 
-      <h4 style="margin-bottom: 8px; font-size: 14px;">Recent Spend Entries</h4>
-      <div style="max-height: 200px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+      <h4 style="margin-bottom: 8px; font-size: 14px; font-weight: 600;">Recent Spend Entries</h4>
+      <div class="table-container" style="max-height: 200px; overflow-y: auto;">
         <table class="data-table" style="width: 100%; font-size: 12px;">
           <thead>
             <tr>
@@ -1694,7 +1820,7 @@
           </thead>
           <tbody id="ad-spend-tbody">
             <tr>
-              <td colspan="5" style="text-align: center; padding: 15px; color: var(--text-muted);">
+              <td colspan="5" style="text-align: center; padding: 15px; color: var(--color-text-secondary);">
                 No spend entries recorded yet.
               </td>
             </tr>
@@ -1706,15 +1832,15 @@
 
   <!-- Customer Journey Modal -->
   <div id="customer-journey-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 700px; width: 90%;">
+    <div class="modal panel" style="max-width: 700px; width: 90%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 id="journey-modal-title">Multi-Touch Customer Journey</h3>
-        <button id="close-journey-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <h3 id="journey-modal-title" style="margin: 0; font-size: 17px; font-weight: 600;">Multi-Touch Customer Journey</h3>
+        <button id="close-journey-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
-      <div id="journey-modal-meta" style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
+      <div id="journey-modal-meta" style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
         <!-- Meta summary inserted here -->
       </div>
-      <div id="journey-timeline-container" style="max-height: 400px; overflow-y: auto; padding-left: 8px;">
+      <div id="journey-timeline-container" style="max-height: 400px; overflow-y: auto;">
         <!-- Chronological timeline items inserted here -->
       </div>
     </div>
@@ -1722,44 +1848,44 @@
 
   <!-- Store Full AI Audit Modal -->
   <div id="store-audit-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal panel" style="max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">🔍 Comprehensive AI Store Audit</h3>
-        <button id="close-store-audit-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Comprehensive AI Store Audit</h3>
+        <button id="close-store-audit-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
       
       <!-- Score Meters -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px;">
-        <div class="stat-card" style="text-align: center; padding: 14px;">
-          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Overall Health</span>
-          <p id="audit-overall-score" style="font-size: 28px; font-weight: 700; color: #818cf8; margin: 4px 0 0 0;">--</p>
+      <div class="metrics-grid" style="margin-bottom: 20px;">
+        <div class="stat-card" style="text-align: center;">
+          <span style="font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase;">Overall Health</span>
+          <p id="audit-overall-score" style="font-size: 26px; font-weight: 700; color: var(--color-accent); margin: 4px 0 0 0;">--</p>
         </div>
-        <div class="stat-card" style="text-align: center; padding: 14px;">
-          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Conversion Health</span>
-          <p id="audit-conv-score" style="font-size: 28px; font-weight: 700; color: #34d399; margin: 4px 0 0 0;">--</p>
+        <div class="stat-card" style="text-align: center;">
+          <span style="font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase;">Conversion Health</span>
+          <p id="audit-conv-score" style="font-size: 26px; font-weight: 700; color: var(--color-success); margin: 4px 0 0 0;">--</p>
         </div>
-        <div class="stat-card" style="text-align: center; padding: 14px;">
-          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Listing Quality</span>
-          <p id="audit-listing-score" style="font-size: 28px; font-weight: 700; color: #38bdf8; margin: 4px 0 0 0;">--</p>
+        <div class="stat-card" style="text-align: center;">
+          <span style="font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase;">Listing Quality</span>
+          <p id="audit-listing-score" style="font-size: 26px; font-weight: 700; color: var(--color-info); margin: 4px 0 0 0;">--</p>
         </div>
-        <div class="stat-card" style="text-align: center; padding: 14px;">
-          <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Traffic & Ad Quality</span>
-          <p id="audit-ad-score" style="font-size: 28px; font-weight: 700; color: #f59e0b; margin: 4px 0 0 0;">--</p>
+        <div class="stat-card" style="text-align: center;">
+          <span style="font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase;">Traffic & Ad Quality</span>
+          <p id="audit-ad-score" style="font-size: 26px; font-weight: 700; color: var(--color-warning); margin: 4px 0 0 0;">--</p>
         </div>
       </div>
 
-      <div style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06);">
-        <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #a5b4fc; text-transform: uppercase;">Executive Summary</h4>
-        <p id="audit-summary-text" style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-main);">Running multi-dimensional store audit...</p>
+      <div class="callout-box" style="margin-bottom: 16px;">
+        <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">Executive Summary</h4>
+        <p id="audit-summary-text" style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--color-text-primary);">Running multi-dimensional store audit...</p>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
-        <div style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-          <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #f87171; text-transform: uppercase;">Top Friction Points</h4>
-          <ul id="audit-friction-list" style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--text-main);"></ul>
+      <div class="split-layout" style="margin-bottom: 20px;">
+        <div class="callout-box" style="border-left: 3px solid var(--color-danger);">
+          <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; color: var(--color-danger); text-transform: uppercase; letter-spacing: 0.04em;">Top Friction Points</h4>
+          <ul id="audit-friction-list" class="summary-bullet-list"></ul>
         </div>
-        <div style="background: rgba(0,0,0,0.25); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-          <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #34d399; text-transform: uppercase;">Step-by-Step Recommendations</h4>
+        <div class="callout-box" style="border-left: 3px solid var(--color-success);">
+          <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; color: var(--color-success); text-transform: uppercase; letter-spacing: 0.04em;">Step-by-Step Recommendations</h4>
           <div id="audit-rec-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
         </div>
       </div>
@@ -1768,48 +1894,48 @@
 
   <!-- Product AI Improvement Modal -->
   <div id="product-improvement-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <div>
-          <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">✨ Product Listing AI Optimization</h3>
-          <span id="improve-product-subtitle" style="font-size: 12px; color: var(--text-muted);"></span>
+          <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Product Listing AI Optimization</h3>
+          <span id="improve-product-subtitle" class="section-subtitle"></span>
         </div>
-        <button id="close-product-improvement-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <button id="close-product-improvement-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
 
-      <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); padding: 12px 16px; border-radius: 8px; font-size: 12px; color: #a5b4fc; margin-bottom: 16px;">
-        ℹ️ <strong>Shopify Protection:</strong> These AI optimizations are suggestions. You can copy any improved fields directly to your Shopify Admin.
+      <div class="callout-box" style="margin-bottom: 16px;">
+        <strong>Shopify Protection:</strong> These AI optimizations are suggestions. You can copy any improved fields directly to your Shopify Admin.
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 14px;">
         <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Improved Product Title</label>
-            <button class="btn-secondary btn-sm" onclick="copyText('improve-title-val')" style="padding: 2px 8px; font-size: 11px;">Copy</button>
+            <label style="font-size: 12px; color: var(--color-text-secondary); font-weight: 600;">Improved Product Title</label>
+            <button class="btn btn-secondary btn-sm" onclick="copyText('improve-title-val')" style="padding: 2px 8px; font-size: 11px;">Copy</button>
           </div>
-          <input type="text" id="improve-title-val" class="input-field" style="width: 100%;" readonly />
+          <input type="text" id="improve-title-val" class="form-control form-control-sm" style="width: 100%;" readonly />
         </div>
 
         <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <label style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Improved Description</label>
-            <button class="btn-secondary btn-sm" onclick="copyText('improve-desc-val')" style="padding: 2px 8px; font-size: 11px;">Copy</button>
+            <label style="font-size: 12px; color: var(--color-text-secondary); font-weight: 600;">Improved Description</label>
+            <button class="btn btn-secondary btn-sm" onclick="copyText('improve-desc-val')" style="padding: 2px 8px; font-size: 11px;">Copy</button>
           </div>
-          <textarea id="improve-desc-val" class="input-field" rows="4" style="width: 100%; font-size: 12px; line-height: 1.5;" readonly></textarea>
+          <textarea id="improve-desc-val" class="form-control form-control-sm" rows="4" style="width: 100%; font-size: 12px; line-height: 1.5;" readonly></textarea>
         </div>
 
         <div>
-          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">High-Converting Selling Points</label>
-          <ul id="improve-selling-points" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-main); line-height: 1.6;"></ul>
+          <label style="font-size: 12px; color: var(--color-text-secondary); font-weight: 600; margin-bottom: 4px; display: block;">High-Converting Selling Points</label>
+          <ul id="improve-selling-points" class="summary-bullet-list"></ul>
         </div>
 
         <div>
-          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">Recommended Customer FAQs</label>
+          <label style="font-size: 12px; color: var(--color-text-secondary); font-weight: 600; margin-bottom: 4px; display: block;">Recommended Customer FAQs</label>
           <div id="improve-faq-list" style="display: flex; flex-direction: column; gap: 6px;"></div>
         </div>
 
         <div>
-          <label style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 4px; display: block;">Discovery & Search Tags</label>
+          <label style="font-size: 12px; color: var(--color-text-secondary); font-weight: 600; margin-bottom: 4px; display: block;">Discovery & Search Tags</label>
           <div id="improve-tags-list" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
         </div>
       </div>
@@ -1818,35 +1944,35 @@
 
   <!-- Create Email with AI Modal -->
   <div id="ai-email-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 750px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal panel" style="max-width: 750px; width: 90%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">✉️ Create Email with AI</h3>
-        <button id="close-ai-email-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Create Email with AI</h3>
+        <button id="close-ai-email-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
 
       <form id="ai-email-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;">
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Email Type (13 Lifecycle Moments)</label>
-          <select id="ai-email-type" class="input-field" style="width: 100%; margin-top: 4px;">
-            <option value="welcome">👋 Welcome New Customer</option>
-            <option value="abandoned_cart">🛒 Abandoned Cart Recovery</option>
-            <option value="browse_abandonment">👀 Browse Abandonment</option>
-            <option value="replenishment">🔄 Replenishment / Reorder</option>
-            <option value="post_purchase">📦 Post-Purchase Thank You</option>
-            <option value="winback">💌 Winback Inactive Customer</option>
-            <option value="flash_sale">⚡ Flash Sale / Limited Time</option>
-            <option value="seasonal">🍂 Seasonal / Holiday Offer</option>
-            <option value="review_request">⭐ Product Review Request</option>
-            <option value="new_arrival">✨ New Arrivals Announcement</option>
-            <option value="vip_appreciation">👑 VIP Customer Appreciation</option>
-            <option value="cross_sell">🛍️ Complementary Cross-Sell</option>
-            <option value="newsletter">📰 Store Newsletter / Update</option>
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Email Type (13 Lifecycle Moments)</label>
+          <select id="ai-email-type" class="form-control form-control-sm" style="width: 100%;">
+            <option value="welcome">Welcome New Customer</option>
+            <option value="abandoned_cart">Abandoned Cart Recovery</option>
+            <option value="browse_abandonment">Browse Abandonment</option>
+            <option value="replenishment">Replenishment / Reorder</option>
+            <option value="post_purchase">Post-Purchase Thank You</option>
+            <option value="winback">Winback Inactive Customer</option>
+            <option value="flash_sale">Flash Sale / Limited Time</option>
+            <option value="seasonal">Seasonal / Holiday Offer</option>
+            <option value="review_request">Product Review Request</option>
+            <option value="new_arrival">New Arrivals Announcement</option>
+            <option value="vip_appreciation">VIP Customer Appreciation</option>
+            <option value="cross_sell">Complementary Cross-Sell</option>
+            <option value="newsletter">Store Newsletter / Update</option>
           </select>
         </div>
 
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Brand Tone</label>
-          <select id="ai-email-tone" class="input-field" style="width: 100%; margin-top: 4px;">
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Brand Tone</label>
+          <select id="ai-email-tone" class="form-control form-control-sm" style="width: 100%;">
             <option value="friendly">Friendly & Warm</option>
             <option value="urgent">Urgent & Time-Sensitive</option>
             <option value="premium">Premium & Elegant</option>
@@ -1856,8 +1982,8 @@
         </div>
 
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Primary Goal</label>
-          <select id="ai-email-goal" class="input-field" style="width: 100%; margin-top: 4px;">
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Primary Goal</label>
+          <select id="ai-email-goal" class="form-control form-control-sm" style="width: 100%;">
             <option value="conversion">Immediate Checkout Conversion</option>
             <option value="engagement">Brand Engagement</option>
             <option value="reorder">Repeat Purchase / Reorder</option>
@@ -1867,8 +1993,8 @@
         </div>
 
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Length</label>
-          <select id="ai-email-length" class="input-field" style="width: 100%; margin-top: 4px;">
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Length</label>
+          <select id="ai-email-length" class="form-control form-control-sm" style="width: 100%;">
             <option value="short">Short & Punchy (under 100 words)</option>
             <option value="medium" selected>Medium (100 - 200 words)</option>
             <option value="detailed">Detailed & Story-Driven (200+ words)</option>
@@ -1876,46 +2002,46 @@
         </div>
 
         <div style="grid-column: span 2;">
-          <label style="font-size: 12px; color: var(--text-muted);">Custom Context / Offer Details (Optional)</label>
-          <input type="text" id="ai-email-context" class="input-field" placeholder="e.g. Include 10% off code SAVE10, highlight organic skincare benefits..." style="width: 100%; margin-top: 4px;" />
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Custom Context / Offer Details (Optional)</label>
+          <input type="text" id="ai-email-context" class="form-control form-control-sm" placeholder="e.g. Include 10% off code SAVE10, highlight organic skincare benefits..." style="width: 100%;" />
         </div>
 
         <div style="grid-column: span 2; text-align: right;">
-          <button type="submit" id="btn-generate-ai-email" class="btn-primary" style="padding: 8px 18px;">⚡ Generate Email Draft</button>
+          <button type="submit" id="btn-generate-ai-email" class="btn btn-primary btn-sm">Generate Email Draft</button>
         </div>
       </form>
 
       <!-- AI Email Preview Output -->
-      <div id="ai-email-result" class="hidden" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px;">
-        <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 18px;">
+      <div id="ai-email-result" class="hidden" style="border-top: 1px solid var(--color-border-subtle); padding-top: 16px;">
+        <div class="callout-box">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h4 style="margin: 0; color: #10b981; font-size: 14px;">✅ Generated Draft</h4>
-            <span class="badge" style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3);">Draft Only — Not Sent</span>
+            <h4 style="margin: 0; color: var(--color-success); font-size: 14px; font-weight: 600;">Generated Draft</h4>
+            <span class="badge badge--neutral">Draft Only — Not Sent</span>
           </div>
 
           <div style="margin-bottom: 12px;">
-            <strong style="font-size: 12px; color: var(--text-muted);">Subject:</strong>
-            <span id="ai-email-subject" style="font-size: 14px; color: var(--text-main); font-weight: 600; margin-left: 8px;"></span>
+            <strong style="font-size: 12px; color: var(--color-text-secondary);">Subject:</strong>
+            <span id="ai-email-subject" style="font-size: 14px; color: var(--color-text-primary); font-weight: 600; margin-left: 8px;"></span>
           </div>
 
           <div style="margin-bottom: 12px;">
-            <strong style="font-size: 12px; color: var(--text-muted);">Preview Text:</strong>
-            <span id="ai-email-preview" style="font-size: 13px; color: var(--text-muted); margin-left: 8px;"></span>
+            <strong style="font-size: 12px; color: var(--color-text-secondary);">Preview Text:</strong>
+            <span id="ai-email-preview" style="font-size: 13px; color: var(--color-text-secondary); margin-left: 8px;"></span>
           </div>
 
           <div style="margin-bottom: 16px;">
-            <strong style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">Email Body:</strong>
-            <div id="ai-email-body" style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; white-space: pre-line;"></div>
+            <strong style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 6px;">Email Body:</strong>
+            <div id="ai-email-body" style="background: var(--color-surface); border: 1px solid var(--color-border-default); padding: 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; white-space: pre-line;"></div>
           </div>
 
           <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
-            <span class="btn-primary btn-sm" id="ai-email-cta-btn" style="pointer-events: none;">Shop Now</span>
-            <span id="ai-email-cta-url" style="font-size: 12px; color: var(--text-muted);"></span>
+            <span class="btn btn-primary btn-sm" id="ai-email-cta-btn" style="pointer-events: none;">Shop Now</span>
+            <span id="ai-email-cta-url" style="font-size: 12px; color: var(--color-text-secondary);"></span>
           </div>
 
           <div>
-            <strong style="font-size: 12px; color: #a5b4fc; display: block; margin-bottom: 6px;">Alternative Subject Lines (for A/B Testing):</strong>
-            <ul id="ai-email-alt-subjects" style="margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-muted); line-height: 1.6;"></ul>
+            <strong style="font-size: 12px; color: var(--color-accent); display: block; margin-bottom: 6px;">Alternative Subject Lines (for A/B Testing):</strong>
+            <ul id="ai-email-alt-subjects" class="summary-bullet-list"></ul>
           </div>
         </div>
       </div>
@@ -1924,45 +2050,48 @@
 
   <!-- Smart Reorder Add Product Modal -->
   <div id="reorder-add-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal panel" style="max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">📦 Configure Replenishable Product</h3>
-        <button id="close-reorder-add-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Configure Replenishable Product</h3>
+        <button id="close-reorder-add-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
 
       <!-- AI Consumable Suggestions Section -->
-      <div id="reorder-ai-suggestions-box" class="glass-card hidden" style="margin-bottom: 20px; padding: 16px; border: 1px solid rgba(99,102,241,0.3); background: rgba(99,102,241,0.06); border-radius: 8px;">
-        <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #a5b4fc;">✨ AI Consumable Product Recommendations</h4>
-        <p style="margin: 0 0 12px 0; font-size: 12px; color: var(--text-muted);">Products identified from your catalog with high repeat-purchase potential.</p>
+      <div id="reorder-ai-suggestions-box" class="callout-box hidden" style="margin-bottom: 20px;">
+        <h4 style="margin: 0 0 8px 0; font-size: 13px; font-weight: 600; color: var(--color-accent);">AI Consumable Product Recommendations</h4>
+        <p class="section-subtitle" style="margin-bottom: 12px;">Products identified from your catalog with high repeat-purchase potential.</p>
         <div id="reorder-ai-suggestions-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
       </div>
 
       <form id="reorder-add-form" style="display: flex; flex-direction: column; gap: 14px;">
         <div>
-          <label style="font-size: 12px; color: var(--text-muted);">Select Product from Catalog</label>
-          <select id="reorder-select-product" class="input-field" style="width: 100%; margin-top: 4px;" required>
+          <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Select Product from Catalog</label>
+          <select id="reorder-select-product" class="form-control form-control-sm" style="width: 100%;" required>
             <option value="">Choose a product...</option>
           </select>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div>
-            <label style="font-size: 12px; color: var(--text-muted);">Cycle Length (Days)</label>
-            <input type="number" id="reorder-cycle-days" class="input-field" min="7" max="365" value="30" required style="width: 100%; margin-top: 4px;" />
+            <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Cycle Length (Days)</label>
+            <input type="number" id="reorder-cycle-days" class="form-control form-control-sm" min="7" max="365" value="30" required style="width: 100%;" />
           </div>
           <div>
-            <label style="font-size: 12px; color: var(--text-muted);">Reminder Lead Time (Days Before)</label>
-            <input type="number" id="reorder-reminder-days" class="input-field" min="1" max="30" value="5" required style="width: 100%; margin-top: 4px;" />
+            <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Reminder Lead Time (Days Before)</label>
+            <input type="number" id="reorder-reminder-days" class="form-control form-control-sm" min="1" max="30" value="5" required style="width: 100%;" />
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <input type="checkbox" id="reorder-is-active-toggle" checked />
-          <label for="reorder-is-active-toggle" style="font-size: 13px; color: var(--text-main);">Enable automatic replenishment reminders for this product</label>
+        <div class="form-group toggle-group" style="margin-bottom: 0;">
+          <label for="reorder-is-active-toggle" style="font-size: 13px; color: var(--color-text-primary); cursor: pointer;">Enable automatic replenishment reminders for this product</label>
+          <label class="switch">
+            <input type="checkbox" id="reorder-is-active-toggle" checked />
+            <span class="slider round"></span>
+          </label>
         </div>
 
         <div style="text-align: right; margin-top: 8px;">
-          <button type="submit" class="btn-primary">Save Replenishment Settings</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save Replenishment Settings</button>
         </div>
       </form>
     </div>
@@ -1970,29 +2099,29 @@
 
   <!-- Growth Copilot Ask Modal -->
   <div id="copilot-ask-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel" style="max-width: 650px; width: 90%;">
+    <div class="modal panel" style="max-width: 650px; width: 90%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 style="margin: 0; color: #a5b4fc; font-size: 18px;">🤖 Ask Growth Copilot</h3>
-        <button id="close-copilot-ask-modal" class="btn-secondary" style="padding: 4px 10px; font-size: 14px;">✕</button>
+        <h3 style="margin: 0; font-size: 17px; font-weight: 600;">Ask Growth Copilot</h3>
+        <button id="close-copilot-ask-modal" class="btn btn-ghost btn-sm" style="padding: 4px 8px;">✕</button>
       </div>
 
-      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+      <p class="section-subtitle" style="margin-bottom: 12px;">
         Ask any question backed by your store's real conversions, marketing attribution, catalog data, and recovery telemetry.
       </p>
 
       <!-- Quick chips -->
       <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
-        <button class="copilot-chip btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-q="Why did sales drop yesterday?">📉 Why did sales drop?</button>
-        <button class="copilot-chip btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-q="What is our best-performing marketing channel?">🎯 Best-performing channel?</button>
-        <button class="copilot-chip btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-q="Which products should I put on sale or promote?">🛍️ Products to promote?</button>
+        <button class="copilot-chip btn btn-secondary btn-sm" data-q="Why did sales drop yesterday?">Why did sales drop?</button>
+        <button class="copilot-chip btn btn-secondary btn-sm" data-q="What is our best-performing marketing channel?">Best-performing channel?</button>
+        <button class="copilot-chip btn btn-secondary btn-sm" data-q="Which products should I put on sale or promote?">Products to promote?</button>
       </div>
 
       <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-        <input type="text" id="copilot-ask-input" class="input-field" placeholder="Ask your question..." style="flex: 1;" />
-        <button id="btn-submit-copilot-ask" class="btn-primary btn-sm" style="padding: 8px 18px;">Ask</button>
+        <input type="text" id="copilot-ask-input" class="form-control form-control-sm" placeholder="Ask your question..." style="flex: 1;" />
+        <button id="btn-submit-copilot-ask" class="btn btn-primary btn-sm">Ask</button>
       </div>
 
-      <div id="copilot-ask-result-box" class="hidden" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(99,102,241,0.25); border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.6;">
+      <div id="copilot-ask-result-box" class="callout-box hidden" style="font-size: 13px; line-height: 1.6;">
         <!-- Copilot answer here -->
       </div>
     </div>
@@ -2003,12 +2132,12 @@
 
   <!-- Confirmation Modal -->
   <div id="confirm-modal" class="modal-overlay hidden">
-    <div class="modal glass-panel">
-      <h3 id="confirm-title">Confirm Action</h3>
-      <p id="confirm-message">Are you sure you want to proceed?</p>
-      <div class="modal-actions">
-        <button id="modal-cancel" class="btn-secondary">Cancel</button>
-        <button id="modal-confirm" class="btn-danger">Confirm</button>
+    <div class="modal panel" style="max-width: 440px;">
+      <h3 id="confirm-title" style="margin-bottom: 8px;">Confirm Action</h3>
+      <p id="confirm-message" class="section-subtitle" style="margin-bottom: 20px;">Are you sure you want to proceed?</p>
+      <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="modal-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+        <button id="modal-confirm" class="btn btn-danger btn-sm">Confirm</button>
       </div>
     </div>
   </div>

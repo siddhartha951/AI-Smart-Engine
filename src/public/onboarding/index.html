@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Merchant Onboarding | AI Smart Engine</title>
   <meta name="description" content="Secure onboarding for AI Smart Engine merchants">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../common/css/design-system.css">
   <link rel="stylesheet" href="css/onboarding.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
 <body>
@@ -15,9 +18,13 @@
 
   <div id="app-container">
     <!-- Header -->
-    <header class="glass-header">
+    <header class="onboarding-header">
       <div class="brand">
-        <div class="brand-icon">⚡</div>
+        <span class="brand-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </span>
         <h2>AI Smart Engine</h2>
       </div>
       <div class="progress-container">
@@ -26,49 +33,55 @@
     </header>
 
     <!-- Main Wizard Area -->
-    <main class="wizard-container glass-panel">
+    <main class="wizard-container panel">
       
       <!-- Loading State -->
       <section id="step-loading" class="wizard-step active">
         <div class="loader"></div>
-        <h2>Verifying Invite...</h2>
+        <h2>Verifying invite link...</h2>
       </section>
 
       <!-- Error State -->
       <section id="step-error" class="wizard-step hidden">
-        <div class="error-icon">❌</div>
-        <h2>Invalid or Expired Invite</h2>
+        <div class="error-icon" aria-hidden="true">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        </div>
+        <h2>Invalid or expired invite</h2>
         <p id="error-message">Your invite link is invalid or has expired. Please contact support.</p>
       </section>
 
       <!-- Step 1: Business Details -->
       <section id="step-1" class="wizard-step hidden">
         <h2>Business Details</h2>
-        <p class="step-desc">Let's set up your merchant account and secure your login.</p>
+        <p class="step-desc">Set up your merchant account and secure your login password.</p>
         <form id="form-step-1">
           <div class="form-row">
             <div class="form-group">
-              <label>Merchant Name</label>
-              <input type="text" id="b-merchant-name" required>
+              <label for="b-merchant-name">Merchant Name</label>
+              <input type="text" id="b-merchant-name" required placeholder="Acme Ltd">
             </div>
             <div class="form-group">
-              <label>Brand Name</label>
-              <input type="text" id="b-brand-name" required>
+              <label for="b-brand-name">Brand Name</label>
+              <input type="text" id="b-brand-name" required placeholder="Acme">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Shopify Domain</label>
+              <label for="b-domain">Shopify Domain</label>
               <input type="text" id="b-domain" placeholder="your-store.myshopify.com" required>
             </div>
             <div class="form-group">
-              <label>Contact Email</label>
-              <input type="email" id="b-email" required>
+              <label for="b-email">Contact Email</label>
+              <input type="email" id="b-email" required placeholder="owner@store.com">
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Currency</label>
+              <label for="b-currency">Currency</label>
               <select id="b-currency">
                 <option value="GBP">GBP (£)</option>
                 <option value="USD">USD ($)</option>
@@ -76,7 +89,7 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Timezone</label>
+              <label for="b-timezone">Timezone</label>
               <select id="b-timezone">
                 <option value="Europe/London">Europe/London</option>
                 <option value="America/New_York">America/New_York</option>
@@ -84,11 +97,11 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Support Email (Optional)</label>
-            <input type="email" id="b-support-email">
+            <label for="b-support-email">Support Email (Optional)</label>
+            <input type="email" id="b-support-email" placeholder="support@store.com">
           </div>
           <div class="form-group">
-            <label>Set Dashboard Password</label>
+            <label for="b-password">Set Dashboard Password</label>
             <input type="password" id="b-password" required minlength="8" placeholder="Must be at least 8 characters">
           </div>
           <div class="step-actions">
@@ -103,12 +116,12 @@
         <p class="step-desc">Enter your Custom App credentials. <strong>These are encrypted securely using AES-256-GCM before storage.</strong></p>
         <form id="form-step-2">
           <div class="form-group">
-            <label>Admin API Access Token</label>
+            <label for="s-admin-token">Admin API Access Token</label>
             <input type="password" id="s-admin-token" required placeholder="shpat_...">
-            <small>Required scopes: read_products, read_orders</small>
+            <small class="form-helper">Required scopes: read_products, read_orders</small>
           </div>
           <div class="form-group">
-            <label>Storefront API Access Token</label>
+            <label for="s-storefront-token">Storefront API Access Token</label>
             <input type="password" id="s-storefront-token" required placeholder="shps_...">
           </div>
           <div class="step-actions">
@@ -126,11 +139,11 @@
         <form id="form-step-3">
           <div class="form-row">
             <div class="form-group">
-              <label>Assistant Name</label>
+              <label for="a-name">Assistant Name</label>
               <input type="text" id="a-name" value="Shopping Assistant" required>
             </div>
             <div class="form-group">
-              <label>Tone</label>
+              <label for="a-tone">Tone</label>
               <select id="a-tone">
                 <option value="Professional & Helpful">Professional & Helpful</option>
                 <option value="Friendly & Casual">Friendly & Casual</option>
@@ -139,25 +152,25 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Welcome Message</label>
+            <label for="a-welcome">Welcome Message</label>
             <textarea id="a-welcome" required>Hi! How can I help you find the perfect product today?</textarea>
           </div>
           <div class="form-group">
-            <label>Allowed Categories (comma separated)</label>
+            <label for="a-categories">Allowed Categories (comma separated)</label>
             <input type="text" id="a-categories" value="All">
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Delivery Policy summary</label>
+              <label for="a-delivery">Delivery Policy Summary</label>
               <textarea id="a-delivery"></textarea>
             </div>
             <div class="form-group">
-              <label>Returns Policy summary</label>
+              <label for="a-returns">Returns Policy Summary</label>
               <textarea id="a-returns"></textarea>
             </div>
           </div>
           <div class="form-group">
-            <label>FAQ Content</label>
+            <label for="a-faq">FAQ Content</label>
             <textarea id="a-faq"></textarea>
           </div>
           <div class="step-actions">
@@ -173,20 +186,23 @@
         <form id="form-step-4">
           <div class="form-row">
             <div class="form-group">
-              <label>Sender Name</label>
+              <label for="e-sender-name">Sender Name</label>
               <input type="text" id="e-sender-name" required>
             </div>
             <div class="form-group">
-              <label>Sender Email</label>
+              <label for="e-sender-email">Sender Email</label>
               <input type="email" id="e-sender-email" required>
             </div>
           </div>
-          <div class="form-group checkbox-group">
-            <input type="checkbox" id="e-recovery-enabled" checked>
-            <label for="e-recovery-enabled">Enable automated cart recovery sequence</label>
+          <div class="form-group">
+            <label class="toggle-switch">
+              <input type="checkbox" id="e-recovery-enabled" checked>
+              <span class="switch-slider"></span>
+              <span>Enable automated cart recovery sequence</span>
+            </label>
           </div>
           <div class="form-group">
-            <label>Marketing Consent Wording</label>
+            <label for="e-consent">Marketing Consent Wording</label>
             <input type="text" id="e-consent" value="I agree to receive personalized offers and emails." required>
           </div>
           <div class="step-actions">
@@ -198,9 +214,15 @@
       <!-- Step 5: Product Sync -->
       <section id="step-5" class="wizard-step hidden">
         <h2>Initial Product Sync</h2>
-        <p class="step-desc">We need to index your Shopify catalogue for the AI.</p>
+        <p class="step-desc">Index your Shopify catalogue for the AI shopping assistant.</p>
         <div class="sync-panel">
-          <div id="sync-status-icon" class="sync-icon">🔄</div>
+          <div id="sync-status-icon" class="sync-icon" aria-hidden="true">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </div>
           <h3 id="sync-status-title">Ready to Sync</h3>
           <p id="sync-status-detail">This may take a few minutes depending on catalogue size.</p>
         </div>
@@ -217,7 +239,7 @@
         
         <div class="code-block">
           <pre><code id="w-snippet">Loading snippet...</code></pre>
-          <button id="btn-copy-snippet" class="btn-copy">📋 Copy</button>
+          <button id="btn-copy-snippet" class="btn-secondary btn-sm btn-copy">Copy Snippet</button>
         </div>
 
         <div class="step-actions center-actions">
