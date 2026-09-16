@@ -40,6 +40,13 @@ export interface WidgetSettings {
   avatar_url?: string;
   header_title?: string;
   custom_css?: string;
+  country_code?: string;
+  avatar_persona?: string;
+  offer_code?: string;
+  offer_discount_percent?: number;
+  offer_text?: string;
+  proactive_nudge_enabled?: boolean;
+  proactive_nudge_interval_seconds?: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -124,6 +131,7 @@ export interface Recommendation {
   variant_id: string;
   title: string;
   price: number;
+  compare_at_price?: number;
   currency: string;
   reason: string;
   image_url?: string;

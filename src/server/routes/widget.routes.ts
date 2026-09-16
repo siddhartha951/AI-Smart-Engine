@@ -13,8 +13,8 @@ router.get('/bootstrap', (req, res, next) => createStoreAuthMiddleware()(req, re
     const db = getDatabaseClient();
 
     // Check if agent is active
-    const agentRes = await db.query('SELECT is_active, tone, welcome_message FROM assistant_settings WHERE store_id = $1', [storeId]);
-    const agent = agentRes.rows[0] || { is_active: false };
+    const agentRes = await db.query('SELECT is_active, tone, welcome_message, assistant_name FROM assistant_settings WHERE store_id = $1', [storeId]);
+    const agent = agentRes.rows[0] || { is_active: false, assistant_name: 'Mira' };
 
     if (!agent.is_active) {
       res.status(403).json({ error: 'Agent is currently paused' });
@@ -24,14 +24,28 @@ router.get('/bootstrap', (req, res, next) => createStoreAuthMiddleware()(req, re
     const widgetRes = await db.query('SELECT * FROM widget_settings WHERE store_id = $1', [storeId]);
     const policiesRes = await db.query('SELECT delivery_policy, returns_policy, faq_content FROM store_policies WHERE store_id = $1', [storeId]);
     
+    const rawWidget = widgetRes.rows[0] || {};
+    const widget = {
+      ...rawWidget,
+      country_code: rawWidget.country_code || 'IN',
+      avatar_persona: rawWidget.avatar_persona || 'female',
+      avatar_url: rawWidget.avatar_url || '/assets/avatars/mira-3d.jpg',
+      proactive_nudge_enabled: rawWidget.proactive_nudge_enabled !== false,
+      proactive_nudge_interval_seconds: Number(rawWidget.proactive_nudge_interval_seconds || 60),
+      offer_code: rawWidget.offer_code || '',
+      offer_discount_percent: Number(rawWidget.offer_discount_percent || 0),
+      offer_text: rawWidget.offer_text || '',
+    };
+
     res.json({
       success: true,
       config: {
         agent: {
           tone: agent.tone,
-          welcome_message: agent.welcome_message
+          welcome_message: agent.welcome_message,
+          assistant_name: agent.assistant_name || 'Mira'
         },
-        widget: widgetRes.rows[0] || {},
+        widget,
         policies: policiesRes.rows[0] || {}
       }
     });

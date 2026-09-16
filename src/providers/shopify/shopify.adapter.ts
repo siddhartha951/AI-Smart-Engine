@@ -4,6 +4,7 @@ export interface ShopifyProduct {
   title: string;
   handle?: string;
   price: number;
+  compare_at_price?: number;
   currency: string;
   in_stock: boolean;
   category: string;

@@ -140,6 +140,13 @@ export function createApp(deps: AppDependencies = {}): Express {
                   avatar_url: widgetSettings.avatar_url || '',
                   header_title: widgetSettings.header_title || '',
                   custom_css: widgetSettings.custom_css || '',
+                  country_code: widgetSettings.country_code || 'IN',
+                  avatar_persona: widgetSettings.avatar_persona || 'female_3d',
+                  offer_code: widgetSettings.offer_code || '',
+                  offer_discount_percent: Number(widgetSettings.offer_discount_percent || 0),
+                  offer_text: widgetSettings.offer_text || '',
+                  proactive_nudge_enabled: widgetSettings.proactive_nudge_enabled !== false,
+                  proactive_nudge_interval_seconds: Number(widgetSettings.proactive_nudge_interval_seconds || 60),
                 }
               : null,
             assistant: assistantSettings
@@ -386,6 +393,7 @@ export function createApp(deps: AppDependencies = {}): Express {
               variant_id: p.variant_id || '',
               title: p.title,
               price: p.price,
+              compare_at_price: p.compare_at_price || 0,
               currency: p.currency || 'INR',
               in_stock: p.in_stock ?? true,
               image_url: p.image_url || '',

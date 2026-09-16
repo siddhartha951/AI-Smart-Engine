@@ -148,6 +148,9 @@
         config: null,
         messages: []
       };
+      this.nudgeTimer = null;
+      this.nudgeDismissTimer = null;
+      this._toastTimeout = null;
     }
 
     getHeaders(extra = {}) {
@@ -239,6 +242,7 @@
         };
       }
       this.render();
+      this.initProactiveNudge();
 
       // Full-Store Auto-Tracking & Telemetry
       const isTrackingEnabled = this.state.config?.features?.live_tracking_enabled !== false;
@@ -503,6 +507,9 @@
     }
 
     setState(newState) {
+      if (newState.isOpen) {
+        this.hideProactiveNudge();
+      }
       this.state = { ...this.state, ...newState };
       try {
         if (this.state.messages && this.state.messages.length > 0) {
@@ -520,6 +527,63 @@
           if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
         }, 50);
       }
+    }
+
+    initProactiveNudge() {
+      if (this.nudgeTimer) {
+        clearInterval(this.nudgeTimer);
+        this.nudgeTimer = null;
+      }
+      const enabled = this.state.config?.widget?.proactive_nudge_enabled !== false;
+      if (!enabled) return;
+
+      const intervalSec = Number(this.state.config?.widget?.proactive_nudge_interval_seconds || 60);
+      const intervalMs = Math.max(10, intervalSec) * 1000;
+
+      this.nudgeTimer = setInterval(() => {
+        if (!this.state.isOpen && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+          this.showProactiveNudge();
+        }
+      }, intervalMs);
+    }
+
+    showProactiveNudge() {
+      const nudgeEl = this.shadowRoot.getElementById('proactive-nudge');
+      if (nudgeEl && !this.state.isOpen) {
+        nudgeEl.classList.add('visible');
+        if (this.nudgeDismissTimer) clearTimeout(this.nudgeDismissTimer);
+        this.nudgeDismissTimer = setTimeout(() => {
+          this.hideProactiveNudge();
+        }, 10000);
+      }
+    }
+
+    hideProactiveNudge() {
+      const nudgeEl = this.shadowRoot.getElementById('proactive-nudge');
+      if (nudgeEl) {
+        nudgeEl.classList.remove('visible');
+      }
+      if (this.nudgeDismissTimer) {
+        clearTimeout(this.nudgeDismissTimer);
+        this.nudgeDismissTimer = null;
+      }
+    }
+
+    showToast(message) {
+      let toast = this.shadowRoot.getElementById('widget-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'widget-toast';
+        toast.className = 'widget-toast';
+        const popup = this.shadowRoot.getElementById('popup') || this.shadowRoot.getElementById('widget-container');
+        if (popup) popup.appendChild(toast);
+      }
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(this._toastTimeout);
+      this._toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3200);
     }
 
     getStyles() {
@@ -561,32 +625,211 @@
         
         #launcher {
           pointer-events: auto !important;
-          background-color: ${primaryColor};
+          background: linear-gradient(135deg, ${primaryColor} 0%, #1e1b4b 100%);
           color: ${secondaryColor};
-          border: none;
+          border: 1.5px solid rgba(255, 255, 255, 0.28);
           border-radius: 50px;
-          padding: 12px 22px;
-          font-size: 14.5px;
+          padding: 8px 18px 8px 10px;
+          font-size: 14px;
           font-weight: 600;
           letter-spacing: -0.01em;
           cursor: pointer;
-          box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.26), 0 2px 8px rgba(0, 0, 0, 0.12);
-          transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, opacity 0.2s ease;
+          box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.15) inset, 0 4px 12px rgba(99, 102, 241, 0.25);
+          transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, opacity 0.2s ease;
           display: inline-flex;
           align-items: center;
-          gap: 9px;
+          gap: 10px;
           user-select: none;
           outline: none;
           min-height: 48px;
+          animation: float3d 4s ease-in-out infinite;
+          transform-style: preserve-3d;
+          perspective: 600px;
+        }
+
+        @keyframes float3d {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-6px) rotate(0.8deg); }
         }
         
         #launcher:hover {
-          transform: translateY(-2px) scale(1.02);
-          box-shadow: 0 14px 32px -4px rgba(0, 0, 0, 0.32), 0 4px 10px rgba(0, 0, 0, 0.15);
+          animation-play-state: paused;
+          transform: translateY(-4px) scale(1.03);
+          box-shadow: 0 22px 42px -6px rgba(0, 0, 0, 0.44), 0 0 24px rgba(99, 102, 241, 0.35);
         }
 
         #launcher:active {
           transform: translateY(0) scale(0.97);
+        }
+
+        .launcher-avatar-wrap {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+          background: #ffffff;
+          flex-shrink: 0;
+        }
+
+        .launcher-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          object-fit: cover;
+          display: block;
+          border: 1.5px solid rgba(255, 255, 255, 0.9);
+        }
+
+        .launcher-online-ring {
+          position: absolute;
+          bottom: -1px;
+          right: -1px;
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #10b981;
+          border: 2px solid ${primaryColor};
+          box-shadow: 0 0 6px #10b981;
+        }
+
+        .launcher-sparkle {
+          font-size: 13px;
+          display: inline-block;
+          animation: sparkleSpin 3s linear infinite;
+        }
+
+        @keyframes sparkleSpin {
+          0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.9; }
+          50% { transform: scale(1.2) rotate(180deg); opacity: 1; }
+        }
+
+        /* Proactive 3D Nudge Speech Bubble */
+        .proactive-nudge {
+          position: relative;
+          margin-bottom: 12px;
+          max-width: 310px;
+          background: #ffffff;
+          color: #0f172a;
+          border-radius: 16px;
+          padding: 12px 14px;
+          box-shadow: 0 20px 40px -6px rgba(0, 0, 0, 0.28), 0 2px 10px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.05);
+          display: none;
+          pointer-events: auto;
+          cursor: pointer;
+          opacity: 0;
+          transform: translateY(12px) scale(0.94);
+          transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          z-index: 10;
+        }
+
+        .proactive-nudge.visible {
+          display: flex;
+          opacity: 1;
+          transform: translateY(0) scale(1);
+          animation: nudgePopIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes nudgePopIn {
+          0% { opacity: 0; transform: translateY(14px) scale(0.92); }
+          70% { transform: translateY(-3px) scale(1.02); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .nudge-avatar-wrap {
+          position: relative;
+          width: 38px;
+          height: 38px;
+          flex-shrink: 0;
+          margin-right: 10px;
+        }
+
+        .nudge-avatar {
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 2px solid ${primaryColor};
+          box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+
+        .nudge-online-dot {
+          position: absolute;
+          bottom: 0px;
+          right: 0px;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #10b981;
+          border: 2px solid #ffffff;
+        }
+
+        .nudge-content {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .nudge-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .nudge-name {
+          font-size: 12.5px;
+          font-weight: 700;
+          color: #0f172a;
+        }
+
+        .nudge-status-badge {
+          font-size: 9.5px;
+          font-weight: 700;
+          color: #047857;
+          background: #d1fae5;
+          padding: 1px 6px;
+          border-radius: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+
+        .nudge-message {
+          font-size: 12.5px;
+          line-height: 1.35;
+          color: #334155;
+          margin: 0;
+        }
+
+        .nudge-close-btn {
+          background: transparent;
+          border: none;
+          color: #94a3b8;
+          font-size: 18px;
+          line-height: 1;
+          cursor: pointer;
+          padding: 0 0 0 6px;
+          align-self: flex-start;
+          transition: color 0.15s;
+        }
+
+        .nudge-close-btn:hover {
+          color: #0f172a;
+        }
+
+        .nudge-tail {
+          position: absolute;
+          bottom: -7px;
+          ${isLeft ? 'left: 28px;' : 'right: 28px;'}
+          width: 14px;
+          height: 14px;
+          background: #ffffff;
+          transform: rotate(45deg);
+          border-bottom: 1px solid rgba(0,0,0,0.06);
+          border-right: 1px solid rgba(0,0,0,0.06);
         }
 
         .header-title-container {
@@ -597,14 +840,14 @@
 
         .header-avatar-wrap {
           position: relative;
-          width: 32px;
-          height: 32px;
+          width: 34px;
+          height: 34px;
           flex-shrink: 0;
         }
 
         .header-avatar {
-          width: 32px;
-          height: 32px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
           object-fit: cover;
           border: 2px solid rgba(255, 255, 255, 0.85);
@@ -638,15 +881,6 @@
           font-size: 11px;
           opacity: 0.82;
           font-weight: 500;
-        }
-
-        .launcher-avatar {
-          width: 26px;
-          height: 26px;
-          border-radius: 50%;
-          object-fit: cover;
-          border: 1.5px solid rgba(255, 255, 255, 0.8);
-          flex-shrink: 0;
         }
 
         /* Custom Merchant CSS overrides */
@@ -922,20 +1156,38 @@
           margin-top: 10px;
         }
 
-        .product-cards-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
+        .product-carousel-wrapper {
+          position: relative;
+          width: 100%;
           margin-top: 10px;
+          display: flex;
+          align-items: center;
+        }
+
+        .product-carousel-track {
+          display: flex;
+          gap: 12px;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          -webkit-overflow-scrolling: touch;
+          padding: 4px 2px 8px 2px;
           width: 100%;
         }
 
+        .product-carousel-track::-webkit-scrollbar {
+          display: none;
+        }
+
         .product-card {
+          flex: 0 0 225px;
+          scroll-snap-align: start;
           background: #ffffff;
           border: 1px solid #e2e8f0;
-          border-radius: 12px;
+          border-radius: 14px;
           overflow: hidden;
-          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
           transition: transform 0.2s ease, box-shadow 0.2s ease;
           display: flex;
           flex-direction: column;
@@ -943,14 +1195,74 @@
 
         .product-card:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+          box-shadow: 0 8px 22px rgba(0, 0, 0, 0.1);
           border-color: #cbd5e1;
+        }
+
+        .carousel-nav-btn {
+          position: absolute;
+          top: 38%;
+          transform: translateY(-50%);
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid #cbd5e1;
+          box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 10;
+          font-size: 11px;
+          font-weight: 700;
+          color: #1e293b;
+          transition: all 0.15s;
+          padding: 0;
+        }
+
+        .carousel-nav-btn:hover {
+          background: #ffffff;
+          transform: translateY(-50%) scale(1.1);
+          box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+        }
+
+        .carousel-nav-btn.prev {
+          left: -6px;
+        }
+
+        .carousel-nav-btn.next {
+          right: -6px;
+        }
+
+        .carousel-dots-indicator {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 5px;
+          margin-top: 4px;
+          margin-bottom: 6px;
+        }
+
+        .carousel-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #cbd5e1;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .carousel-dot.active {
+          background: ${primaryColor};
+          width: 16px;
+          border-radius: 6px;
         }
 
         .product-card-thumb-wrap {
           position: relative;
           width: 100%;
-          height: 135px;
+          height: 125px;
           background: #f1f5f9;
           overflow: hidden;
           display: flex;
@@ -975,7 +1287,7 @@
           right: 8px;
           background: #10b981;
           color: #ffffff;
-          font-size: 10px;
+          font-size: 9.5px;
           font-weight: 700;
           padding: 2px 7px;
           border-radius: 12px;
@@ -990,7 +1302,7 @@
           right: 8px;
           background: #ef4444;
           color: #ffffff;
-          font-size: 10px;
+          font-size: 9.5px;
           font-weight: 700;
           padding: 2px 7px;
           border-radius: 12px;
@@ -1002,11 +1314,11 @@
           padding: 10px 12px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 5px;
         }
 
         .product-card-title {
-          font-size: 13px;
+          font-size: 12.5px;
           font-weight: 600;
           color: #0f172a;
           margin: 0;
@@ -1020,19 +1332,116 @@
         .product-card-price-row {
           display: flex;
           align-items: baseline;
-          gap: 4px;
+          flex-wrap: wrap;
+          gap: 3px;
         }
 
         .product-card-price {
-          font-size: 14.5px;
+          font-size: 14px;
           font-weight: 700;
           color: #047857;
+        }
+
+        .product-card-compare-price {
+          font-size: 11.5px;
+          font-weight: 500;
+          color: #94a3b8;
+          text-decoration: line-through;
+          margin-left: 4px;
+        }
+
+        .product-card-discount-tag {
+          font-size: 10px;
+          font-weight: 700;
+          color: #b91c1c;
+          background: #fee2e2;
+          padding: 1px 5px;
+          border-radius: 4px;
+          margin-left: 4px;
+        }
+
+        /* AI Special Price & Razorpay 1-Click Copy Badge */
+        .ai-special-badge {
+          background: linear-gradient(135deg, #fef9c3 0%, #fef3c7 100%);
+          border: 1px solid #fde047;
+          border-radius: 8px;
+          padding: 6px 8px;
+          margin: 4px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .ai-badge-top {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          color: #854d0e;
+        }
+
+        .ai-badge-star {
+          font-size: 11px;
+        }
+
+        .ai-badge-label {
+          font-weight: 600;
+        }
+
+        .ai-badge-price {
+          color: #713f12;
+          font-size: 12.5px;
+          font-weight: 700;
+        }
+
+        .ai-coupon-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+        }
+
+        .ai-coupon-code {
+          font-family: monospace;
+          font-size: 11px;
+          font-weight: 700;
+          background: #ffffff;
+          border: 1px dashed #ca8a04;
+          color: #a16207;
+          padding: 2px 7px;
+          border-radius: 4px;
+          letter-spacing: 0.5px;
+        }
+
+        .btn-copy-coupon {
+          background: #eab308;
+          color: #713f12;
+          border: none;
+          border-radius: 4px;
+          padding: 3px 8px;
+          font-size: 10.5px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+        }
+
+        .btn-copy-coupon:hover {
+          background: #facc15;
+          transform: scale(1.03);
+        }
+
+        .btn-copy-coupon.copied {
+          background: #10b981 !important;
+          color: #ffffff !important;
         }
 
         .product-card-btn-group {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 8px;
+          gap: 6px;
           margin-top: 4px;
         }
 
@@ -1040,7 +1449,7 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          padding: 8px 10px;
+          padding: 7px 8px;
           background: #f8fafc;
           color: #334155;
           border: 1px solid #cbd5e1;
@@ -1050,7 +1459,7 @@
           text-decoration: none;
           transition: all 0.15s;
           cursor: pointer;
-          min-height: 34px;
+          min-height: 32px;
         }
 
         .btn-view-product:hover {
@@ -1063,7 +1472,7 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          padding: 8px 10px;
+          padding: 7px 8px;
           background: ${primaryColor};
           color: ${secondaryColor};
           border: none;
@@ -1072,7 +1481,7 @@
           font-weight: 600;
           cursor: pointer;
           transition: all 0.15s;
-          min-height: 34px;
+          min-height: 32px;
         }
 
         .btn-add-to-cart:hover {
@@ -1082,6 +1491,33 @@
         .btn-add-to-cart.added {
           background: #10b981 !important;
           color: #ffffff !important;
+        }
+
+        .widget-toast {
+          position: absolute;
+          top: 14px;
+          left: 50%;
+          transform: translateX(-50%) translateY(-24px);
+          background: #0f172a;
+          color: #ffffff;
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 600;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+          pointer-events: none;
+          opacity: 0;
+          transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+          z-index: 9999;
+          white-space: nowrap;
+          max-width: 90%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .widget-toast.show {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
         }
         
         /* Mobile behavior: Non-intrusive bottom sheet with screen headroom */
@@ -1144,18 +1580,39 @@
       
       const buttonText = widgetConfig?.button_text || 'Ask our shopping assistant';
       const greeting = widgetConfig?.greeting || 'Hello! How can I help you today?';
-      const assistantName = assistantConfig?.assistant_name || 'Assistant';
+      const assistantName = assistantConfig?.assistant_name || 'Mira';
       const headerTitle = widgetConfig?.header_title || assistantName;
-      const avatarUrl = widgetConfig?.avatar_url || '';
+      const persona = widgetConfig?.avatar_persona || 'female_3d';
+      let avatarUrl = widgetConfig?.avatar_url || '';
+      if (!avatarUrl) {
+        if (persona === 'male_3d') avatarUrl = `${API_BASE_URL}/assets/avatars/arjun-3d.jpg`;
+        else if (persona === 'bot_3d') avatarUrl = `${API_BASE_URL}/assets/avatars/cosmo-3d.jpg`;
+        else avatarUrl = `${API_BASE_URL}/assets/avatars/mira-3d.jpg`;
+      }
       const policyUrl = assistantConfig?.privacy_policy_url || '#';
 
-      const avatarHeaderHtml = avatarUrl ? `<img src="${avatarUrl}" class="header-avatar" alt="Avatar" />` : '';
-      const avatarLauncherHtml = avatarUrl ? `<img src="${avatarUrl}" class="launcher-avatar" alt="Avatar" />` : '';
+      const offerCode = widgetConfig?.offer_code || '';
+      const offerDiscount = Number(widgetConfig?.offer_discount_percent || 0);
+      let nudgeMessage = `👋 Hi! I'm ${assistantName}. Looking for recommendations or size help today?`;
+      if (widgetConfig?.offer_text && widgetConfig.offer_text.trim()) {
+        nudgeMessage = widgetConfig.offer_text.trim();
+      } else if (offerCode && offerDiscount > 0) {
+        nudgeMessage = `👋 Hi! Looking for recommendations? Tap here to get ${offerDiscount}% OFF with code ${offerCode}!`;
+      }
+
+      const avatarHeaderHtml = `<img src="${avatarUrl}" class="header-avatar" alt="${assistantName}" />`;
+      const avatarLauncherHtml = `
+        <div class="launcher-avatar-wrap">
+          <img src="${avatarUrl}" class="launcher-avatar" alt="${assistantName}" />
+          <span class="launcher-online-ring"></span>
+        </div>
+      `;
 
       this.shadowRoot.innerHTML = `
         <style>${this.getStyles()}</style>
         <div id="widget-container">
           <div id="popup" class="${this.state.isOpen ? 'open' : ''}">
+            <div id="widget-toast" class="widget-toast"></div>
             <div class="header">
               <div class="header-title-container">
                 <div class="header-avatar-wrap">
@@ -1174,10 +1631,27 @@
               ${this.renderView(greeting, policyUrl)}
             </div>
           </div>
+
+          <div id="proactive-nudge" class="proactive-nudge" role="alert">
+            <div class="nudge-avatar-wrap">
+              <img src="${avatarUrl}" class="nudge-avatar" alt="${assistantName}" />
+              <span class="nudge-online-dot"></span>
+            </div>
+            <div class="nudge-content">
+              <div class="nudge-header">
+                <span class="nudge-name">${assistantName}</span>
+                <span class="nudge-status-badge">AI Online</span>
+              </div>
+              <p class="nudge-message">${nudgeMessage}</p>
+            </div>
+            <button type="button" class="nudge-close-btn" aria-label="Dismiss">&times;</button>
+            <div class="nudge-tail"></div>
+          </div>
           
           <button id="launcher" aria-label="Toggle Shopping Assistant">
             ${avatarLauncherHtml}
             <span>${this.state.isOpen ? 'Close' : buttonText}</span>
+            <span class="launcher-sparkle">✨</span>
           </button>
         </div>
       `;
@@ -1186,6 +1660,8 @@
     }
 
     renderView(greeting, policyUrl) {
+      const { widget: widgetConfig } = this.state.config || {};
+
       if (this.state.view === 'welcome') {
         return `
           <h3>Welcome!</h3>
@@ -1195,9 +1671,14 @@
       } 
       
       if (this.state.view === 'lead-capture') {
+        const countryCode = (widgetConfig?.country_code || 'IN').toUpperCase();
+        const isIndia = countryCode === 'IN';
+        const phonePlaceholder = isIndia ? '+91 98765 43210' : '+44 7000 000000';
+        const phoneLabel = isIndia ? 'WhatsApp / Phone Number (🇮🇳 +91)' : 'Phone Number (Optional)';
+
         return `
           <h3>Let's get started</h3>
-          <p>Please provide your email to continue. This helps us save your recommendations.</p>
+          <p>Please provide your email to continue. This helps us save your recommendations and exclusive discounts.</p>
           
           <form id="lead-form">
             <div class="form-group">
@@ -1206,14 +1687,15 @@
             </div>
             
             <div class="form-group">
-              <label for="phone">Phone Number (Optional)</label>
-              <input type="tel" id="phone" placeholder="+44 7000 000000" />
+              <label for="phone">${phoneLabel}</label>
+              <input type="tel" id="phone" placeholder="${phonePlaceholder}" />
+              ${isIndia ? '<small style="font-size: 11px; color: #64748b; margin-top: 3px; display: block;">Enter 10-digit mobile number for order & discount updates</small>' : ''}
             </div>
             
             <div class="checkbox-group">
-              <input type="checkbox" id="marketing" />
+              <input type="checkbox" id="marketing" checked />
               <label for="marketing">
-                Keep me updated with news and exclusive offers. I understand I can unsubscribe at any time.
+                Keep me updated with news, AI recommendations, and exclusive offers.
               </label>
             </div>
             
@@ -1227,7 +1709,7 @@
       }
       
       if (this.state.view === 'chat') {
-        const messagesHtml = this.state.messages.map(m => {
+        const messagesHtml = this.state.messages.map((m, mIdx) => {
           let recs = Array.isArray(m.recommendations) ? [...m.recommendations] : [];
           let displayText = m.content || '';
 
@@ -1242,8 +1724,24 @@
 
           let recsHtml = '';
           if (recs.length > 0) {
-            recsHtml = '<div class="product-cards-list">' + recs.map(r => {
-              const rawPrice = r.price !== undefined ? r.price : '';
+            const carouselId = 'car_' + mIdx + '_' + Math.random().toString(36).substr(2, 5);
+            const totalRecs = recs.length;
+
+            recsHtml = `
+              <div class="product-carousel-wrapper" data-carousel-id="${carouselId}">
+                ${totalRecs > 1 ? `<button type="button" class="carousel-nav-btn prev" aria-label="Previous Products">❮</button>` : ''}
+                <div class="product-carousel-track" id="${carouselId}">
+            ` + recs.map(r => {
+              const rawPrice = r.price !== undefined ? parseFloat(r.price) : 0;
+              const comparePrice = r.compare_at_price ? parseFloat(r.compare_at_price) : 0;
+              const hasRealCompare = comparePrice > rawPrice;
+              const catalogDiscount = hasRealCompare ? Math.round(((comparePrice - rawPrice) / comparePrice) * 100) : 0;
+
+              const offerCode = widgetConfig?.offer_code || '';
+              const offerPercent = Number(widgetConfig?.offer_discount_percent || 0);
+              const hasOffer = Boolean(offerCode && offerPercent > 0);
+              const specialAiPrice = hasOffer ? (rawPrice * (1 - offerPercent / 100)).toFixed(0) : '';
+
               const priceDisplay = formatCurrencyPrice(rawPrice, r.currency);
               const trackingUrl = buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId);
               const inStock = r.in_stock !== false;
@@ -1261,12 +1759,34 @@
                     <h4 class="product-card-title" title="${r.title || ''}">${r.title || 'Product'}</h4>
                     <div class="product-card-price-row">
                       <span class="product-card-price">${priceDisplay}</span>
+                      ${hasRealCompare ? `
+                        <span class="product-card-compare-price">${formatCurrencyPrice(comparePrice, r.currency)}</span>
+                        <span class="product-card-discount-tag">${catalogDiscount}% OFF</span>
+                      ` : ''}
                     </div>
+
+                    ${hasOffer ? `
+                      <div class="ai-special-badge" data-code="${offerCode}">
+                        <div class="ai-badge-top">
+                          <span class="ai-badge-star">✨</span>
+                          <span class="ai-badge-label">AI Special:</span>
+                          <strong class="ai-badge-price">${formatCurrencyPrice(specialAiPrice, r.currency)}</strong>
+                        </div>
+                        <div class="ai-coupon-row">
+                          <span class="ai-coupon-code">${offerCode}</span>
+                          <button type="button" class="btn-copy-coupon" data-code="${offerCode}" title="Click to copy for checkout / Razorpay">
+                            📋 Copy
+                          </button>
+                        </div>
+                      </div>
+                    ` : ''}
+
                     <div class="product-card-btn-group">
                       <a href="${trackingUrl}" target="_blank" class="btn-view-product" 
                          data-product-id="${r.product_id || r.productId || ''}" 
                          data-title="${encodeURIComponent(r.title || '')}"
-                         data-url="${encodeURIComponent(trackingUrl)}">
+                         data-url="${encodeURIComponent(trackingUrl)}"
+                         data-offer-code="${offerCode}">
                         View Product ↗
                       </a>
                       <button type="button" class="btn-add-to-cart" 
@@ -1275,14 +1795,24 @@
                               data-title="${encodeURIComponent(r.title || '')}" 
                               data-price="${rawPrice}" 
                               data-currency="${r.currency || 'INR'}"
-                              data-product-url="${encodeURIComponent(trackingUrl)}">
+                              data-product-url="${encodeURIComponent(trackingUrl)}"
+                              data-offer-code="${offerCode}">
                         Add to Cart 🛒
                       </button>
                     </div>
                   </div>
                 </div>
               `;
-            }).join('') + '</div>';
+            }).join('') + `
+                </div>
+                ${totalRecs > 1 ? `<button type="button" class="carousel-nav-btn next" aria-label="Next Products">❯</button>` : ''}
+              </div>
+              ${totalRecs > 1 ? `
+                <div class="carousel-dots-indicator" data-carousel-id="${carouselId}">
+                  ${recs.map((_, i) => `<span class="carousel-dot ${i === 0 ? 'active' : ''}" data-index="${i}"></span>`).join('')}
+                </div>
+              ` : ''}
+            `;
           }
 
           return `
@@ -1312,14 +1842,40 @@
     attachEventListeners() {
       const launcher = this.shadowRoot.getElementById('launcher');
       const closeBtn = this.shadowRoot.querySelector('.close-btn');
+      const nudge = this.shadowRoot.getElementById('proactive-nudge');
       
       if (launcher) {
         launcher.addEventListener('click', () => {
+          this.hideProactiveNudge();
           const nextState = !this.state.isOpen;
           this.setState({ isOpen: nextState });
           if (nextState) {
             this.trackEvent('widget_opened');
           }
+        });
+
+        // 3D Tilt micro-interaction on hover
+        launcher.addEventListener('mousemove', (e) => {
+          const rect = launcher.getBoundingClientRect();
+          const x = e.clientX - rect.left - rect.width / 2;
+          const y = e.clientY - rect.top - rect.height / 2;
+          launcher.style.transform = `perspective(500px) rotateX(${-y * 0.1}deg) rotateY(${x * 0.1}deg) translateY(-3px) scale(1.02)`;
+        });
+        launcher.addEventListener('mouseleave', () => {
+          launcher.style.transform = '';
+        });
+      }
+
+      if (nudge) {
+        nudge.addEventListener('click', (e) => {
+          if (e.target.closest('.nudge-close-btn')) {
+            e.stopPropagation();
+            this.hideProactiveNudge();
+            return;
+          }
+          this.hideProactiveNudge();
+          this.setState({ isOpen: true });
+          this.trackEvent('widget_opened', { source: 'proactive_nudge' });
         });
       }
       
@@ -1375,12 +1931,79 @@
         }, 100);
       }
 
+      // Carousel navigation prev / next and dot indicators
+      this.shadowRoot.querySelectorAll('.product-carousel-wrapper').forEach(wrapper => {
+        const track = wrapper.querySelector('.product-carousel-track');
+        const prevBtn = wrapper.querySelector('.carousel-nav-btn.prev');
+        const nextBtn = wrapper.querySelector('.carousel-nav-btn.next');
+        const carouselId = wrapper.getAttribute('data-carousel-id');
+        const dots = this.shadowRoot.querySelectorAll(`.carousel-dots-indicator[data-carousel-id="${carouselId}"] .carousel-dot`);
+
+        if (track && prevBtn) {
+          prevBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            track.scrollBy({ left: -230, behavior: 'smooth' });
+          });
+        }
+        if (track && nextBtn) {
+          nextBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            track.scrollBy({ left: 230, behavior: 'smooth' });
+          });
+        }
+        if (track && dots.length > 0) {
+          track.addEventListener('scroll', () => {
+            const cardWidth = 230;
+            const activeIndex = Math.min(dots.length - 1, Math.max(0, Math.round(track.scrollLeft / cardWidth)));
+            dots.forEach((dot, idx) => {
+              if (idx === activeIndex) dot.classList.add('active');
+              else dot.classList.remove('active');
+            });
+          });
+          dots.forEach(dot => {
+            dot.addEventListener('click', () => {
+              const idx = parseInt(dot.getAttribute('data-index') || '0', 10);
+              track.scrollTo({ left: idx * 230, behavior: 'smooth' });
+            });
+          });
+        }
+      });
+
+      // 1-Click Copy Coupon Code buttons (Razorpay / Custom Checkout compatible)
+      this.shadowRoot.querySelectorAll('.btn-copy-coupon').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const code = btn.getAttribute('data-code');
+          if (code) {
+            try {
+              await navigator.clipboard.writeText(code);
+            } catch (_) {}
+            btn.textContent = '✓ Copied!';
+            btn.classList.add('copied');
+            this.showToast(`🎉 Code ${code} copied! Paste at checkout / Razorpay.`);
+            setTimeout(() => {
+              btn.textContent = '📋 Copy';
+              btn.classList.remove('copied');
+            }, 2500);
+          }
+        });
+      });
+
       // Attach click events for product card "View Product" buttons
       this.shadowRoot.querySelectorAll('.btn-view-product').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const prodId = btn.getAttribute('data-product-id');
           const title = decodeURIComponent(btn.getAttribute('data-title') || '');
           const url = decodeURIComponent(btn.getAttribute('data-url') || '');
+          const offerCode = btn.getAttribute('data-offer-code');
+
+          if (offerCode) {
+            try {
+              await navigator.clipboard.writeText(offerCode);
+              this.showToast(`🏷️ Code ${offerCode} copied for your checkout!`);
+            } catch (_) {}
+          }
+
           this.trackEvent('product_click', {
             product_id: prodId,
             title,
@@ -1404,6 +2027,14 @@
           const price = btn.getAttribute('data-price');
           const currency = btn.getAttribute('data-currency');
           const productUrl = decodeURIComponent(btn.getAttribute('data-product-url') || '');
+          const offerCode = btn.getAttribute('data-offer-code');
+
+          if (offerCode) {
+            try {
+              await navigator.clipboard.writeText(offerCode);
+              this.showToast(`🏷️ Code ${offerCode} copied for your checkout!`);
+            } catch (_) {}
+          }
 
           btn.disabled = true;
           btn.textContent = 'Adding...';

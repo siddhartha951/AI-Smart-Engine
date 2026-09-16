@@ -151,6 +151,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             title: r.title,
             handle: r.handle,
             price: parseFloat(r.price || '0'),
+            compare_at_price: parseFloat(r.compare_at_price || '0'),
             currency: r.currency || 'INR',
             in_stock: r.in_stock,
             category: r.category,
@@ -178,6 +179,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                     node {
                       id
                       price { amount currencyCode }
+                      compareAtPrice { amount currencyCode }
                       availableForSale
                     }
                   }
@@ -229,6 +231,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           variant_id: numericVarId,
           title: node.title,
           price: parseFloat(variant?.price?.amount || '0'),
+          compare_at_price: parseFloat(variant?.compareAtPrice?.amount || '0'),
           currency: variant?.price?.currencyCode || 'INR',
           in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',
@@ -296,14 +299,15 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             const compositeId = `${storeId}_${rawId}`;
             await db.query(`
               INSERT INTO products (
-                id, store_id, shopify_id, variant_id, title, handle, price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
+                id, store_id, shopify_id, variant_id, title, handle, price, compare_at_price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
               ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
               )
               ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 handle = EXCLUDED.handle,
                 price = EXCLUDED.price,
+                compare_at_price = EXCLUDED.compare_at_price,
                 currency = EXCLUDED.currency,
                 in_stock = EXCLUDED.in_stock,
                 category = EXCLUDED.category,
@@ -319,6 +323,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
               p.title,
               p.handle || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
               p.price || 0,
+              p.compare_at_price || 0,
               p.currency || 'INR',
               p.in_stock ?? true,
               p.category || '',
@@ -383,6 +388,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                     node {
                       id
                       price
+                      compareAtPrice
                       availableForSale
                     }
                   }
@@ -429,6 +435,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           title: node.title || '',
           handle: node.handle || '',
           price: parseFloat(variant?.price || '0'),
+          compare_at_price: parseFloat(variant?.compareAtPrice || '0'),
           currency: shopCurrency,
           in_stock: variant?.availableForSale ?? (node.status === 'ACTIVE'),
           category: node.productType || '',
@@ -488,6 +495,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         title: p.title || '',
         handle: p.handle || '',
         price: parseFloat(variant?.price || '0'),
+        compare_at_price: parseFloat(variant?.compare_at_price || '0'),
         currency: shopCurrency,
         in_stock: variant?.available ?? (p.status === 'active'),
         category: p.product_type || '',
@@ -526,6 +534,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                     node {
                       id
                       price { amount currencyCode }
+                      compareAtPrice { amount currencyCode }
                       availableForSale
                     }
                   }
@@ -576,6 +585,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           variant_id: numericVarId,
           title: node.title,
           price: parseFloat(variant?.price?.amount || '0'),
+          compare_at_price: parseFloat(variant?.compareAtPrice?.amount || '0'),
           currency: variant?.price?.currencyCode || 'INR',
           in_stock: variant?.availableForSale ?? true,
           category: node.productType || '',

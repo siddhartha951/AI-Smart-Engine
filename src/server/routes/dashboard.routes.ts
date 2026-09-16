@@ -248,7 +248,7 @@ router.put(['/:storeId/widget', '/:storeId/settings'], enforceStoreAccess, async
 
     if (widget) {
       const oldWidget = await db.query('SELECT * FROM widget_settings WHERE store_id = $1', [storeId]);
-      const old = oldWidget.rows[0];
+      const old = oldWidget.rows[0] || {};
       await db.query(
         `UPDATE widget_settings SET 
           button_text = $1, 
@@ -257,8 +257,16 @@ router.put(['/:storeId/widget', '/:storeId/settings'], enforceStoreAccess, async
           position = $4,
           avatar_url = $5,
           header_title = $6,
-          custom_css = $7
-         WHERE store_id = $8`,
+          custom_css = $7,
+          country_code = $8,
+          avatar_persona = $9,
+          offer_code = $10,
+          offer_discount_percent = $11,
+          offer_text = $12,
+          proactive_nudge_enabled = $13,
+          proactive_nudge_interval_seconds = $14,
+          updated_at = NOW()
+         WHERE store_id = $15`,
         [
           widget.button_text !== undefined ? widget.button_text : old.button_text,
           widget.primary_colour !== undefined ? widget.primary_colour : old.primary_colour,
@@ -267,6 +275,13 @@ router.put(['/:storeId/widget', '/:storeId/settings'], enforceStoreAccess, async
           widget.avatar_url !== undefined ? widget.avatar_url : old.avatar_url,
           widget.header_title !== undefined ? widget.header_title : old.header_title,
           widget.custom_css !== undefined ? widget.custom_css : old.custom_css,
+          widget.country_code !== undefined ? widget.country_code : (old.country_code || 'IN'),
+          widget.avatar_persona !== undefined ? widget.avatar_persona : (old.avatar_persona || 'female_3d'),
+          widget.offer_code !== undefined ? widget.offer_code : (old.offer_code || ''),
+          widget.offer_discount_percent !== undefined ? Number(widget.offer_discount_percent) : (old.offer_discount_percent || 0),
+          widget.offer_text !== undefined ? widget.offer_text : (old.offer_text || ''),
+          widget.proactive_nudge_enabled !== undefined ? Boolean(widget.proactive_nudge_enabled) : (old.proactive_nudge_enabled !== false),
+          widget.proactive_nudge_interval_seconds !== undefined ? Number(widget.proactive_nudge_interval_seconds) : (old.proactive_nudge_interval_seconds || 60),
           storeId
         ]
       );

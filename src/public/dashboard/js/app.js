@@ -9,33 +9,45 @@ let state = {
 // 3D Avatar Presets Gallery for AI Assistant
 const AVATAR_PRESETS = [
   {
+    id: 'mira-female-3d',
+    persona: 'female',
+    name: 'Mira (3D Female)',
+    role: 'Fashion & Style',
+    url: '/assets/avatars/mira-3d.jpg',
+  },
+  {
+    id: 'arjun-male-3d',
+    persona: 'male',
+    name: 'Arjun (3D Male)',
+    role: 'Tech & Products',
+    url: '/assets/avatars/arjun-3d.jpg',
+  },
+  {
+    id: 'cosmo-robot-3d',
+    persona: 'bot',
+    name: 'Cosmo (3D Robot)',
+    role: 'AI Concierge',
+    url: '/assets/avatars/cosmo-3d.jpg',
+  },
+  {
     id: 'cyber-nova',
-    name: '3D Nova',
+    persona: 'bot',
+    name: 'Nova (3D Bot)',
+    role: 'Smart Assistant',
     url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Nova&backgroundColor=6366f1,818cf8',
   },
   {
-    id: 'quantum-apex',
-    name: '3D Apex',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Apex&backgroundColor=0284c7,38bdf8',
-  },
-  {
     id: 'neon-sparkle',
-    name: '3D Sparkle',
+    persona: 'bot',
+    name: 'Sparkle (3D Bot)',
+    role: 'Friendly Bot',
     url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Sparkle&backgroundColor=ec4899,d946ef',
   },
   {
-    id: 'emerald-aura',
-    name: '3D Aura',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Emerald&backgroundColor=059669,34d399',
-  },
-  {
-    id: 'solar-cosmo',
-    name: '3D Cosmo',
-    url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Cosmo&backgroundColor=f59e0b,fbbf24',
-  },
-  {
     id: 'zenith-bot',
-    name: '3D Zenith',
+    persona: 'bot',
+    name: 'Zenith (3D Bot)',
+    role: 'Power Bot',
     url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Zenith&backgroundColor=7c3aed,a855f7',
   },
 ];
@@ -261,9 +273,16 @@ function setupEventListeners() {
         primary_colour: document.getElementById('widget-primary-color').value,
         secondary_colour: document.getElementById('widget-secondary-color').value,
         position: document.getElementById('widget-position').value,
-        header_title: document.getElementById('widget-header-title') ? document.getElementById('widget-header-title').value : '',
+        country_code: document.getElementById('widget-country-code') ? document.getElementById('widget-country-code').value : 'IN',
+        avatar_persona: document.getElementById('widget-avatar-persona') ? document.getElementById('widget-avatar-persona').value : 'female',
         avatar_url: document.getElementById('widget-avatar-url') ? document.getElementById('widget-avatar-url').value.trim() : '',
+        header_title: document.getElementById('widget-header-title') ? document.getElementById('widget-header-title').value : '',
         custom_css: document.getElementById('widget-custom-css') ? document.getElementById('widget-custom-css').value : '',
+        offer_code: document.getElementById('widget-offer-code') ? document.getElementById('widget-offer-code').value.trim().toUpperCase() : '',
+        offer_discount_percent: document.getElementById('widget-offer-percent') ? (parseFloat(document.getElementById('widget-offer-percent').value) || 0) : 0,
+        offer_text: document.getElementById('widget-offer-text') ? document.getElementById('widget-offer-text').value.trim() : '',
+        proactive_nudge_enabled: document.getElementById('widget-nudge-enabled') ? document.getElementById('widget-nudge-enabled').checked : true,
+        proactive_nudge_interval_seconds: 60,
       }
     };
 
@@ -285,27 +304,39 @@ function setupEventListeners() {
   });
 
   // Widget preview auto-update
-  ['widget-btn-text', 'widget-header-title', 'widget-primary-color', 'widget-secondary-color', 'widget-position', 'widget-avatar-url'].forEach(id => {
+  ['widget-btn-text', 'widget-header-title', 'widget-primary-color', 'widget-secondary-color', 'widget-position', 'widget-country-code', 'widget-avatar-persona', 'widget-avatar-url', 'widget-offer-code', 'widget-offer-percent', 'widget-offer-text', 'widget-nudge-enabled'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.addEventListener('input', () => {
+      const evt = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(evt, () => {
         if (id === 'widget-avatar-url') {
           updateAvatarPresetSelection(el.value.trim());
+        }
+        if (id === 'widget-avatar-persona') {
+          const persona = el.value;
+          const match = AVATAR_PRESETS.find(p => p.persona === persona);
+          if (match) {
+            const avatarInput = document.getElementById('widget-avatar-url');
+            if (avatarInput) avatarInput.value = match.url;
+            updateAvatarPresetSelection(match.url);
+          }
         }
         updateLivePreview();
       });
     }
   });
 
-  // Clear Avatar Button
+  // Reset / Clear Avatar Button
   const clearAvatarBtn = document.getElementById('btn-clear-avatar');
   if (clearAvatarBtn) {
     clearAvatarBtn.addEventListener('click', () => {
       const avatarInput = document.getElementById('widget-avatar-url');
-      if (avatarInput) avatarInput.value = '';
-      updateAvatarPresetSelection('');
+      if (avatarInput) avatarInput.value = '/assets/avatars/mira-3d.jpg';
+      const personaSelect = document.getElementById('widget-avatar-persona');
+      if (personaSelect) personaSelect.value = 'female';
+      updateAvatarPresetSelection('/assets/avatars/mira-3d.jpg');
       updateLivePreview();
-      showToast('Avatar cleared. Default bag icon will be used.');
+      showToast('Reset avatar to default Mira 3D model.');
     });
   }
 
@@ -581,20 +612,24 @@ function initAvatarPresets() {
   const grid = document.getElementById('avatar-presets-grid');
   if (!grid) return;
   grid.innerHTML = AVATAR_PRESETS.map(preset => `
-    <div class="avatar-preset-card" data-url="${preset.url}" title="${preset.name}">
-      <img src="${preset.url}" alt="${preset.name}">
-      <span>${preset.name}</span>
+    <div class="avatar-preset-card" data-url="${preset.url}" data-persona="${preset.persona}" title="${preset.name}">
+      <img src="${preset.url}" alt="${preset.name}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.15);">
+      <span style="font-weight: 600; font-size: 11px; margin-top: 4px;">${preset.name}</span>
+      <small style="font-size: 10px; color: var(--color-accent); font-weight: 500; display: block;">${preset.role || ''}</small>
     </div>
   `).join('');
 
   grid.querySelectorAll('.avatar-preset-card').forEach(card => {
     card.addEventListener('click', () => {
       const url = card.getAttribute('data-url');
+      const persona = card.getAttribute('data-persona');
       const avatarInput = document.getElementById('widget-avatar-url');
+      const personaSelect = document.getElementById('widget-avatar-persona');
       if (avatarInput) avatarInput.value = url;
+      if (personaSelect && persona) personaSelect.value = persona;
       updateAvatarPresetSelection(url);
       updateLivePreview();
-      showToast(`Selected ${card.querySelector('span').textContent} avatar! Save settings to apply.`);
+      showToast(`Selected ${card.querySelector('span').textContent}! Save settings to apply.`);
     });
   });
 }
@@ -618,8 +653,25 @@ function updateLivePreview() {
   const secondaryColor = document.getElementById('widget-secondary-color')?.value || '#ffffff';
   const btnText = document.getElementById('widget-btn-text')?.value || 'Ask our shopping assistant';
   const headerTitle = document.getElementById('widget-header-title')?.value || 'AI Shopping Assistant';
-  const avatarUrl = document.getElementById('widget-avatar-url')?.value?.trim() || '';
+  const avatarUrl = document.getElementById('widget-avatar-url')?.value?.trim() || '/assets/avatars/mira-3d.jpg';
+  const countryCode = document.getElementById('widget-country-code')?.value || 'IN';
+  const offerCode = (document.getElementById('widget-offer-code')?.value || '').trim().toUpperCase();
+  const offerPercent = parseFloat(document.getElementById('widget-offer-percent')?.value || '0') || 10;
+  const offerText = (document.getElementById('widget-offer-text')?.value || '').trim();
+  const nudgeEnabled = document.getElementById('widget-nudge-enabled') ? document.getElementById('widget-nudge-enabled').checked : true;
 
+  // 1. Proactive Nudge Preview
+  const nudgeBubble = document.getElementById('preview-nudge-bubble');
+  const nudgeText = document.getElementById('preview-nudge-text');
+  if (nudgeBubble) {
+    nudgeBubble.style.display = nudgeEnabled ? 'block' : 'none';
+  }
+  if (nudgeText) {
+    const personaName = headerTitle.replace(/(Shopping|Concierge|Assistant|AI)/gi, '').trim() || 'Mira';
+    nudgeText.textContent = `👋 Hi! I'm ${personaName}, your personal shopping concierge. Looking for recommendations?`;
+  }
+
+  // 2. Button Preview
   if (btn) {
     btn.querySelector('span').textContent = btnText;
     btn.style.backgroundColor = primaryColor;
@@ -653,7 +705,7 @@ function updateLivePreview() {
     }
   }
 
-  // Header Preview
+  // 3. Header Preview
   const chatHeader = document.getElementById('preview-chat-header');
   const headerTitleText = document.getElementById('preview-header-title-text');
   const previewAvatarImg = document.getElementById('preview-avatar-img');
@@ -674,6 +726,33 @@ function updateLivePreview() {
     } else {
       previewAvatarImg.style.display = 'none';
       previewAvatarFallback.style.display = 'flex';
+    }
+  }
+
+  // 4. Offer Badge Preview
+  const offerBadgeEl = document.getElementById('preview-offer-badge');
+  const offerTextEl = document.getElementById('preview-offer-text-el');
+  if (offerBadgeEl && offerTextEl) {
+    if (offerCode) {
+      offerBadgeEl.style.display = 'flex';
+      const label = offerText || `AI Special ${offerPercent ? offerPercent + '% OFF' : ''}`.trim();
+      offerTextEl.innerHTML = `🏷️ ${label}: ₹1,584 (Code: <strong>${offerCode}</strong>)`;
+    } else {
+      offerBadgeEl.style.display = 'none';
+    }
+  }
+
+  // 5. Country Phone Preview
+  const phoneValEl = document.getElementById('preview-phone-val');
+  if (phoneValEl) {
+    if (countryCode === 'IN') {
+      phoneValEl.textContent = '🇮🇳 +91 98765 43210';
+    } else if (countryCode === 'US') {
+      phoneValEl.textContent = '🇺🇸 +1 (555) 000-0000';
+    } else if (countryCode === 'GB') {
+      phoneValEl.textContent = '🇬🇧 +44 7911 123456';
+    } else {
+      phoneValEl.textContent = '🌐 +1 234 567 8900';
     }
   }
 }
@@ -902,11 +981,29 @@ async function loadSectionData(section) {
         if (document.getElementById('widget-header-title')) {
           document.getElementById('widget-header-title').value = data.widget.header_title || '';
         }
+        if (document.getElementById('widget-country-code')) {
+          document.getElementById('widget-country-code').value = data.widget.country_code || 'IN';
+        }
+        if (document.getElementById('widget-avatar-persona')) {
+          document.getElementById('widget-avatar-persona').value = data.widget.avatar_persona || 'female';
+        }
         if (document.getElementById('widget-avatar-url')) {
           document.getElementById('widget-avatar-url').value = data.widget.avatar_url || '';
         }
         if (document.getElementById('widget-custom-css')) {
           document.getElementById('widget-custom-css').value = data.widget.custom_css || '';
+        }
+        if (document.getElementById('widget-offer-code')) {
+          document.getElementById('widget-offer-code').value = data.widget.offer_code || '';
+        }
+        if (document.getElementById('widget-offer-percent')) {
+          document.getElementById('widget-offer-percent').value = (data.widget.offer_discount_percent !== undefined && data.widget.offer_discount_percent !== null) ? data.widget.offer_discount_percent : '';
+        }
+        if (document.getElementById('widget-offer-text')) {
+          document.getElementById('widget-offer-text').value = data.widget.offer_text || '';
+        }
+        if (document.getElementById('widget-nudge-enabled')) {
+          document.getElementById('widget-nudge-enabled').checked = (data.widget.proactive_nudge_enabled !== undefined && data.widget.proactive_nudge_enabled !== null) ? data.widget.proactive_nudge_enabled : true;
         }
         updateAvatarPresetSelection(data.widget.avatar_url || '');
         updateLivePreview();
