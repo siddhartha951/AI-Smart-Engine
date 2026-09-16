@@ -827,4 +827,113 @@ router.post('/stores/:storeId/features/bulk', async (req: Request, res: Response
   }
 });
 
+// =========================================================================
+// STORE DATA RESET (SUPER ADMIN ONLY)
+// Preserves: products (catalog), visitors (customer emails/phone leads), marketing_consents, store credentials/settings
+// Clears: chat sessions & messages, recommendations, visitor events, ad creatives/spend, attribution, replenishment, whatsapp chats/recovery, ai ledger/cache
+// =========================================================================
+router.post('/stores/:storeId/reset-data', requireSuperAdmin, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+
+    const storeRes = await db.query('SELECT id, brand_name, shop_domain FROM stores WHERE id = $1', [storeId]);
+    if (storeRes.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Store not found' });
+      return;
+    }
+    const store = storeRes.rows[0];
+
+    // Counts before deletion for reporting and auditing
+    const [
+      productsCountRes,
+      customersCountRes,
+      consentsCountRes,
+      chatsCountRes,
+      eventsCountRes,
+      recsCountRes
+    ] = await Promise.all([
+      db.query('SELECT COUNT(*) as count FROM products WHERE store_id = $1', [storeId]),
+      db.query('SELECT COUNT(*) as count FROM visitors WHERE store_id = $1', [storeId]),
+      db.query('SELECT COUNT(*) as count FROM marketing_consents WHERE store_id = $1', [storeId]),
+      db.query('SELECT COUNT(*) as count FROM chat_sessions WHERE store_id = $1', [storeId]),
+      db.query('SELECT COUNT(*) as count FROM events WHERE store_id = $1', [storeId]),
+      db.query('SELECT COUNT(*) as count FROM recommendations WHERE store_id = $1', [storeId]),
+    ]);
+
+    // Deletions in proper dependency order
+    // 1. Chat messages
+    await db.query(`DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE store_id = $1)`, [storeId]);
+    // 2. Chat recommendations & sessions
+    await db.query(`DELETE FROM recommendations WHERE store_id = $1 OR session_id IN (SELECT id FROM chat_sessions WHERE store_id = $1)`, [storeId]);
+    await db.query(`DELETE FROM chat_sessions WHERE store_id = $1`, [storeId]);
+    // 3. Events (page views, carts, orders, heartbeats)
+    await db.query(`DELETE FROM events WHERE store_id = $1`, [storeId]);
+    // 4. Recovery emails queue & history
+    await db.query(`DELETE FROM email_campaign_events WHERE store_id = $1`, [storeId]);
+    // 5. AI usage ledger & cache
+    await db.query(`DELETE FROM ai_usage_ledger WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM ai_cache WHERE store_id = $1`, [storeId]);
+    // 6. Ad creatives & Ad spend
+    await db.query(`DELETE FROM ad_creatives WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM ad_spend WHERE store_id = $1`, [storeId]);
+    // 7. Order attributions & marketing touchpoints
+    await db.query(`DELETE FROM order_attributions WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM marketing_touchpoints WHERE store_id = $1`, [storeId]);
+    // 8. Replenishment schedules
+    await db.query(`DELETE FROM replenishment_schedules WHERE store_id = $1`, [storeId]);
+    // 9. WhatsApp messages, recovery jobs & conversations
+    await db.query(`DELETE FROM whatsapp_messages WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM whatsapp_recovery_jobs WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM whatsapp_conversations WHERE store_id = $1`, [storeId]);
+    // 10. Growth copilot actions & goals
+    await db.query(`DELETE FROM growth_action_history WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM growth_actions WHERE store_id = $1`, [storeId]);
+    await db.query(`DELETE FROM growth_goals WHERE store_id = $1`, [storeId]);
+
+    // Audit log
+    const auditRepo = new AuditRepository(db);
+    await auditRepo.logAction(
+      req.user!.id,
+      storeId,
+      'RESET_STORE_DATA',
+      'stores',
+      {
+        chats_cleared: parseInt(chatsCountRes.rows[0]?.count || '0', 10),
+        events_cleared: parseInt(eventsCountRes.rows[0]?.count || '0', 10),
+        recommendations_cleared: parseInt(recsCountRes.rows[0]?.count || '0', 10),
+      },
+      {
+        reset_at: new Date().toISOString(),
+        preserved_products: parseInt(productsCountRes.rows[0]?.count || '0', 10),
+        preserved_customers: parseInt(customersCountRes.rows[0]?.count || '0', 10),
+        preserved_consents: parseInt(consentsCountRes.rows[0]?.count || '0', 10),
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Store data reset successfully for "${store.brand_name || store.shop_domain}". Product catalogue and customer leads were preserved.`,
+      data: {
+        store_id: storeId,
+        preserved: {
+          products: parseInt(productsCountRes.rows[0]?.count || '0', 10),
+          visitors: parseInt(customersCountRes.rows[0]?.count || '0', 10),
+          marketing_consents: parseInt(consentsCountRes.rows[0]?.count || '0', 10),
+          products_count: parseInt(productsCountRes.rows[0]?.count || '0', 10),
+          customers_count: parseInt(customersCountRes.rows[0]?.count || '0', 10),
+          consents_count: parseInt(consentsCountRes.rows[0]?.count || '0', 10),
+        },
+        cleared: {
+          chats_count: parseInt(chatsCountRes.rows[0]?.count || '0', 10),
+          events_count: parseInt(eventsCountRes.rows[0]?.count || '0', 10),
+          recommendations_count: parseInt(recsCountRes.rows[0]?.count || '0', 10),
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

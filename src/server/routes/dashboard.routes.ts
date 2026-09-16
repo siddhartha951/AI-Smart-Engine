@@ -27,7 +27,8 @@ router.use(requireRole(['super_admin', 'ops_admin', 'platform_admin', 'merchant_
 router.get('/stores', async (req: Request, res: Response, next) => {
   try {
     const db = getDatabaseClient();
-    if (req.user!.role === 'platform_admin') {
+    const adminRoles = ['super_admin', 'ops_admin', 'platform_admin'];
+    if (adminRoles.includes(req.user!.role)) {
       const storesRes = await db.query('SELECT id, brand_name, shop_domain FROM stores ORDER BY brand_name ASC');
       res.json({ success: true, data: storesRes.rows });
     } else {
@@ -78,9 +79,15 @@ router.get('/:storeId/overview', enforceStoreAccess, enforceFeature(FeatureKey.O
         COUNT(*) FILTER (WHERE status = 'opened') as opened,
         (SELECT COUNT(*) FROM suppression_list WHERE store_id = $1) as unsubscribed
         FROM email_campaign_events WHERE store_id = $1`, [storeId]),
-      db.query('SELECT SUM(input_tokens) as total_input, SUM(output_tokens) as total_output, SUM(estimated_cost_usd) as total_cost FROM ai_usage_ledger WHERE store_id = $1', [storeId]),
+      db.query(`SELECT 
+        COALESCE(SUM(input_tokens), 0) as total_input, 
+        COALESCE(SUM(output_tokens), 0) as total_output, 
+        COALESCE(SUM(estimated_cost_usd), 0) as total_cost 
+        FROM ai_usage_ledger WHERE store_id = $1`, [storeId]),
       db.query('SELECT is_active FROM assistant_settings WHERE store_id = $1', [storeId])
     ]);
+
+    const usageRow = usageRes.rows[0];
 
     res.json({
       success: true,
@@ -95,7 +102,11 @@ router.get('/:storeId/overview', enforceStoreAccess, enforceFeature(FeatureKey.O
         emails_sent: parseInt(emailStatsRes.rows[0]?.sent || '0', 10),
         emails_opened: parseInt(emailStatsRes.rows[0]?.opened || '0', 10),
         emails_unsubscribed: parseInt(emailStatsRes.rows[0]?.unsubscribed || '0', 10),
-        ai_usage: usageRes.rows[0] || { total_input: 0, total_output: 0, total_cost: 0 }
+        ai_usage: {
+          total_input: parseInt(usageRow?.total_input || '0', 10),
+          total_output: parseInt(usageRow?.total_output || '0', 10),
+          total_cost: parseFloat(usageRow?.total_cost || '0')
+        }
       }
     });
   } catch (err) {

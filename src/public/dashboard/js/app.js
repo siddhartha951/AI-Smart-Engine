@@ -518,8 +518,8 @@ async function verifySession() {
 
 async function initDashboard() {
   showView('dashboard');
-  document.getElementById('user-role-badge').textContent = 
-    state.user.role === 'platform_admin' ? 'Admin' : 'Merchant';
+  const isAdmin = ['super_admin', 'ops_admin', 'platform_admin'].includes(state.user.role);
+  document.getElementById('user-role-badge').textContent = isAdmin ? 'Admin' : 'Merchant';
   
   try {
     const res = await fetch('/api/v1/dashboard/stores', {
@@ -532,7 +532,7 @@ async function initDashboard() {
       const selectorContainer = document.getElementById('store-selector-container');
       const selector = document.getElementById('store-selector');
 
-      if (state.user.role === 'platform_admin' && state.stores.length > 0) {
+      if (isAdmin && state.stores.length > 0) {
         selectorContainer.classList.remove('hidden');
         selector.innerHTML = state.stores
           .map(s => `<option value="${s.id}">${s.brand_name || s.shop_domain} (${s.shop_domain})</option>`)
@@ -554,11 +554,15 @@ async function initDashboard() {
     state.activeStoreId = state.user.store_id;
   }
 
+  if ((!state.activeStoreId || state.activeStoreId === 'null') && state.stores && state.stores.length > 0) {
+    state.activeStoreId = state.stores[0].id;
+  }
+
   updateActiveStoreUI();
 }
 
 async function updateActiveStoreUI() {
-  if (state.activeStoreId) {
+  if (state.activeStoreId && state.activeStoreId !== 'null') {
     await fetchStoreFeatures();
     const activeSectionEl = document.querySelector('.nav-links a.active');
     const activeSection = activeSectionEl ? activeSectionEl.getAttribute('data-target') : 'overview';
@@ -716,7 +720,13 @@ function showSection(sectionName) {
 }
 
 async function loadSectionData(section) {
-  if (!state.activeStoreId) return;
+  if (!state.activeStoreId || state.activeStoreId === 'null') {
+    if (state.stores && state.stores.length > 0) {
+      state.activeStoreId = state.stores[0].id;
+    } else {
+      return;
+    }
+  }
 
   try {
     if (section === 'growth-copilot') {
@@ -926,7 +936,7 @@ async function loadSectionData(section) {
       }
     }
   } catch (err) {
-    showToast(err.message, true);
+    console.warn(`[Dashboard] Non-critical error loading ${section} data:`, err);
   }
 }
 

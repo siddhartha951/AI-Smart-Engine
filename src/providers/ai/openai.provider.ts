@@ -13,6 +13,7 @@ import {
 import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { getCategoryFallbackImage } from '../shopify/shopify.utils';
+import { MockAiProvider } from './mock.ai.provider';
 
 export class OpenAiProvider implements IAiProvider {
   private openai: OpenAI;
@@ -473,7 +474,22 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
         model,
       };
     } catch (err: any) {
-      logger.error('OpenAiProvider.generateStructuredJson error:', err);
+      logger.warn('OpenAiProvider.generateStructuredJson error:', err);
+      if (
+        err?.status === 429 ||
+        err?.status === 401 ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('quota') ||
+        err?.message?.includes('credits') ||
+        err?.message?.includes('key') ||
+        err?.message?.includes('fetch') ||
+        err?.code === 'ENOTFOUND' ||
+        err?.code === 'ECONNREFUSED'
+      ) {
+        logger.warn('OpenAiProvider: API quota/connectivity issue, activating schema-grounded fallback engine');
+        const mockFallback = new MockAiProvider();
+        return mockFallback.generateStructuredJson<T>(prompt, schema, options);
+      }
       throw err;
     }
   }
@@ -513,7 +529,22 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
         model,
       };
     } catch (err: any) {
-      logger.error('OpenAiProvider.generateText error:', err);
+      logger.warn('OpenAiProvider.generateText error:', err);
+      if (
+        err?.status === 429 ||
+        err?.status === 401 ||
+        err?.message?.includes('429') ||
+        err?.message?.includes('quota') ||
+        err?.message?.includes('credits') ||
+        err?.message?.includes('key') ||
+        err?.message?.includes('fetch') ||
+        err?.code === 'ENOTFOUND' ||
+        err?.code === 'ECONNREFUSED'
+      ) {
+        logger.warn('OpenAiProvider: API quota/connectivity issue, activating text fallback engine');
+        const mockFallback = new MockAiProvider();
+        return mockFallback.generateText(prompt, options);
+      }
       throw err;
     }
   }

@@ -4,7 +4,8 @@ let state = {
   user: null,
   merchants: [],
   currentMerchant: null,
-  platformConfig: null
+  platformConfig: null,
+  resetTargetStoreId: null
 };
 
 // ===== DOM Ready =====
@@ -138,6 +139,14 @@ function setupEventListeners() {
 
   // Confirm modal
   document.getElementById('confirm-cancel-btn').addEventListener('click', () => toggleModal('confirm-modal', false));
+
+  // Reset store modal
+  document.getElementById('reset-store-cancel-btn')?.addEventListener('click', () => toggleModal('reset-store-modal', false));
+  document.getElementById('reset-confirm-input')?.addEventListener('input', (e) => {
+    const btn = document.getElementById('reset-store-confirm-btn');
+    if (btn) btn.disabled = (e.target.value.trim().toUpperCase() !== 'RESET');
+  });
+  document.getElementById('reset-store-confirm-btn')?.addEventListener('click', executeStoreDataReset);
 
   // Modal overlays
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
@@ -599,6 +608,21 @@ function renderMerchantDetail(data, storeEntitlements = []) {
     <div class="info-row"><span class="label">Estimated Cost</span><span class="value">$${parseFloat(usage.total_cost || 0).toFixed(6)}</span></div>
   `;
 
+  // Danger Zone (Super Admin Only)
+  const dangerZone = document.getElementById('detail-danger-zone');
+  const resetBtn = document.getElementById('reset-store-data-btn');
+  const isSuperAdmin = state.user && (state.user.role === 'super_admin' || state.user.role === 'platform_admin');
+  if (dangerZone) {
+    if (s.id && isSuperAdmin) {
+      dangerZone.classList.remove('hidden');
+      if (resetBtn) {
+        resetBtn.onclick = () => window.openResetStoreModal(s.id, s.shop_domain || s.brand_name || m.name);
+      }
+    } else {
+      dangerZone.classList.add('hidden');
+    }
+  }
+
   // Audit
   const auditContainer = document.getElementById('detail-audit-log');
   if (data.audit_log.length === 0) {
@@ -611,6 +635,48 @@ function renderMerchantDetail(data, storeEntitlements = []) {
         <span class="audit-time">${new Date(a.created_at).toLocaleString()}</span>
       </div>
     `).join('');
+  }
+}
+
+// ===== Reset Store Data Actions =====
+window.openResetStoreModal = function(storeId, storeName) {
+  state.resetTargetStoreId = storeId;
+  const nameEl = document.getElementById('reset-store-target-name');
+  if (nameEl) nameEl.textContent = storeName || storeId;
+  const inputEl = document.getElementById('reset-confirm-input');
+  if (inputEl) inputEl.value = '';
+  const confirmBtn = document.getElementById('reset-store-confirm-btn');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Confirm Reset';
+  }
+  toggleModal('reset-store-modal', true);
+};
+
+async function executeStoreDataReset() {
+  const storeId = state.resetTargetStoreId;
+  if (!storeId) return;
+  const confirmBtn = document.getElementById('reset-store-confirm-btn');
+  try {
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Resetting data...';
+    }
+    const res = await apiFetch(`/api/v1/admin/stores/${storeId}/reset-data`, {
+      method: 'POST'
+    });
+    toggleModal('reset-store-modal', false);
+    showToast(res.message || 'Store operational data reset successfully', 'success');
+    if (state.currentMerchant && state.currentMerchant.merchant && state.currentMerchant.merchant.id) {
+      window.viewMerchant(state.currentMerchant.merchant.id);
+    }
+  } catch (err) {
+    showToast('Reset failed: ' + err.message, 'error');
+  } finally {
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirm Reset';
+    }
   }
 }
 
