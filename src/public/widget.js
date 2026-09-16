@@ -146,7 +146,8 @@
         isOpen: false,
         view: 'welcome', // 'welcome', 'lead-capture', 'chat'
         config: null,
-        messages: []
+        messages: [],
+        pendingPill: null
       };
       this.nudgeTimer = null;
       this.nudgeDismissTimer = null;
@@ -432,10 +433,19 @@
           }
           this.trackEvent('email_submitted', { email });
           const greeting = this.state.config?.widget?.greeting || 'Hello! How can I help you today?';
+          const pending = this.state.pendingPill;
           this.setState({ 
             view: 'chat',
+            pendingPill: null,
             messages: [{ role: 'assistant', content: greeting }] 
           });
+
+          // If visitor clicked a quick action pill prior to consent, ask AI now
+          if (pending && pending.label) {
+            setTimeout(() => {
+              this.sendMessage(pending.label);
+            }, 300);
+          }
         } else {
           alert('Error saving details: ' + (json.error?.message || 'Unknown error'));
         }
@@ -1083,6 +1093,121 @@
         .btn:active {
           transform: translateY(0);
         }
+
+        /* Welcome Screen & Quick Action Pills */
+        .welcome-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding-bottom: 8px;
+        }
+
+        .welcome-hero-box {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 16px 14px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        .welcome-hero-box h3 {
+          margin: 0 0 6px 0;
+          font-size: 16.5px;
+          font-weight: 700;
+          color: #0f172a;
+          letter-spacing: -0.01em;
+        }
+
+        .welcome-hero-box p {
+          margin: 0 0 14px 0;
+          font-size: 13.5px;
+          color: #475569;
+          line-height: 1.45;
+        }
+
+        .welcome-pills-section {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .welcome-pill-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .pill-group-title {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding-left: 2px;
+        }
+
+        .pill-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+        }
+
+        .welcome-pill {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 9px 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          text-align: left;
+          font-family: inherit;
+          font-size: 12px;
+          font-weight: 500;
+          color: #1e293b;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+          user-select: none;
+          min-height: 42px;
+          box-sizing: border-box;
+          position: relative;
+          outline: none;
+        }
+
+        .welcome-pill:hover {
+          background: #f8fafc;
+          border-color: ${primaryColor};
+          transform: translateY(-1.5px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
+          color: ${primaryColor};
+        }
+
+        .welcome-pill:active {
+          transform: translateY(0);
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        .welcome-pill .pill-icon {
+          font-size: 15px;
+          flex-shrink: 0;
+          line-height: 1;
+        }
+
+        .welcome-pill .pill-label {
+          flex: 1;
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1.25;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
         
         .policy-link {
           font-size: 11.5px;
@@ -1720,10 +1845,70 @@
       const { widget: widgetConfig } = this.state.config || {};
 
       if (this.state.view === 'welcome') {
+        const assistant = this.state.config?.assistant || {};
+        const rawPills = assistant.quick_action_pills;
+        let pills = [];
+        if (Array.isArray(rawPills)) {
+          pills = rawPills;
+        } else if (typeof rawPills === 'string') {
+          try { pills = JSON.parse(rawPills); } catch (_) {}
+        }
+        
+        if (!pills || pills.length === 0) {
+          pills = [
+            { id: 'track_order', group: 'support', label: 'Track My Order', icon: '📦', enabled: true },
+            { id: 'return_policy', group: 'support', label: 'Return & Exchange Policy', icon: '🔄', enabled: true },
+            { id: 'shipping_delivery', group: 'support', label: 'Shipping & Delivery', icon: '🚚', enabled: true },
+            { id: 'whatsapp_support', group: 'support', label: 'WhatsApp / Human Support', icon: '💬', enabled: true },
+            { id: 'current_offers', group: 'sales', label: 'Current Offers & Discounts', icon: '🏷️', enabled: true },
+            { id: 'best_sellers', group: 'sales', label: 'Best Sellers / Trending', icon: '🔥', enabled: true },
+            { id: 'size_guide', group: 'sales', label: 'Size Guide & Fit Help', icon: '📏', enabled: true },
+            { id: 'gift_ideas', group: 'sales', label: 'Gift Ideas & Collections', icon: '🎁', enabled: true }
+          ];
+        }
+
+        const escapeAttr = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const enabledPills = pills.filter(p => p.enabled !== false);
+        const supportPills = enabledPills.filter(p => p.group === 'support' || ['track_order', 'return_policy', 'shipping_delivery', 'whatsapp_support'].includes(p.id));
+        const salesPills = enabledPills.filter(p => p.group === 'sales' || ['current_offers', 'best_sellers', 'size_guide', 'gift_ideas'].includes(p.id));
+
+        const renderPillItem = (p) => `
+          <button type="button" class="welcome-pill" data-pill-id="${escapeAttr(p.id)}" data-pill-label="${escapeAttr(p.label || '')}" data-pill-url="${escapeAttr(p.url || '')}" data-pill-image="${escapeAttr(p.image_url || '')}">
+            <span class="pill-icon">${p.icon || '✨'}</span>
+            <span class="pill-label">${escapeAttr(p.label || '')}</span>
+          </button>
+        `;
+
         return `
-          <h3>Welcome!</h3>
-          <p>${greeting}</p>
-          <button class="btn" id="btn-start">Get Started</button>
+          <div class="welcome-wrap">
+            <div class="welcome-hero-box">
+              <h3>Welcome!</h3>
+              <p>${greeting}</p>
+              <button class="btn" id="btn-start">Get Started</button>
+            </div>
+
+            ${enabledPills.length > 0 ? `
+              <div class="welcome-pills-section">
+                ${supportPills.length > 0 ? `
+                  <div class="welcome-pill-group">
+                    <div class="pill-group-title">🛠️ Support & Order Help</div>
+                    <div class="pill-grid">
+                      ${supportPills.map(renderPillItem).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${salesPills.length > 0 ? `
+                  <div class="welcome-pill-group">
+                    <div class="pill-group-title">🛍️ Explore & Shopping</div>
+                    <div class="pill-grid">
+                      ${salesPills.map(renderPillItem).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
+          </div>
         `;
       } 
       
@@ -1951,11 +2136,40 @@
       const btnStart = this.shadowRoot.getElementById('btn-start');
       if (btnStart) {
         btnStart.addEventListener('click', async () => {
-          const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
-          await this.startSession(anonymousId);
-          this.setState({ view: 'lead-capture' });
+          if (!this.sessionId) {
+            const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
+            await this.startSession(anonymousId);
+          }
+          this.setState({ pendingPill: null, view: 'lead-capture' });
         });
       }
+
+      // Quick Action Pills Click Listeners (Consent-Gated)
+      this.shadowRoot.querySelectorAll('.welcome-pill').forEach(pillBtn => {
+        pillBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          const pillId = pillBtn.getAttribute('data-pill-id');
+          const pillLabel = pillBtn.getAttribute('data-pill-label');
+          const pillUrl = pillBtn.getAttribute('data-pill-url');
+          const pillImage = pillBtn.getAttribute('data-pill-image');
+
+          if (!this.sessionId) {
+            const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
+            await this.startSession(anonymousId);
+          }
+
+          // Gated by consent: Store pending pill and prompt for email/phone
+          this.setState({
+            pendingPill: {
+              id: pillId,
+              label: pillLabel,
+              url: pillUrl,
+              image_url: pillImage
+            },
+            view: 'lead-capture'
+          });
+        });
+      });
 
       const leadForm = this.shadowRoot.getElementById('lead-form');
       if (leadForm) {

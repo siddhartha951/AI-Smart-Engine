@@ -201,8 +201,9 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
           support_contact = $5,
           custom_prompt = $6,
           knowledge_base = $7,
+          quick_action_pills = $8,
           updated_at = NOW()
-         WHERE store_id = $8`,
+         WHERE store_id = $9`,
         [
           assistant.is_active !== undefined ? assistant.is_active : (old.is_active ?? true),
           assistant.assistant_name !== undefined ? assistant.assistant_name : (old.assistant_name ?? 'Assistant'),
@@ -211,6 +212,7 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
           assistant.support_contact !== undefined ? assistant.support_contact : (old.support_contact ?? 'support@store.com'),
           assistant.custom_prompt !== undefined ? assistant.custom_prompt : (old.custom_prompt ?? ''),
           assistant.knowledge_base !== undefined ? assistant.knowledge_base : (old.knowledge_base ?? ''),
+          assistant.quick_action_pills !== undefined ? JSON.stringify(assistant.quick_action_pills) : (old.quick_action_pills ? (typeof old.quick_action_pills === 'string' ? old.quick_action_pills : JSON.stringify(old.quick_action_pills)) : '[]'),
           storeId
         ]
       );

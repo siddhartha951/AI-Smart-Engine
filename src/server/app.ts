@@ -158,6 +158,7 @@ export function createApp(deps: AppDependencies = {}): Express {
                   privacy_policy_url: assistantSettings.privacy_policy_url,
                   support_contact: assistantSettings.support_contact,
                   is_active: assistantSettings.is_active,
+                  quick_action_pills: (assistantSettings as any).quick_action_pills || [],
                 }
               : null,
             features: {
@@ -336,6 +337,7 @@ export function createApp(deps: AppDependencies = {}): Express {
             custom_prompt: (settings as any)?.custom_prompt || '',
             knowledge_base: (settings as any)?.knowledge_base || '',
             support_contact: settings?.support_contact || '',
+            quick_action_pills: (settings as any)?.quick_action_pills || [],
           }
         });
 

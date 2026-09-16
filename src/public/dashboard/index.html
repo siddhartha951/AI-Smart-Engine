@@ -619,12 +619,231 @@
               <small class="form-hint">The AI assistant directly references this knowledge when conversing with customers.</small>
             </div>
 
-            <div class="form-group">
-              <label for="store-faq">Store Policies & FAQ</label>
-              <textarea id="store-faq" class="form-control" rows="4"></textarea>
-              <small class="form-hint">Provide your delivery rules, returns policy, and common FAQs so the agent will not hallucinate.</small>
+            <!-- Quick Action Pills & Store Navigation Links (Pre-Chat Welcome Screen) -->
+            <div class="form-group" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border-default); border-radius: 12px; padding: 20px; margin-top: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                <div>
+                  <h3 style="margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                    <span>⚡ Quick Action Pills & Store Links</span>
+                    <span class="badge badge-success" style="font-size: 11px;">Pre-Chat Screen</span>
+                  </h3>
+                  <p style="margin: 4px 0 0; font-size: 13px; color: var(--color-text-secondary);">
+                    Configure the 8 quick action buttons displayed on your shopping widget's welcome screen. Customize pill display names, target URLs, and size chart assets.
+                  </p>
+                </div>
+              </div>
+
+              <!-- Group 1: Support & Trust Pills -->
+              <div style="margin-top: 16px;">
+                <h4 style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  <span>🛡️ Support & Trust Options (4 Pills)</span>
+                </h4>
+                <div class="pills-config-grid" style="display: flex; flex-direction: column; gap: 12px;">
+                  
+                  <!-- Pill 1: Track Order -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>📦</span> <span id="label-preview-track_order">Track My Order</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-track_order" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-track_order" class="form-control form-control-sm" value="Track My Order" placeholder="e.g. Track My Order">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Tracking Page URL (Shiprocket / Delhivery / Store Page)</label>
+                        <input type="url" id="pill-url-track_order" class="form-control form-control-sm" placeholder="https://yourstore.com/apps/track or tracking link">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pill 2: Return Policy -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>🔄</span> <span id="label-preview-return_policy">Return & Exchange Policy</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-return_policy" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-return_policy" class="form-control form-control-sm" value="Return & Exchange Policy" placeholder="e.g. Return & Exchange Policy">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Return Policy Page URL</label>
+                        <input type="url" id="pill-url-return_policy" class="form-control form-control-sm" placeholder="https://yourstore.com/policies/refund-policy">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pill 3: Shipping & Delivery -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>🚚</span> <span id="label-preview-shipping_delivery">Shipping & Delivery</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-shipping_delivery" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-shipping_delivery" class="form-control form-control-sm" value="Shipping & Delivery" placeholder="e.g. Shipping & Delivery">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Shipping Info URL (Optional)</label>
+                        <input type="url" id="pill-url-shipping_delivery" class="form-control form-control-sm" placeholder="https://yourstore.com/policies/shipping-policy">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pill 4: WhatsApp Support -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>💬</span> <span id="label-preview-whatsapp_support">WhatsApp / Human Support</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-whatsapp_support" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-whatsapp_support" class="form-control form-control-sm" value="WhatsApp Support" placeholder="e.g. Talk to Human / WhatsApp">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">WhatsApp Link or Number (e.g. https://wa.me/91... or +91...)</label>
+                        <input type="text" id="pill-url-whatsapp_support" class="form-control form-control-sm" placeholder="https://wa.me/919876543210 or +919876543210">
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Group 2: Sales & Conversion Pills -->
+              <div style="margin-top: 20px;">
+                <h4 style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                  <span>✨ Sales & Conversion Options (4 Pills)</span>
+                </h4>
+                <div class="pills-config-grid" style="display: flex; flex-direction: column; gap: 12px;">
+
+                  <!-- Pill 5: Current Offers -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>🏷️</span> <span id="label-preview-current_offers">Current Offers & Discounts</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-current_offers" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-current_offers" class="form-control form-control-sm" value="Special Offers" placeholder="e.g. Special Offers">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Offers Page URL or Details (Optional)</label>
+                        <input type="text" id="pill-url-current_offers" class="form-control form-control-sm" placeholder="https://yourstore.com/collections/sale">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pill 6: Best Sellers -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>🔥</span> <span id="label-preview-best_sellers">Best Sellers / Trending</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-best_sellers" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-best_sellers" class="form-control form-control-sm" value="Best Sellers" placeholder="e.g. Best Sellers">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Trending Collection URL (Optional)</label>
+                        <input type="url" id="pill-url-best_sellers" class="form-control form-control-sm" placeholder="https://yourstore.com/collections/best-sellers">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pill 7: Size Guide (Dual option: Link OR Image) -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>📏</span> <span id="label-preview-size_guide">Size Guide & Fit Help</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-size_guide" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px; margin-bottom: 8px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-size_guide" class="form-control form-control-sm" value="Size Guide" placeholder="e.g. Size Guide">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Size Chart Page URL (Option A)</label>
+                        <input type="url" id="pill-url-size_guide" class="form-control form-control-sm" placeholder="https://yourstore.com/pages/size-guide">
+                      </div>
+                    </div>
+                    <div>
+                      <label style="font-size: 11px; color: var(--color-accent); font-weight: 500; margin-bottom: 4px; display: block;">Or Size Chart Image URL (Option B — Direct Image)</label>
+                      <input type="url" id="pill-image-size_guide" class="form-control form-control-sm" placeholder="https://yourstore.com/cdn/shop/files/size_chart.png">
+                      <small class="form-hint">Enter either a Page URL or direct Image URL. If provided, AI provides size chart directly in chat.</small>
+                    </div>
+                  </div>
+
+                  <!-- Pill 8: Gift Ideas -->
+                  <div class="pill-config-card" style="background: var(--color-surface); border: 1px solid var(--color-border-default); border-radius: 8px; padding: 12px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <span style="font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>🎁</span> <span id="label-preview-gift_ideas">Gift Ideas & Collections</span>
+                      </span>
+                      <label class="switch" style="margin: 0;">
+                        <input type="checkbox" id="pill-enable-gift_ideas" checked>
+                        <span class="slider round"></span>
+                      </label>
+                    </div>
+                    <div class="row" style="display: flex; gap: 12px;">
+                      <div class="col" style="flex: 1;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Button Display Name</label>
+                        <input type="text" id="pill-name-gift_ideas" class="form-control form-control-sm" value="Find a Gift" placeholder="e.g. Find a Gift">
+                      </div>
+                      <div class="col" style="flex: 2;">
+                        <label style="font-size: 11px; color: var(--color-text-secondary); margin-bottom: 4px; display: block;">Gift Collection URL (Optional)</label>
+                        <input type="url" id="pill-url-gift_ideas" class="form-control form-control-sm" placeholder="https://yourstore.com/collections/gifts">
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
             </div>
-            <div>
+
+            <div style="margin-top: 10px;">
               <button type="submit" class="btn btn-primary">Save Agent Settings</button>
             </div>
           </form>

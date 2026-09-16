@@ -28,6 +28,15 @@ export interface AiRequestContext {
     custom_prompt?: string;
     knowledge_base?: string;
     support_contact?: string;
+    quick_action_pills?: Array<{
+      id: string;
+      label: string;
+      group: 'support' | 'sales';
+      enabled: boolean;
+      url?: string;
+      image_url?: string;
+      icon?: string;
+    }>;
   };
 }
 

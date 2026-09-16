@@ -23,6 +23,48 @@ export class MockAiProvider implements IAiProvider {
 
     const isGreeting = /^(hi|hello|hey|greetings|how are you|good morning|good evening|good afternoon)/i.test(userText.trim());
 
+    // Check for quick action intents first
+    const pills = context.assistantSettings.quick_action_pills || [];
+    const trackPill = pills.find(p => p.id === 'track_order' && p.enabled !== false);
+    const returnPill = pills.find(p => p.id === 'return_policy' && p.enabled !== false);
+    const sizePill = pills.find(p => p.id === 'size_guide' && p.enabled !== false);
+    const whatsappPill = pills.find(p => p.id === 'whatsapp_support' && p.enabled !== false);
+
+    if (userText.includes('track') || userText.includes('order status')) {
+      if (trackPill?.url) {
+        content += `You can track your order status live here: ${trackPill.url}. Please have your Order ID or tracking number ready!`;
+      } else {
+        content += `To track your order, please refer to your confirmation email or contact our team at ${context.assistantSettings.support_contact || 'support'}.`;
+      }
+      return { content, recommended_product_ids: [], input_tokens: 50, output_tokens: 30, estimated_cost_usd: 0.0001 };
+    }
+
+    if (userText.includes('return') || userText.includes('exchange') || userText.includes('refund')) {
+      const returnInfo = context.storePolicies.returns_policy || 'Please refer to our return & exchange guidelines.';
+      const linkInfo = returnPill?.url ? ` Full policy details: ${returnPill.url}` : '';
+      content += `${returnInfo}${linkInfo}`;
+      return { content, recommended_product_ids: [], input_tokens: 50, output_tokens: 30, estimated_cost_usd: 0.0001 };
+    }
+
+    if (userText.includes('size') || userText.includes('fit guide') || userText.includes('size guide')) {
+      const sizeTarget = sizePill?.image_url || sizePill?.url;
+      if (sizeTarget) {
+        content += `Here is our size guide to help you find the right fit: ${sizeTarget}. Feel free to ask if you need sizing advice!`;
+      } else {
+        content += `Our products generally fit true to size. Let me know which item you're interested in and I can help you with sizing!`;
+      }
+      return { content, recommended_product_ids: [], input_tokens: 50, output_tokens: 30, estimated_cost_usd: 0.0001 };
+    }
+
+    if (userText.includes('whatsapp') || userText.includes('human') || userText.includes('talk to human')) {
+      if (whatsappPill?.url) {
+        content += `You can reach our team directly on WhatsApp here: ${whatsappPill.url}. We are here to assist you!`;
+      } else {
+        content += `You can reach our store support team at ${context.assistantSettings.support_contact || 'support'}.`;
+      }
+      return { content, recommended_product_ids: [], input_tokens: 50, output_tokens: 30, estimated_cost_usd: 0.0001 };
+    }
+
     // Simple mock logic: recommend products if they match a word in the user's message
     if (context.catalogSubset.length > 0) {
       const matches = context.catalogSubset.filter((p) => {

@@ -207,6 +207,35 @@ function setupEventListeners() {
   document.getElementById('agent-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const isActive = document.getElementById('agent-is-active').checked;
+
+    // Extract quick action pills configuration
+    const pillDefinitions = [
+      { id: 'track_order', group: 'support', defaultLabel: 'Track My Order', icon: '📦' },
+      { id: 'return_policy', group: 'support', defaultLabel: 'Return & Exchange Policy', icon: '🔄' },
+      { id: 'shipping_delivery', group: 'support', defaultLabel: 'Shipping & Delivery', icon: '🚚' },
+      { id: 'whatsapp_support', group: 'support', defaultLabel: 'WhatsApp / Human Support', icon: '💬' },
+      { id: 'current_offers', group: 'sales', defaultLabel: 'Current Offers & Discounts', icon: '🏷️' },
+      { id: 'best_sellers', group: 'sales', defaultLabel: 'Best Sellers / Trending', icon: '🔥' },
+      { id: 'size_guide', group: 'sales', defaultLabel: 'Size Guide & Fit Help', icon: '📏' },
+      { id: 'gift_ideas', group: 'sales', defaultLabel: 'Gift Ideas & Collections', icon: '🎁' }
+    ];
+
+    const quickActionPills = pillDefinitions.map(def => {
+      const enableEl = document.getElementById(`pill-enable-${def.id}`);
+      const nameEl = document.getElementById(`pill-name-${def.id}`);
+      const urlEl = document.getElementById(`pill-url-${def.id}`);
+      const imgEl = def.id === 'size_guide' ? document.getElementById('pill-image-size_guide') : null;
+
+      return {
+        id: def.id,
+        group: def.group,
+        label: nameEl && nameEl.value.trim() ? nameEl.value.trim() : def.defaultLabel,
+        enabled: enableEl ? enableEl.checked : true,
+        url: urlEl ? urlEl.value.trim() : '',
+        ...(imgEl ? { image_url: imgEl.value.trim() } : {}),
+        icon: def.icon
+      };
+    });
     
     const payload = {
       assistant: {
@@ -216,7 +245,8 @@ function setupEventListeners() {
         tone: document.getElementById('agent-tone').value,
         support_contact: document.getElementById('agent-support').value,
         custom_prompt: document.getElementById('agent-custom-prompt') ? document.getElementById('agent-custom-prompt').value : '',
-        knowledge_base: document.getElementById('agent-knowledge-base') ? document.getElementById('agent-knowledge-base').value : ''
+        knowledge_base: document.getElementById('agent-knowledge-base') ? document.getElementById('agent-knowledge-base').value : '',
+        quick_action_pills: quickActionPills
       },
       policies: {
         faq_content: document.getElementById('store-faq').value
@@ -978,6 +1008,47 @@ async function loadSectionData(section) {
         if (document.getElementById('agent-knowledge-base')) {
           document.getElementById('agent-knowledge-base').value = data.assistant.knowledge_base || '';
         }
+
+        // Populate Quick Action Pills
+        try {
+          const rawPills = data.assistant.quick_action_pills;
+          const pills = Array.isArray(rawPills)
+            ? rawPills
+            : (typeof rawPills === 'string' ? JSON.parse(rawPills || '[]') : []);
+
+          pills.forEach(pill => {
+            const enableEl = document.getElementById(`pill-enable-${pill.id}`);
+            const nameEl = document.getElementById(`pill-name-${pill.id}`);
+            const urlEl = document.getElementById(`pill-url-${pill.id}`);
+            const previewEl = document.getElementById(`label-preview-${pill.id}`);
+
+            if (enableEl && pill.enabled !== undefined) enableEl.checked = Boolean(pill.enabled);
+            if (nameEl && pill.label) {
+              nameEl.value = pill.label;
+              if (previewEl) previewEl.textContent = pill.label;
+            }
+            if (urlEl && pill.url) urlEl.value = pill.url;
+            if (pill.id === 'size_guide') {
+              const imgEl = document.getElementById('pill-image-size_guide');
+              if (imgEl && pill.image_url) imgEl.value = pill.image_url;
+            }
+          });
+        } catch (e) {
+          console.warn('[Dashboard] Could not parse quick action pills:', e);
+        }
+
+        // Add live preview listeners to pill name inputs if not already attached
+        const pillIds = ['track_order', 'return_policy', 'shipping_delivery', 'whatsapp_support', 'current_offers', 'best_sellers', 'size_guide', 'gift_ideas'];
+        pillIds.forEach(id => {
+          const nameInput = document.getElementById(`pill-name-${id}`);
+          const previewEl = document.getElementById(`label-preview-${id}`);
+          if (nameInput && previewEl && !nameInput.dataset.previewBound) {
+            nameInput.dataset.previewBound = 'true';
+            nameInput.addEventListener('input', (e) => {
+              previewEl.textContent = e.target.value.trim() || previewEl.dataset.defaultLabel || e.target.placeholder;
+            });
+          }
+        });
       }
       if (data.policies) {
         document.getElementById('store-faq').value = data.policies.faq_content || '';

@@ -58,11 +58,17 @@ export class GeminiAiProvider implements IAiProvider {
       ? `\nStore Knowledge Base & Training Material:\n${context.assistantSettings.knowledge_base.trim()}\n`
       : '';
 
+    const quickLinks = (context.assistantSettings.quick_action_pills || []).filter(p => p.enabled !== false && (p.url || p.image_url));
+    const quickLinksSection = quickLinks.length > 0
+      ? `\nStore Quick Navigation & Action Links:\n${quickLinks.map(p => `- ${p.label}: ${p.url || p.image_url}`).join('\n')}\n`
+      : '';
+
     const systemPrompt = `
 You are "${context.assistantSettings.assistant_name}", an intelligent shopping assistant for this Shopify store.
 Your goal is to help customers find products, answer questions, and provide a delightful shopping experience.
 ${customPromptSection}
 ${knowledgeBaseSection}
+${quickLinksSection}
 Strict Guidelines:
 1. ONLY recommend products from the "Available Catalog Subset" provided below.
 2. NEVER invent or hallucinate products, prices, or inventory.
@@ -72,9 +78,10 @@ Strict Guidelines:
    - Delivery: ${context.storePolicies.delivery_policy}
    - Returns: ${context.storePolicies.returns_policy}
    - FAQ: ${context.storePolicies.faq_content}
+6. If the customer asks about order tracking, returns, shipping, size guides, or human support, provide a helpful answer and share the exact store action link from "Store Quick Navigation & Action Links".
 
 CRITICAL FORMATTING RULES:
-- DO NOT write raw markdown image tags or manual URL links in your response.
+- DO NOT write raw markdown image tags in your response.
 - Write a short, warm, natural conversational response (1-2 sentences).
 - Respond in JSON format with two fields:
   {
