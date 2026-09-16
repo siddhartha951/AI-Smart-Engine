@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../common/css/design-system.css">
-  <link rel="stylesheet" href="css/admin.css">
+  <link rel="stylesheet" href="../common/css/design-system.css?v=11.2">
+  <link rel="stylesheet" href="css/admin.css?v=11.2">
 </head>
 <body>
   <canvas id="three-canvas"></canvas>
@@ -539,44 +539,48 @@
 
     <!-- Reset Store Data Modal -->
     <div id="reset-store-modal" class="modal hidden">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content" style="max-width: 540px;">
-        <div class="modal-header" style="border-bottom: 1px solid rgba(239, 68, 68, 0.2);">
-          <h2 style="color: #ef4444; display: flex; align-items: center; gap: 8px;">
+      <div class="modal-backdrop" onclick="toggleModal('reset-store-modal', false)"></div>
+      <div class="modal-content" style="max-width: 580px; position: relative; z-index: 20;">
+        <div class="modal-header" style="border-bottom: 1px solid rgba(239, 68, 68, 0.25);">
+          <h2 style="color: #ef4444; display: flex; align-items: center; gap: 8px; margin: 0;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             Reset Store Data
           </h2>
           <button type="button" class="modal-close" onclick="toggleModal('reset-store-modal', false)" aria-label="Close">✕</button>
         </div>
-        <div class="modal-body">
-          <p style="font-size: 14px; margin-bottom: 12px;">
-            Are you sure you want to reset operational data for store <strong id="reset-store-target-name"></strong>?
+        <div class="modal-body" style="padding: 18px 24px; gap: 12px;">
+          <p style="font-size: 14px; margin: 0; color: var(--color-text-primary);">
+            Are you sure you want to reset operational data for store <strong id="reset-store-target-name" style="color: #6366f1;"></strong>?
           </p>
-          <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; font-size: 13px; color: #6ee7b7;">
-            <strong>✓ Safely Preserved:</strong>
-            <ul style="margin: 6px 0 0 18px; padding: 0;">
-              <li>Product Catalogue & inventory records</li>
-              <li>Customer Leads (captured emails & phone numbers)</li>
-              <li>GDPR Marketing Consents & opt-in records</li>
-              <li>Store Credentials & configuration settings</li>
-            </ul>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 4px 0;">
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; font-size: 12px; color: #6ee7b7;">
+              <strong style="display: flex; align-items: center; gap: 4px; font-size: 13px; margin-bottom: 6px; color: #10b981;">✓ Safely Preserved</strong>
+              <ul style="margin: 0 0 0 16px; padding: 0; line-height: 1.5;">
+                <li>Products & Stock</li>
+                <li>Customer Leads & Emails</li>
+                <li>Marketing Consents</li>
+                <li>Store Credentials</li>
+              </ul>
+            </div>
+            <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 12px; font-size: 12px; color: #fca5a5;">
+              <strong style="display: flex; align-items: center; gap: 4px; font-size: 13px; margin-bottom: 6px; color: #ef4444;">✕ Cleared / Reset</strong>
+              <ul style="margin: 0 0 0 16px; padding: 0; line-height: 1.5;">
+                <li>Chat Messages & Sessions</li>
+                <li>Recommendations History</li>
+                <li>Storefront Visits & Events</li>
+                <li>Email Campaign Logs</li>
+                <li>AI Usage Ledger & Cache</li>
+              </ul>
+            </div>
           </div>
-          <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; font-size: 13px; color: #fca5a5;">
-            <strong>✕ Cleared / Reset:</strong>
-            <ul style="margin: 6px 0 0 18px; padding: 0;">
-              <li>Chat messages & conversations</li>
-              <li>Widget sessions & recommendation history</li>
-              <li>Storefront events, visits & cart telemetry</li>
-              <li>Email campaign send logs & recovery history</li>
-              <li>AI usage ledger records & merchant growth cache</li>
-            </ul>
-          </div>
-          <div class="form-group" style="margin-top: 16px;">
+
+          <div class="form-group" style="margin: 4px 0 0 0;">
             <label for="reset-confirm-input" style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Type <strong>RESET</strong> to confirm:</label>
-            <input type="text" id="reset-confirm-input" placeholder="RESET" class="form-input" autocomplete="off" style="letter-spacing: 1px; font-weight: 600;">
+            <input type="text" id="reset-confirm-input" placeholder="RESET" class="form-input" autocomplete="off" style="letter-spacing: 1px; font-weight: 600; width: 100%; box-sizing: border-box; pointer-events: auto;">
           </div>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer" style="padding: 12px 24px;">
           <button type="button" class="btn-secondary" id="reset-store-cancel-btn">Cancel</button>
           <button type="button" class="btn-danger" id="reset-store-confirm-btn" disabled>Confirm Reset</button>
         </div>
@@ -588,6 +592,6 @@
   </div>
 
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="js/admin.js?v=11.0"></script>
+  <script src="js/admin.js?v=11.2"></script>
 </body>
 </html>

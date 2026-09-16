@@ -747,7 +747,6 @@ table tbody tr:hover {
    Modals
 ------------------------------------------------------------- */
 .modal-overlay,
-.modal-backdrop,
 .modal:not(.modal-dialog):not(.modal-card):not(.modal-content):not(.panel) {
   position: fixed;
   inset: 0;
@@ -757,6 +756,14 @@ table tbody tr:hover {
   justify-content: center;
   z-index: 1050;
   padding: var(--space-4);
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  z-index: 1;
+  pointer-events: auto;
 }
 
 .modal.hidden,
@@ -774,6 +781,8 @@ table tbody tr:hover {
 .modal-overlay > .modal-card,
 .modal > .modal-content {
   position: relative !important;
+  z-index: 20 !important;
+  pointer-events: auto !important;
   inset: auto !important;
   top: auto !important;
   left: auto !important;

@@ -146,13 +146,27 @@ function setupEventListeners() {
     const btn = document.getElementById('reset-store-confirm-btn');
     if (btn) btn.disabled = (e.target.value.trim().toUpperCase() !== 'RESET');
   });
+  document.getElementById('reset-confirm-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const btn = document.getElementById('reset-store-confirm-btn');
+      if (btn && !btn.disabled) executeStoreDataReset();
+    }
+  });
   document.getElementById('reset-store-confirm-btn')?.addEventListener('click', executeStoreDataReset);
 
-  // Modal overlays
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  // Close modals on clicking backdrop or overlay
+  document.querySelectorAll('.modal-backdrop, .modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', () => {
-      overlay.closest('.modal').classList.add('hidden');
+      overlay.closest('.modal')?.classList.add('hidden');
     });
+  });
+
+  // Global ESC key listener to close active modals
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal:not(.hidden)').forEach(m => m.classList.add('hidden'));
+    }
   });
 }
 
@@ -644,7 +658,12 @@ window.openResetStoreModal = function(storeId, storeName) {
   const nameEl = document.getElementById('reset-store-target-name');
   if (nameEl) nameEl.textContent = storeName || storeId;
   const inputEl = document.getElementById('reset-confirm-input');
-  if (inputEl) inputEl.value = '';
+  if (inputEl) {
+    inputEl.value = '';
+    setTimeout(() => {
+      inputEl.focus();
+    }, 100);
+  }
   const confirmBtn = document.getElementById('reset-store-confirm-btn');
   if (confirmBtn) {
     confirmBtn.disabled = true;
