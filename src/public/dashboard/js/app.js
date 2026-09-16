@@ -484,8 +484,12 @@ function setupEventListeners() {
         }
         showToast(`Store currency successfully updated to ${newCurrency}!`);
         // Refresh overview and tables with the updated currency symbol
-        loadGrowthCopilotOverview();
-        loadProductsTable();
+        if (typeof loadGrowthCopilotData === 'function') {
+          loadGrowthCopilotData();
+        }
+        if (typeof loadProductsTable === 'function') {
+          loadProductsTable();
+        }
       } catch (err) {
         if (statusEl) {
           statusEl.textContent = 'Failed';
