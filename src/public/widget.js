@@ -621,8 +621,14 @@
           height: auto !important;
           max-width: 100vw !important;
           box-sizing: border-box !important;
+        #widget-container.is-open #launcher,
+        #widget-container.is-open .proactive-nudge {
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+          visibility: hidden !important;
         }
-        
+
         #launcher {
           pointer-events: auto !important;
           background: linear-gradient(135deg, ${primaryColor} 0%, #1e1b4b 100%);
@@ -943,6 +949,37 @@
         .close-btn:hover {
           background: rgba(255, 255, 255, 0.28);
           transform: scale(1.08);
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .header-icon-btn {
+          background: rgba(255, 255, 255, 0.16);
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          color: ${secondaryColor};
+          cursor: pointer;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          transition: all 0.2s ease;
+          outline: none;
+        }
+
+        .header-icon-btn:hover {
+          background: rgba(255, 255, 255, 0.3);
+          transform: scale(1.08);
+        }
+
+        .header-icon-btn:active {
+          transform: scale(0.95);
         }
         
         .content {
@@ -1521,7 +1558,7 @@
         }
         
         /* Mobile behavior: Non-intrusive bottom sheet with screen headroom */
-        @media (max-width: 600px) {
+        @media (max-width: 640px) {
           #widget-container {
             bottom: 16px !important;
             ${isLeft ? 'left: 16px !important; right: auto !important;' : 'right: 16px !important; left: auto !important;'}
@@ -1545,6 +1582,17 @@
             max-height: 82vh !important;
             border-radius: 20px !important;
             box-shadow: 0 16px 40px -4px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.1) !important;
+          }
+
+          /* Prevent mobile screen zoom on input focus */
+          input,
+          input[type="text"],
+          input[type="email"],
+          input[type="tel"],
+          .chat-input input {
+            font-size: 16px !important;
+            -webkit-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
           }
         }
       `;
@@ -1610,7 +1658,7 @@
 
       this.shadowRoot.innerHTML = `
         <style>${this.getStyles()}</style>
-        <div id="widget-container">
+        <div id="widget-container" class="${this.state.isOpen ? 'is-open' : ''}">
           <div id="popup" class="${this.state.isOpen ? 'open' : ''}">
             <div id="widget-toast" class="widget-toast"></div>
             <div class="header">
@@ -1624,7 +1672,14 @@
                   <span class="header-subtext">Online • AI Assistant</span>
                 </div>
               </div>
-              <button class="close-btn" aria-label="Close Assistant">&times;</button>
+              <div class="header-actions">
+                <button class="header-icon-btn btn-minimize" aria-label="Minimize Assistant" title="Minimize">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+                <button class="header-icon-btn btn-close" aria-label="Close Assistant" title="Close">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
             </div>
             
             <div class="content">
@@ -1632,27 +1687,29 @@
             </div>
           </div>
 
-          <div id="proactive-nudge" class="proactive-nudge" role="alert">
-            <div class="nudge-avatar-wrap">
-              <img src="${avatarUrl}" class="nudge-avatar" alt="${assistantName}" />
-              <span class="nudge-online-dot"></span>
-            </div>
-            <div class="nudge-content">
-              <div class="nudge-header">
-                <span class="nudge-name">${assistantName}</span>
-                <span class="nudge-status-badge">AI Online</span>
+          ${!this.state.isOpen ? `
+            <div id="proactive-nudge" class="proactive-nudge" role="alert">
+              <div class="nudge-avatar-wrap">
+                <img src="${avatarUrl}" class="nudge-avatar" alt="${assistantName}" />
+                <span class="nudge-online-dot"></span>
               </div>
-              <p class="nudge-message">${nudgeMessage}</p>
+              <div class="nudge-content">
+                <div class="nudge-header">
+                  <span class="nudge-name">${assistantName}</span>
+                  <span class="nudge-status-badge">AI Online</span>
+                </div>
+                <p class="nudge-message">${nudgeMessage}</p>
+              </div>
+              <button type="button" class="nudge-close-btn" aria-label="Dismiss">&times;</button>
+              <div class="nudge-tail"></div>
             </div>
-            <button type="button" class="nudge-close-btn" aria-label="Dismiss">&times;</button>
-            <div class="nudge-tail"></div>
-          </div>
-          
-          <button id="launcher" aria-label="Toggle Shopping Assistant">
-            ${avatarLauncherHtml}
-            <span>${this.state.isOpen ? 'Close' : buttonText}</span>
-            <span class="launcher-sparkle">✨</span>
-          </button>
+            
+            <button id="launcher" aria-label="Toggle Shopping Assistant">
+              ${avatarLauncherHtml}
+              <span>${buttonText}</span>
+              <span class="launcher-sparkle">✨</span>
+            </button>
+          ` : ''}
         </div>
       `;
 
@@ -1879,11 +1936,17 @@
         });
       }
       
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          this.setState({ isOpen: false });
-        });
-      }
+      const btnMinimize = this.shadowRoot.querySelector('.btn-minimize');
+      const btnClose = this.shadowRoot.querySelector('.btn-close');
+      const closeLegacyBtn = this.shadowRoot.querySelector('.close-btn');
+
+      const handleClose = () => {
+        this.setState({ isOpen: false });
+      };
+
+      if (btnMinimize) btnMinimize.addEventListener('click', handleClose);
+      if (btnClose) btnClose.addEventListener('click', handleClose);
+      if (closeLegacyBtn) closeLegacyBtn.addEventListener('click', handleClose);
 
       const btnStart = this.shadowRoot.getElementById('btn-start');
       if (btnStart) {
@@ -1922,13 +1985,16 @@
           }
         });
         
-        // Focus input on load
+        // Focus input on load ONLY on desktop (Prevents mobile screen zoom)
         setTimeout(() => {
-          const input = this.shadowRoot.getElementById('chat-input-text');
-          if (input && !input.disabled) {
-            input.focus();
+          const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+          if (window.innerWidth > 768 && !isTouch) {
+            const input = this.shadowRoot.getElementById('chat-input-text');
+            if (input && !input.disabled) {
+              input.focus();
+            }
           }
-        }, 100);
+        }, 150);
       }
 
       // Carousel navigation prev / next and dot indicators
