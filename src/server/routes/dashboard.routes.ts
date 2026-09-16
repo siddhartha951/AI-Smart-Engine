@@ -29,10 +29,10 @@ router.get('/stores', async (req: Request, res: Response, next) => {
     const db = getDatabaseClient();
     const adminRoles = ['super_admin', 'ops_admin', 'platform_admin'];
     if (adminRoles.includes(req.user!.role)) {
-      const storesRes = await db.query('SELECT id, brand_name, shop_domain FROM stores ORDER BY brand_name ASC');
+      const storesRes = await db.query('SELECT id, brand_name, shop_domain, currency FROM stores ORDER BY brand_name ASC');
       res.json({ success: true, data: storesRes.rows });
     } else {
-      const storesRes = await db.query('SELECT id, brand_name, shop_domain FROM stores WHERE id = $1', [req.user!.store_id]);
+      const storesRes = await db.query('SELECT id, brand_name, shop_domain, currency FROM stores WHERE id = $1', [req.user!.store_id]);
       res.json({ success: true, data: storesRes.rows });
     }
   } catch (err) {
@@ -46,14 +46,59 @@ router.get('/:storeId/features', enforceStoreAccess, async (req: Request, res: R
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
     const repo = new EntitlementRepository(db);
-    const features = await repo.getStoreEntitlements(storeId);
+    const [features, storeRes] = await Promise.all([
+      repo.getStoreEntitlements(storeId),
+      db.query('SELECT currency FROM stores WHERE id = $1', [storeId]),
+    ]);
     res.json({
       success: true,
       data: {
         store_id: storeId,
+        currency: storeRes.rows[0]?.currency || 'INR',
         features,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update Store Currency (Merchant / Admin)
+router.put('/:storeId/currency', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { currency } = req.body;
+
+    if (!currency || typeof currency !== 'string') {
+      res.status(400).json({ error: 'Valid currency code is required' });
+      return;
+    }
+
+    const cleanCurrency = currency.trim().toUpperCase();
+    const db = getDatabaseClient();
+
+    const oldStore = await db.query('SELECT currency FROM stores WHERE id = $1', [storeId]);
+    if (oldStore.rows.length === 0) {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+
+    const updated = await db.query(
+      'UPDATE stores SET currency = $1, updated_at = NOW() WHERE id = $2 RETURNING id, brand_name, currency',
+      [cleanCurrency, storeId]
+    );
+
+    const auditRepo = new AuditRepository(db);
+    await auditRepo.logAction(
+      req.user!.id,
+      storeId,
+      'UPDATE_STORE_CURRENCY',
+      'stores',
+      { currency: oldStore.rows[0]?.currency },
+      { currency: cleanCurrency }
+    );
+
+    res.json({ success: true, data: updated.rows[0] });
   } catch (err) {
     next(err);
   }
@@ -315,7 +360,7 @@ router.get('/:storeId/shopify', enforceStoreAccess, async (req: Request, res: Re
     const db = getDatabaseClient();
 
     const [storeRes, credsRes] = await Promise.all([
-      db.query('SELECT shop_domain, status, updated_at FROM stores WHERE id = $1', [storeId]),
+      db.query('SELECT shop_domain, status, currency, updated_at FROM stores WHERE id = $1', [storeId]),
       db.query('SELECT id, updated_at FROM store_credentials WHERE store_id = $1', [storeId])
     ]);
 
@@ -324,6 +369,7 @@ router.get('/:storeId/shopify', enforceStoreAccess, async (req: Request, res: Re
       data: {
         shop_domain: storeRes.rows[0]?.shop_domain,
         status: storeRes.rows[0]?.status,
+        currency: storeRes.rows[0]?.currency || 'INR',
         last_sync: storeRes.rows[0]?.updated_at,
         credentials_configured: credsRes.rows.length > 0
       }

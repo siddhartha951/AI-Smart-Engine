@@ -895,7 +895,21 @@
             <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 8px;">Domain: <span id="shopify-domain" style="color: var(--color-accent);">--</span></h3>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Status: <span id="shopify-status" class="badge badge--neutral">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Last Product Sync: <span id="shopify-last-sync" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
-            <p style="font-size: 13px; color: var(--color-text-secondary);">Credentials Configured: <span id="shopify-creds" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
+            <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px;">Credentials Configured: <span id="shopify-creds" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <label for="store-currency-select" style="font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin: 0;">Store Currency:</label>
+              <select id="store-currency-select" class="form-select form-select-sm" style="width: 140px;">
+                <option value="INR">INR (₹)</option>
+                <option value="USD">USD ($)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="AED">AED (AED)</option>
+                <option value="CAD">CAD (C$)</option>
+                <option value="AUD">AUD (A$)</option>
+              </select>
+              <button id="btn-save-currency" class="btn btn-secondary btn-sm">Update Currency</button>
+              <span id="currency-save-status" style="font-size: 12px; color: var(--color-text-muted);"></span>
+            </div>
           </div>
           <div class="action-buttons" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
             <button id="test-connection-btn" class="btn btn-secondary btn-sm">Test Connection</button>

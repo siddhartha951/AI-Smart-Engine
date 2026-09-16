@@ -3,8 +3,22 @@ let state = {
   token: localStorage.getItem('auth_token'),
   user: null,
   activeStoreId: null,
+  activeStoreCurrency: 'INR',
   stores: []
 };
+
+// Global Currency Symbol Helper
+function getCurrencySymbol(curr) {
+  const c = String(curr || state.activeStoreCurrency || 'INR').trim().toUpperCase();
+  if (c === 'INR') return '₹';
+  if (c === 'USD') return '$';
+  if (c === 'GBP') return '£';
+  if (c === 'EUR') return '€';
+  if (c === 'AED') return 'AED ';
+  if (c === 'CAD') return 'C$';
+  if (c === 'AUD') return 'A$';
+  return c + ' ';
+}
 
 // 3D Avatar Presets Gallery for AI Assistant
 const AVATAR_PRESETS = [
@@ -436,6 +450,54 @@ function setupEventListeners() {
       }
     });
   });
+
+  // Store Currency Update Handler
+  const btnSaveCurrency = document.getElementById('btn-save-currency');
+  if (btnSaveCurrency) {
+    btnSaveCurrency.addEventListener('click', async () => {
+      const curSelect = document.getElementById('store-currency-select');
+      const statusEl = document.getElementById('currency-save-status');
+      if (!curSelect || !state.activeStoreId) return;
+      const newCurrency = curSelect.value;
+      const originalText = btnSaveCurrency.textContent;
+      try {
+        btnSaveCurrency.disabled = true;
+        btnSaveCurrency.textContent = 'Updating...';
+        if (statusEl) statusEl.textContent = 'Saving...';
+
+        const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/currency`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.token}`
+          },
+          body: JSON.stringify({ currency: newCurrency })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update currency');
+
+        state.activeStoreCurrency = newCurrency;
+        if (statusEl) {
+          statusEl.textContent = 'Saved!';
+          statusEl.style.color = '#10b981';
+          setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+        }
+        showToast(`Store currency successfully updated to ${newCurrency}!`);
+        // Refresh overview and tables with the updated currency symbol
+        loadGrowthCopilotOverview();
+        loadProductsTable();
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = 'Failed';
+          statusEl.style.color = '#ef4444';
+        }
+        showToast('Error updating currency: ' + err.message, true);
+      } finally {
+        btnSaveCurrency.disabled = false;
+        btnSaveCurrency.textContent = originalText;
+      }
+    });
+  }
 
   // Product Catalog Search & Refresh
   const searchInput = document.getElementById('product-search-input');
@@ -1022,6 +1084,11 @@ async function loadSectionData(section) {
       }
       document.getElementById('shopify-last-sync').textContent = data.last_sync ? new Date(data.last_sync).toLocaleString() : 'Never';
       document.getElementById('shopify-creds').textContent = data.credentials_configured ? 'Yes (Encrypted)' : 'No';
+      if (data.currency) {
+        state.activeStoreCurrency = data.currency;
+        const curSelect = document.getElementById('store-currency-select');
+        if (curSelect) curSelect.value = data.currency;
+      }
       loadProductsTable();
     }
     else if (section === 'email-automation') {
@@ -3414,9 +3481,9 @@ async function loadChannelPerformance() {
       return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
           <td style="padding: 12px; font-weight: 600; color: var(--text-main);">${label}</td>
-          <td style="padding: 12px; color: #f59e0b; font-weight: 500;">£${Number(ch.spend).toFixed(2)}</td>
+          <td style="padding: 12px; color: #f59e0b; font-weight: 500;">${getCurrencySymbol(state.activeStoreCurrency)}${Number(ch.spend).toFixed(2)}</td>
           <td style="padding: 12px; color: var(--text-main); font-weight: 500;">${ch.orders}</td>
-          <td style="padding: 12px; color: #10b981; font-weight: 600;">£${Number(ch.attributed_revenue).toFixed(2)}</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">${getCurrencySymbol(state.activeStoreCurrency)}${Number(ch.attributed_revenue).toFixed(2)}</td>
           <td style="padding: 12px;">
             <span style="font-weight: 700; color: ${roasColor}; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">
               ${Number(ch.roas).toFixed(2)}x
@@ -3460,9 +3527,9 @@ async function loadCampaignPerformance() {
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
           <td style="padding: 12px; font-weight: 600; color: var(--text-main);">${escapeHtml(c.campaign)}</td>
           <td style="padding: 12px; color: var(--text-muted); font-size: 13px; text-transform: capitalize;">${escapeHtml(c.source)}</td>
-          <td style="padding: 12px; color: #f59e0b; font-weight: 500;">£${Number(c.spend).toFixed(2)}</td>
+          <td style="padding: 12px; color: #f59e0b; font-weight: 500;">${getCurrencySymbol(state.activeStoreCurrency)}${Number(c.spend).toFixed(2)}</td>
           <td style="padding: 12px; color: var(--text-main); font-weight: 500;">${c.orders}</td>
-          <td style="padding: 12px; color: #10b981; font-weight: 600;">£${Number(c.attributed_revenue).toFixed(2)}</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">${getCurrencySymbol(state.activeStoreCurrency)}${Number(c.attributed_revenue).toFixed(2)}</td>
           <td style="padding: 12px;">
             <span style="font-weight: 700; color: ${roasColor}; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px;">
               ${Number(c.roas).toFixed(2)}x
@@ -3508,7 +3575,7 @@ async function loadAttributedOrders() {
     tbody.innerHTML = purchaseEvents.map(p => {
       const orderId = p.metadata?.order_id || p.id;
       const orderNum = p.metadata?.order_number ? `#${p.metadata.order_number}` : 'Order';
-      const rev = p.metadata?.total_price ? `£${Number(p.metadata.total_price).toFixed(2)}` : '--';
+      const rev = p.metadata?.total_price ? `${getCurrencySymbol(state.activeStoreCurrency)}${Number(p.metadata.total_price).toFixed(2)}` : '--';
       const firstTouch = p.metadata?.utm_source || 'direct';
       const lastTouch = p.metadata?.utm_campaign || 'storefront';
       const isAi = p.metadata?.session_id ? '✨ Yes' : 'No';
@@ -3558,10 +3625,10 @@ window.openCustomerJourneyModal = async function(orderId) {
 
     if (metaEl) {
       metaEl.innerHTML = `
-        <div><strong>Revenue:</strong> £${Number(data.order_revenue).toFixed(2)}</div>
+        <div><strong>Revenue:</strong> ${getCurrencySymbol(state.activeStoreCurrency)}${Number(data.order_revenue).toFixed(2)}</div>
         <div><strong>First Touch:</strong> ${escapeHtml(data.first_touch.source)} (${escapeHtml(data.first_touch.campaign)})</div>
         <div><strong>Last Touch:</strong> ${escapeHtml(data.last_touch.source)} (${escapeHtml(data.last_touch.campaign)})</div>
-        <div><strong>AI-Assisted:</strong> ${data.is_ai_assisted ? '✨ Yes (£' + Number(data.ai_assisted_revenue).toFixed(2) + ')' : 'No'}</div>
+        <div><strong>AI-Assisted:</strong> ${data.is_ai_assisted ? '✨ Yes (' + getCurrencySymbol(state.activeStoreCurrency) + Number(data.ai_assisted_revenue).toFixed(2) + ')' : 'No'}</div>
       `;
     }
 
@@ -3635,7 +3702,7 @@ async function loadAdSpendList() {
           <td style="padding: 8px;">${dateStr}</td>
           <td style="padding: 8px; text-transform: capitalize;">${escapeHtml(s.platform)}</td>
           <td style="padding: 8px;">${escapeHtml(s.campaign)}</td>
-          <td style="padding: 8px; font-weight: 600; color: #f59e0b;">£${Number(s.spend_amount).toFixed(2)}</td>
+          <td style="padding: 8px; font-weight: 600; color: #f59e0b;">${getCurrencySymbol(state.activeStoreCurrency)}${Number(s.spend_amount).toFixed(2)}</td>
           <td style="padding: 8px;">
             <button class="btn-secondary" onclick="deleteAdSpendEntry('${s.id}')" style="padding: 2px 8px; font-size: 11px; color: #ef4444; border-color: rgba(239,68,68,0.3);">
               Delete
@@ -3700,6 +3767,10 @@ async function loadGrowthCopilotData() {
     // 1. Overview KPIs
     if (overviewRes.ok) {
       const { data: o } = await overviewRes.json();
+      if (o.currency) {
+        state.activeStoreCurrency = o.currency;
+      }
+      const sym = getCurrencySymbol(o.currency || state.activeStoreCurrency);
       const oppEl = document.getElementById('copilot-estimated-opp');
       const revEl = document.getElementById('copilot-revenue');
       const ordersEl = document.getElementById('copilot-orders');
@@ -3708,13 +3779,13 @@ async function loadGrowthCopilotData() {
       const convEl = document.getElementById('copilot-conv-rate');
       const aiRevEl = document.getElementById('copilot-ai-revenue');
 
-      if (oppEl) oppEl.textContent = `+£${Number(o.estimated_growth_opportunity || 0).toFixed(2)}`;
-      if (revEl) revEl.textContent = `£${Number(o.total_revenue || 0).toFixed(2)}`;
-      if (ordersEl) ordersEl.textContent = `${o.total_orders || 0} orders (AOV: £${Number(o.average_order_value || 0).toFixed(2)})`;
+      if (oppEl) oppEl.textContent = `+${sym}${Number(o.estimated_growth_opportunity || 0).toFixed(2)}`;
+      if (revEl) revEl.textContent = `${sym}${Number(o.total_revenue || 0).toFixed(2)}`;
+      if (ordersEl) ordersEl.textContent = `${o.total_orders || 0} orders (AOV: ${sym}${Number(o.average_order_value || 0).toFixed(2)})`;
       if (roasEl) roasEl.textContent = `${Number(o.blended_roas || 0).toFixed(2)}x`;
-      if (spendEl) spendEl.textContent = `on £${Number(o.total_ad_spend || 0).toFixed(2)} spend`;
+      if (spendEl) spendEl.textContent = `on ${sym}${Number(o.total_ad_spend || 0).toFixed(2)} spend`;
       if (convEl) convEl.textContent = `${Number(o.conversion_rate || 0).toFixed(1)}%`;
-      if (aiRevEl) aiRevEl.textContent = `£${Number(o.ai_assisted_revenue || 0).toFixed(2)}`;
+      if (aiRevEl) aiRevEl.textContent = `${sym}${Number(o.ai_assisted_revenue || 0).toFixed(2)}`;
     }
 
     // 2. Merchant Goal
@@ -3751,10 +3822,11 @@ async function loadGrowthCopilotData() {
             low: { bg: 'rgba(100, 116, 139, 0.15)', text: '#94a3b8', border: 'rgba(100, 116, 139, 0.4)' }
           };
 
+          const actSym = getCurrencySymbol(state.activeStoreCurrency);
           actionsContainer.innerHTML = activeActions.map(action => {
             const colors = priorityColors[action.priority] || priorityColors.medium;
             const oppBadge = Number(action.estimated_opportunity) > 0
-              ? `<span style="font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">+£${Number(action.estimated_opportunity).toFixed(2)} Potential</span>`
+              ? `<span style="font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">+${actSym}${Number(action.estimated_opportunity).toFixed(2)} Potential</span>`
               : '';
 
             return `
@@ -3793,7 +3865,8 @@ async function loadGrowthCopilotData() {
       const convEl = document.getElementById('summary-conv');
       const whatChangedEl = document.getElementById('copilot-what-changed');
 
-      if (revEl) revEl.textContent = `£${Number(s.metrics?.revenue || 0).toFixed(2)}`;
+      const sumSym = getCurrencySymbol(s.metrics?.currency || state.activeStoreCurrency);
+      if (revEl) revEl.textContent = `${sumSym}${Number(s.metrics?.revenue || 0).toFixed(2)}`;
       if (ordersEl) ordersEl.textContent = `${s.metrics?.orders || 0}`;
       if (roasEl) roasEl.textContent = `${Number(s.metrics?.roas || 0).toFixed(2)}x`;
       if (convEl) convEl.textContent = `${Number(s.metrics?.conversion_rate || 0).toFixed(1)}%`;
@@ -3971,6 +4044,11 @@ async function fetchStoreFeatures() {
     if (!res.ok) return;
     const json = await res.json();
     state.features = json.data?.features || {};
+    if (json.data?.currency) {
+      state.activeStoreCurrency = json.data.currency;
+      const curSelect = document.getElementById('store-currency-select');
+      if (curSelect) curSelect.value = json.data.currency;
+    }
 
     // Hide or show nav links based on entitlements
     document.querySelectorAll('.nav-links li').forEach(li => {

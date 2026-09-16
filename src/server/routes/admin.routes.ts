@@ -192,7 +192,7 @@ router.get('/merchants/:merchantId', async (req: Request, res: Response, next) =
     }
     const merchant = merchantRes.rows[0];
 
-    const storesRes = await db.query('SELECT id, merchant_id, shop_domain, brand_name, status, widget_key, live_tracking_enabled, created_at FROM stores WHERE merchant_id = $1', [merchantId]);
+    const storesRes = await db.query('SELECT id, merchant_id, shop_domain, brand_name, currency, status, widget_key, live_tracking_enabled, created_at FROM stores WHERE merchant_id = $1', [merchantId]);
     
     // Get store details without raw credentials
     const storeDetails = [];
@@ -243,6 +243,47 @@ router.get('/merchants/:merchantId', async (req: Request, res: Response, next) =
         audit_log: auditRes.rows
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update store currency (Admin control)
+router.put('/stores/:storeId/currency', async (req: Request, res: Response, next) => {
+  try {
+    const db = getDatabaseClient();
+    const storeId = req.params.storeId as string;
+    const { currency } = req.body;
+
+    if (!currency || typeof currency !== 'string') {
+      res.status(400).json({ error: 'Valid currency code is required' });
+      return;
+    }
+
+    const cleanCurrency = currency.trim().toUpperCase();
+    const oldStore = await db.query('SELECT * FROM stores WHERE id = $1', [storeId]);
+    if (oldStore.rows.length === 0) {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+
+    const updated = await db.query(
+      'UPDATE stores SET currency = $1, updated_at = NOW() WHERE id = $2 RETURNING id, shop_domain, brand_name, currency',
+      [cleanCurrency, storeId]
+    );
+
+    // Audit log
+    const auditRepo = new AuditRepository(db);
+    await auditRepo.logAction(
+      req.user!.id,
+      storeId,
+      'UPDATE_STORE_CURRENCY',
+      'stores',
+      { currency: oldStore.rows[0].currency },
+      { currency: cleanCurrency }
+    );
+
+    res.json({ success: true, data: updated.rows[0] });
   } catch (err) {
     next(err);
   }

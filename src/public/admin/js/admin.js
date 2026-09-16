@@ -499,6 +499,27 @@ window.syncShopifyProducts = async function(storeId) {
   }
 };
 
+window.saveAdminStoreCurrency = async function(storeId) {
+  const select = document.getElementById(`admin-store-currency-${storeId}`);
+  const feedback = document.getElementById(`currency-save-feedback-${storeId}`);
+  if (!select) return;
+  const currency = select.value;
+  try {
+    showToast(`Updating store currency to ${currency}...`, 'info');
+    await apiFetch(`/api/v1/admin/stores/${storeId}/currency`, {
+      method: 'PUT',
+      body: JSON.stringify({ currency }),
+    });
+    if (feedback) {
+      feedback.textContent = 'Saved!';
+      setTimeout(() => { feedback.textContent = ''; }, 3000);
+    }
+    showToast(`Store currency successfully updated to ${currency}!`, 'success');
+  } catch (err) {
+    showToast('Failed to update currency: ' + err.message, 'error');
+  }
+};
+
 function renderMerchantDetail(data, storeEntitlements = []) {
   const m = data.merchant;
   const s = data.stores[0] || {};
@@ -517,6 +538,22 @@ function renderMerchantDetail(data, storeEntitlements = []) {
   document.getElementById('detail-store-info').innerHTML = s.id ? `
     <div class="info-row"><span class="label">Domain</span><span class="value">${esc(s.shop_domain || '—')}</span></div>
     <div class="info-row"><span class="label">Brand</span><span class="value">${esc(s.brand_name || '—')}</span></div>
+    <div class="info-row">
+      <span class="label">Store Currency</span>
+      <span class="value" style="display: flex; align-items: center; gap: 8px;">
+        <select id="admin-store-currency-${s.id}" class="form-input form-input-sm" style="width: 140px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); color: #fff; border: 1px solid rgba(255,255,255,0.15);">
+          <option value="INR" ${s.currency === 'INR' ? 'selected' : ''}>INR (₹)</option>
+          <option value="USD" ${s.currency === 'USD' ? 'selected' : ''}>USD ($)</option>
+          <option value="GBP" ${s.currency === 'GBP' ? 'selected' : ''}>GBP (£)</option>
+          <option value="EUR" ${s.currency === 'EUR' ? 'selected' : ''}>EUR (€)</option>
+          <option value="AED" ${s.currency === 'AED' ? 'selected' : ''}>AED (AED)</option>
+          <option value="CAD" ${s.currency === 'CAD' ? 'selected' : ''}>CAD (C$)</option>
+          <option value="AUD" ${s.currency === 'AUD' ? 'selected' : ''}>AUD (A$)</option>
+        </select>
+        <button class="btn-action btn-sm" onclick="saveAdminStoreCurrency('${s.id}')">💾 Save</button>
+        <span id="currency-save-feedback-${s.id}" style="font-size: 12px; color: #10b981;"></span>
+      </span>
+    </div>
     <div class="info-row"><span class="label">Agent Name</span><span class="value">${esc(s.agent?.assistant_name || 'Shopping Assistant')}</span></div>
     <div class="info-row"><span class="label">Agent Status</span><span class="value">${s.agent?.is_active ? '🟢 Active' : '🔴 Inactive'}</span></div>
     <div class="info-row"><span class="label">Widget Trigger</span><span class="value">${esc(s.widget?.button_text || 'Assistant')}</span></div>

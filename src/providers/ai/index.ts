@@ -1,14 +1,34 @@
 import { IAiProvider } from './ai.provider';
 import { MockAiProvider } from './mock.ai.provider';
 import { OpenAiProvider } from './openai.provider';
+import { GeminiAiProvider } from './gemini.provider';
 import { getEnvConfig } from '../../config/env';
 import { IDatabaseClient, getDatabaseClient } from '../../database/client';
 
 export * from './ai.provider';
+export { GeminiAiProvider } from './gemini.provider';
+export { OpenAiProvider } from './openai.provider';
+export { MockAiProvider } from './mock.ai.provider';
 
 export function getAiProvider(): IAiProvider {
   const env = getEnvConfig();
-  if (env.AI_PROVIDER === 'openai') {
+  const providerSetting = env.AI_PROVIDER || 'auto';
+
+  if (providerSetting === 'gemini') {
+    return new GeminiAiProvider();
+  }
+  if (providerSetting === 'openai') {
+    return new OpenAiProvider();
+  }
+  if (providerSetting === 'mock') {
+    return new MockAiProvider();
+  }
+
+  // 'auto' mode: prioritize Gemini if GEMINI_API_KEY is set, else OpenAI, else Mock
+  if (env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY) {
+    return new GeminiAiProvider();
+  }
+  if (env.OPENAI_API_KEY) {
     return new OpenAiProvider();
   }
   return new MockAiProvider();

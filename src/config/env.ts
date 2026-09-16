@@ -15,9 +15,11 @@ const envSchema = z.object({
 
   DATABASE_URL: z.string().default('postgresql://user:password@localhost:5432/ai_smart_engine'),
 
-  AI_PROVIDER: z.preprocess((val) => typeof val === 'string' ? val.toLowerCase() : val, z.enum(['mock', 'openai'])).default('mock'),
+  AI_PROVIDER: z.preprocess((val) => typeof val === 'string' ? val.toLowerCase() : val, z.enum(['mock', 'openai', 'gemini', 'auto'])).default('auto'),
   OPENAI_API_KEY: z.string().optional().default(''),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
   AI_MONTHLY_BUDGET_WARN_USD: z.coerce.number().default(10.0),
   AI_MONTHLY_BUDGET_STOP_USD: z.coerce.number().default(14.0),
 
