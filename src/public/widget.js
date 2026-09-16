@@ -1208,6 +1208,21 @@
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
         }
+
+        .btn-back-options {
+          transition: all 0.2s ease;
+        }
+
+        .btn-back-options:hover {
+          background: #f1f5f9 !important;
+          border-color: #94a3b8 !important;
+          color: #0f172a !important;
+          transform: translateY(-1px);
+        }
+
+        .btn-back-options:active {
+          transform: translateY(0);
+        }
         
         .policy-link {
           font-size: 11.5px;
@@ -1788,6 +1803,11 @@
             <div id="widget-toast" class="widget-toast"></div>
             <div class="header">
               <div class="header-title-container">
+                ${this.state.view === 'lead-capture' ? `
+                  <button type="button" class="header-icon-btn btn-back-header" id="header-btn-back" aria-label="Back to options" title="Back to Options" style="margin-right: 6px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                  </button>
+                ` : ''}
                 <div class="header-avatar-wrap">
                   ${avatarHeaderHtml}
                   <span class="online-dot"></span>
@@ -1942,6 +1962,10 @@
             </div>
             
             <button type="submit" class="btn">Continue to Chat</button>
+            <button type="button" class="btn btn-back-options" id="btn-back-welcome" style="margin-top: 10px; background: #ffffff; color: #475569; border: 1.5px solid #cbd5e1; box-shadow: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+              <span>Back to Options</span>
+            </button>
           </form>
           
           <div class="policy-link">
@@ -2185,6 +2209,28 @@
           
           await this.submitConsent(email, phone, marketingOptedIn);
         });
+      }
+
+      // Back to Options handlers (returns shopper from lead-capture to welcome screen)
+      const handleBackToOptions = (e) => {
+        if (e) e.preventDefault();
+        this.setState({
+          pendingPill: null,
+          view: 'welcome'
+        });
+        try {
+          sessionStorage.setItem('ai_widget_view', 'welcome');
+        } catch (_) {}
+      };
+
+      const btnBackWelcome = this.shadowRoot.getElementById('btn-back-welcome');
+      if (btnBackWelcome) {
+        btnBackWelcome.addEventListener('click', handleBackToOptions);
+      }
+
+      const headerBtnBack = this.shadowRoot.getElementById('header-btn-back');
+      if (headerBtnBack) {
+        headerBtnBack.addEventListener('click', handleBackToOptions);
       }
 
       const chatForm = this.shadowRoot.getElementById('chat-form');

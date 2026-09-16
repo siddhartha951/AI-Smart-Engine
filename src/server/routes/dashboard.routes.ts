@@ -192,42 +192,76 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
     if (assistant) {
       const oldAssistant = await db.query('SELECT * FROM assistant_settings WHERE store_id = $1', [storeId]);
       const old = oldAssistant.rows[0] || {};
-      await db.query(
-        `UPDATE assistant_settings SET 
-          is_active = $1,
-          assistant_name = $2, 
-          welcome_message = $3,
-          tone = $4,
-          support_contact = $5,
-          custom_prompt = $6,
-          knowledge_base = $7,
-          quick_action_pills = $8,
-          updated_at = NOW()
-         WHERE store_id = $9`,
-        [
-          assistant.is_active !== undefined ? assistant.is_active : (old.is_active ?? true),
-          assistant.assistant_name !== undefined ? assistant.assistant_name : (old.assistant_name ?? 'Assistant'),
-          assistant.welcome_message !== undefined ? assistant.welcome_message : (old.welcome_message ?? 'Hi there!'),
-          assistant.tone !== undefined ? assistant.tone : (old.tone ?? 'friendly and helpful'),
-          assistant.support_contact !== undefined ? assistant.support_contact : (old.support_contact ?? 'support@store.com'),
-          assistant.custom_prompt !== undefined ? assistant.custom_prompt : (old.custom_prompt ?? ''),
-          assistant.knowledge_base !== undefined ? assistant.knowledge_base : (old.knowledge_base ?? ''),
-          assistant.quick_action_pills !== undefined ? JSON.stringify(assistant.quick_action_pills) : (old.quick_action_pills ? (typeof old.quick_action_pills === 'string' ? old.quick_action_pills : JSON.stringify(old.quick_action_pills)) : '[]'),
-          storeId
-        ]
-      );
-      await auditRepo.logAction(req.user!.id, storeId, 'UPDATE_ASSISTANT_SETTINGS', 'assistant_settings', oldAssistant.rows[0], assistant);
+      
+      const pillsJson = assistant.quick_action_pills !== undefined 
+        ? JSON.stringify(assistant.quick_action_pills) 
+        : (old.quick_action_pills ? (typeof old.quick_action_pills === 'string' ? old.quick_action_pills : JSON.stringify(old.quick_action_pills)) : '[]');
+
+      if (oldAssistant.rows.length === 0) {
+        await db.query(
+          `INSERT INTO assistant_settings (
+            store_id, is_active, assistant_name, welcome_message, tone, support_contact, custom_prompt, knowledge_base, quick_action_pills, allowed_topics, privacy_policy_url
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)`,
+          [
+            storeId,
+            assistant.is_active ?? true,
+            assistant.assistant_name ?? 'Assistant',
+            assistant.welcome_message ?? 'Hi there!',
+            assistant.tone ?? 'friendly and helpful',
+            assistant.support_contact ?? 'support@store.com',
+            assistant.custom_prompt ?? '',
+            assistant.knowledge_base ?? '',
+            pillsJson,
+            ['products', 'orders', 'store_info'],
+            '#'
+          ]
+        );
+      } else {
+        await db.query(
+          `UPDATE assistant_settings SET 
+            is_active = $1,
+            assistant_name = $2, 
+            welcome_message = $3,
+            tone = $4,
+            support_contact = $5,
+            custom_prompt = $6,
+            knowledge_base = $7,
+            quick_action_pills = $8::jsonb,
+            updated_at = NOW()
+           WHERE store_id = $9`,
+          [
+            assistant.is_active !== undefined ? assistant.is_active : (old.is_active ?? true),
+            assistant.assistant_name !== undefined ? assistant.assistant_name : (old.assistant_name ?? 'Assistant'),
+            assistant.welcome_message !== undefined ? assistant.welcome_message : (old.welcome_message ?? 'Hi there!'),
+            assistant.tone !== undefined ? assistant.tone : (old.tone ?? 'friendly and helpful'),
+            assistant.support_contact !== undefined ? assistant.support_contact : (old.support_contact ?? 'support@store.com'),
+            assistant.custom_prompt !== undefined ? assistant.custom_prompt : (old.custom_prompt ?? ''),
+            assistant.knowledge_base !== undefined ? assistant.knowledge_base : (old.knowledge_base ?? ''),
+            pillsJson,
+            storeId
+          ]
+        );
+      }
+      await auditRepo.logAction(req.user!.id, storeId, 'UPDATE_ASSISTANT_SETTINGS', 'assistant_settings', oldAssistant.rows[0] || {}, assistant);
     }
 
     if (policies) {
       const oldPolicies = await db.query('SELECT * FROM store_policies WHERE store_id = $1', [storeId]);
       const old = oldPolicies.rows[0] || {};
-      await db.query(
-        `UPDATE store_policies SET 
-          faq_content = $1
-         WHERE store_id = $2`,
-        [policies.faq_content !== undefined ? policies.faq_content : old.faq_content, storeId]
-      );
+      if (oldPolicies.rows.length === 0) {
+        await db.query(
+          `INSERT INTO store_policies (store_id, delivery_policy, returns_policy, faq_content)
+           VALUES ($1, 'Standard delivery', '7 days return', $2)`,
+          [storeId, policies.faq_content || '']
+        );
+      } else {
+        await db.query(
+          `UPDATE store_policies SET 
+            faq_content = $1
+           WHERE store_id = $2`,
+          [policies.faq_content !== undefined ? policies.faq_content : old.faq_content, storeId]
+        );
+      }
       await auditRepo.logAction(req.user!.id, storeId, 'UPDATE_STORE_POLICIES', 'store_policies', oldPolicies.rows[0] || {}, policies);
     }
 

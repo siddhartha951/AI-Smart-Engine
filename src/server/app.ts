@@ -127,6 +127,19 @@ export function createApp(deps: AppDependencies = {}): Express {
           merchantRepo.getAssistantSettings(store.id),
         ]);
 
+        // Disable browser caching so updates in dashboard reflect immediately on storefront
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        let rawPills = (assistantSettings as any)?.quick_action_pills;
+        let parsedPills: any[] = [];
+        if (Array.isArray(rawPills)) {
+          parsedPills = rawPills;
+        } else if (typeof rawPills === 'string') {
+          try { parsedPills = JSON.parse(rawPills); } catch (_) { parsedPills = []; }
+        }
+
         res.json({
           success: true,
           data: {
@@ -158,7 +171,7 @@ export function createApp(deps: AppDependencies = {}): Express {
                   privacy_policy_url: assistantSettings.privacy_policy_url,
                   support_contact: assistantSettings.support_contact,
                   is_active: assistantSettings.is_active,
-                  quick_action_pills: (assistantSettings as any).quick_action_pills || [],
+                  quick_action_pills: parsedPills,
                 }
               : null,
             features: {

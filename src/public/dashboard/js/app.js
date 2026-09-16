@@ -622,6 +622,8 @@ async function saveAgentSettings(payload) {
     if (!document.getElementById('overview').classList.contains('hidden')) {
       loadSectionData('overview');
     }
+    // Also re-fetch agent settings to ensure UI toggles strictly match saved database state
+    await loadSectionData('my-agent');
   } catch (err) {
     showToast(err.message, true);
   }
@@ -1022,7 +1024,11 @@ async function loadSectionData(section) {
             const urlEl = document.getElementById(`pill-url-${pill.id}`);
             const previewEl = document.getElementById(`label-preview-${pill.id}`);
 
-            if (enableEl && pill.enabled !== undefined) enableEl.checked = Boolean(pill.enabled);
+            if (enableEl) {
+              if (pill.enabled !== undefined && pill.enabled !== null) {
+                enableEl.checked = pill.enabled === true || pill.enabled === 'true';
+              }
+            }
             if (nameEl && pill.label) {
               nameEl.value = pill.label;
               if (previewEl) previewEl.textContent = pill.label;
