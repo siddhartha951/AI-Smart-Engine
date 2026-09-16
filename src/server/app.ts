@@ -90,8 +90,11 @@ export function createApp(deps: AppDependencies = {}): Express {
       database: isDbHealthy ? 'connected' : 'disconnected',
       dependencies: {
         ai: {
-          configured: Boolean(process.env.OPENAI_API_KEY || env.AI_PROVIDER === 'mock'),
+          configured: Boolean((env.OPENAI_API_KEY && env.OPENAI_API_KEY !== 'mock') || env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || env.AI_PROVIDER === 'mock'),
           provider: env.AI_PROVIDER,
+          active_provider: getAiProvider().constructor.name,
+          has_openai_key: Boolean(env.OPENAI_API_KEY && env.OPENAI_API_KEY !== 'mock'),
+          has_gemini_key: Boolean(env.GEMINI_API_KEY || (process.env.GOOGLE_AI_API_KEY && process.env.GOOGLE_AI_API_KEY !== 'mock')),
         },
         email: {
           configured: Boolean(process.env.RESEND_API_KEY || env.EMAIL_API_KEY || env.EMAIL_PROVIDER_MODE === 'fake'),

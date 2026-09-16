@@ -12,24 +12,25 @@ export { MockAiProvider } from './mock.ai.provider';
 
 export function getAiProvider(): IAiProvider {
   const env = getEnvConfig();
-  const providerSetting = env.AI_PROVIDER || 'auto';
+  const providerSetting = (env.AI_PROVIDER || 'auto').toLowerCase().trim();
 
-  if (providerSetting === 'gemini') {
-    return new GeminiAiProvider();
-  }
   if (providerSetting === 'openai') {
     return new OpenAiProvider();
+  }
+  if (providerSetting === 'gemini') {
+    return new GeminiAiProvider();
   }
   if (providerSetting === 'mock') {
     return new MockAiProvider();
   }
 
-  // 'auto' mode: prioritize Gemini if GEMINI_API_KEY is set, else OpenAI, else Mock
-  if (env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY) {
-    return new GeminiAiProvider();
-  }
-  if (env.OPENAI_API_KEY) {
+  // 'auto' mode: prioritize OpenAI first if OPENAI_API_KEY is configured and not mock
+  if (env.OPENAI_API_KEY && env.OPENAI_API_KEY !== 'mock') {
     return new OpenAiProvider();
+  }
+  // Then Gemini if GEMINI_API_KEY or GOOGLE_AI_API_KEY is configured
+  if (env.GEMINI_API_KEY || (process.env.GOOGLE_AI_API_KEY && process.env.GOOGLE_AI_API_KEY !== 'mock')) {
+    return new GeminiAiProvider();
   }
   return new MockAiProvider();
 }

@@ -39,6 +39,13 @@ export class GeminiAiProvider implements IAiProvider {
     context: AiRequestContext
   ): Promise<AiResponse> {
     if (!this.apiKey) {
+      const env = getEnvConfig();
+      if (env.OPENAI_API_KEY && env.OPENAI_API_KEY !== 'mock') {
+        logger.warn('GeminiAiProvider: No GEMINI_API_KEY found, falling back to OpenAI provider');
+        const { OpenAiProvider } = await import('./openai.provider');
+        const openAi = new OpenAiProvider();
+        return openAi.generateResponse(chatHistory, context);
+      }
       logger.warn('GeminiAiProvider: No GEMINI_API_KEY found, falling back to mock provider');
       return this.mockFallback.generateResponse(chatHistory, context);
     }
@@ -134,7 +141,17 @@ ${JSON.stringify(context.catalogSubset, null, 2)}
         estimated_cost_usd: costUsd,
       };
     } catch (err: any) {
-      logger.warn('GeminiAiProvider.generateResponse failed, using fallback:', { error: err.message });
+      logger.warn('GeminiAiProvider.generateResponse failed, attempting OpenAI fallback:', { error: err.message });
+      const env = getEnvConfig();
+      if (env.OPENAI_API_KEY && env.OPENAI_API_KEY !== 'mock') {
+        try {
+          const { OpenAiProvider } = await import('./openai.provider');
+          const openAi = new OpenAiProvider();
+          return await openAi.generateResponse(chatHistory, context);
+        } catch (openAiErr: any) {
+          logger.warn('Gemini fallback to OpenAI also failed:', { error: openAiErr.message });
+        }
+      }
       return this.mockFallback.generateResponse(chatHistory, context);
     }
   }

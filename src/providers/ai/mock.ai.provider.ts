@@ -19,17 +19,24 @@ export class MockAiProvider implements IAiProvider {
     const userText = lastUserMessage?.content.toLowerCase() || '';
 
     let recommendedIds: string[] = [];
-    let content = `Hello from ${context.assistantSettings.assistant_name} (Mock AI). `;
+    let content = `Hello! I am ${context.assistantSettings.assistant_name}, your shopping assistant. `;
+
+    const isGreeting = /^(hi|hello|hey|greetings|how are you|good morning|good evening|good afternoon)/i.test(userText.trim());
 
     // Simple mock logic: recommend products if they match a word in the user's message
     if (context.catalogSubset.length > 0) {
-      const matches = context.catalogSubset.filter(
-        (p) => userText.includes(p.category.toLowerCase()) || userText.includes(p.title.toLowerCase().split(' ')[0])
-      );
+      const matches = context.catalogSubset.filter((p) => {
+        const cat = p.category ? p.category.toLowerCase().trim() : '';
+        const titleFirst = p.title ? p.title.toLowerCase().trim().split(' ')[0] : '';
+        return (cat.length > 2 && userText.includes(cat)) || (titleFirst.length > 2 && userText.includes(titleFirst));
+      });
 
-      if (matches.length > 0) {
+      if (isGreeting && matches.length > 0 && !userText.includes('looking for') && !userText.includes('show') && !userText.includes('find') && !userText.includes('dress') && !userText.includes('top')) {
+        content += `How can I help you today? Feel free to ask about our collections, sizing, or store recommendations!`;
+        recommendedIds = [];
+      } else if (matches.length > 0) {
         content += `I found some great options for you based on our catalog:`;
-        recommendedIds = matches.map((m) => m.id);
+        recommendedIds = matches.slice(0, 4).map((m) => m.id);
       } else {
         content += `I can help you with topics like: ${context.assistantSettings.allowed_topics.join(', ')}.`;
       }
