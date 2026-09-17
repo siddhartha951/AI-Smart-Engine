@@ -104,6 +104,34 @@ let liveAnalyticsTimer = null;
 document.addEventListener('DOMContentLoaded', () => {
   initAvatarPresets();
   setupEventListeners();
+
+  // Support URL query params auto-login (e.g. ?email=...&password=...)
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    const passParam = params.get('password');
+
+    if (emailParam && passParam) {
+      const emailInput = document.getElementById('email');
+      const passInput = document.getElementById('password');
+      if (emailInput && passInput) {
+        emailInput.value = emailParam;
+        passInput.value = passParam;
+      }
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (_) {}
+
+      const loginForm = document.getElementById('login-form');
+      if (loginForm) {
+        loginForm.dispatchEvent(new Event('submit', { cancelable: true }));
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not parse login query params:', e);
+  }
+
   if (state.token) {
     verifySession();
   } else {
@@ -603,6 +631,8 @@ function setupEventListeners() {
       showToast(err.message, true);
     }
   });
+}
+
 function updatePillVisualState(pillId, isEnabled) {
   const card = document.getElementById(`pill-card-${pillId}`);
   const statusBadge = document.getElementById(`pill-status-${pillId}`);
