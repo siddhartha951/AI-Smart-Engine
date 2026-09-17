@@ -170,6 +170,10 @@ router.get('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
       db.query('SELECT * FROM store_policies WHERE store_id = $1', [storeId])
     ]);
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     res.json({
       success: true,
       data: {

@@ -1888,7 +1888,8 @@
         }
 
         const escapeAttr = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const enabledPills = pills.filter(p => p.enabled !== false);
+        const isPillEnabled = (p) => p && p.enabled !== false && p.enabled !== 'false' && p.enabled !== 0 && p.enabled !== '0';
+        const enabledPills = pills.filter(isPillEnabled);
         const supportPills = enabledPills.filter(p => p.group === 'support' || ['track_order', 'return_policy', 'shipping_delivery', 'whatsapp_support'].includes(p.id));
         const salesPills = enabledPills.filter(p => p.group === 'sales' || ['current_offers', 'best_sellers', 'size_guide', 'gift_ideas'].includes(p.id));
 

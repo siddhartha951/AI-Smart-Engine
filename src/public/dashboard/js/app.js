@@ -237,6 +237,7 @@ function setupEventListeners() {
       };
     });
     
+    const faqEl = document.getElementById('store-faq');
     const payload = {
       assistant: {
         is_active: isActive,
@@ -249,7 +250,7 @@ function setupEventListeners() {
         quick_action_pills: quickActionPills
       },
       policies: {
-        faq_content: document.getElementById('store-faq').value
+        faq_content: faqEl ? faqEl.value : ''
       }
     };
 
@@ -602,6 +603,28 @@ function setupEventListeners() {
       showToast(err.message, true);
     }
   });
+function updatePillVisualState(pillId, isEnabled) {
+  const card = document.getElementById(`pill-card-${pillId}`);
+  const statusBadge = document.getElementById(`pill-status-${pillId}`);
+  const enableEl = document.getElementById(`pill-enable-${pillId}`);
+  if (enableEl) {
+    enableEl.checked = Boolean(isEnabled);
+  }
+  if (statusBadge) {
+    if (isEnabled) {
+      statusBadge.textContent = 'Enabled';
+      statusBadge.style.background = 'rgba(34, 197, 94, 0.15)';
+      statusBadge.style.color = '#22c55e';
+    } else {
+      statusBadge.textContent = 'Disabled';
+      statusBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+      statusBadge.style.color = '#ef4444';
+    }
+  }
+  if (card) {
+    card.style.opacity = isEnabled ? '1' : '0.65';
+    card.style.filter = isEnabled ? 'none' : 'grayscale(25%)';
+  }
 }
 
 async function saveAgentSettings(payload) {
@@ -666,16 +689,22 @@ async function initDashboard() {
         selector.innerHTML = state.stores
           .map(s => `<option value="${s.id}">${s.brand_name || s.shop_domain} (${s.shop_domain})</option>`)
           .join('');
-        selector.value = state.activeStoreId || state.stores[0].id;
+
+        const savedStoreId = localStorage.getItem('ai_active_store_id');
+        const matchedStore = savedStoreId && state.stores.find(s => s.id === savedStoreId);
+        selector.value = matchedStore ? matchedStore.id : (state.activeStoreId || state.stores[0].id);
         state.activeStoreId = selector.value;
+        try { localStorage.setItem('ai_active_store_id', state.activeStoreId); } catch (_) {}
 
         selector.onchange = (e) => {
           state.activeStoreId = e.target.value;
+          try { localStorage.setItem('ai_active_store_id', state.activeStoreId); } catch (_) {}
           updateActiveStoreUI();
         };
       } else {
         selectorContainer.classList.add('hidden');
         state.activeStoreId = state.user.store_id || (state.stores[0]?.id || null);
+        try { if (state.activeStoreId) localStorage.setItem('ai_active_store_id', state.activeStoreId); } catch (_) {}
       }
     }
   } catch (err) {
@@ -684,7 +713,9 @@ async function initDashboard() {
   }
 
   if ((!state.activeStoreId || state.activeStoreId === 'null') && state.stores && state.stores.length > 0) {
-    state.activeStoreId = state.stores[0].id;
+    const savedStoreId = localStorage.getItem('ai_active_store_id');
+    const matchedStore = savedStoreId && state.stores.find(s => s.id === savedStoreId);
+    state.activeStoreId = matchedStore ? matchedStore.id : state.stores[0].id;
   }
 
   updateActiveStoreUI();
@@ -1019,31 +1050,28 @@ async function loadSectionData(section) {
             : (typeof rawPills === 'string' ? JSON.parse(rawPills || '[]') : []);
 
           pills.forEach(pill => {
-            const enableEl = document.getElementById(`pill-enable-${pill.id}`);
+            const isEnabled = pill.enabled === true || pill.enabled === 'true';
+            updatePillVisualState(pill.id, isEnabled);
+
             const nameEl = document.getElementById(`pill-name-${pill.id}`);
             const urlEl = document.getElementById(`pill-url-${pill.id}`);
             const previewEl = document.getElementById(`label-preview-${pill.id}`);
 
-            if (enableEl) {
-              if (pill.enabled !== undefined && pill.enabled !== null) {
-                enableEl.checked = pill.enabled === true || pill.enabled === 'true';
-              }
-            }
             if (nameEl && pill.label) {
               nameEl.value = pill.label;
               if (previewEl) previewEl.textContent = pill.label;
             }
-            if (urlEl && pill.url) urlEl.value = pill.url;
+            if (urlEl && pill.url !== undefined) urlEl.value = pill.url || '';
             if (pill.id === 'size_guide') {
               const imgEl = document.getElementById('pill-image-size_guide');
-              if (imgEl && pill.image_url) imgEl.value = pill.image_url;
+              if (imgEl && pill.image_url !== undefined) imgEl.value = pill.image_url || '';
             }
           });
         } catch (e) {
           console.warn('[Dashboard] Could not parse quick action pills:', e);
         }
 
-        // Add live preview listeners to pill name inputs if not already attached
+        // Add live preview listeners and toggle change listeners
         const pillIds = ['track_order', 'return_policy', 'shipping_delivery', 'whatsapp_support', 'current_offers', 'best_sellers', 'size_guide', 'gift_ideas'];
         pillIds.forEach(id => {
           const nameInput = document.getElementById(`pill-name-${id}`);
@@ -1054,9 +1082,17 @@ async function loadSectionData(section) {
               previewEl.textContent = e.target.value.trim() || previewEl.dataset.defaultLabel || e.target.placeholder;
             });
           }
+
+          const enableEl = document.getElementById(`pill-enable-${id}`);
+          if (enableEl && !enableEl.dataset.listenerBound) {
+            enableEl.dataset.listenerBound = 'true';
+            enableEl.addEventListener('change', () => {
+              updatePillVisualState(id, enableEl.checked);
+            });
+          }
         });
       }
-      if (data.policies) {
+      if (data.policies && document.getElementById('store-faq')) {
         document.getElementById('store-faq').value = data.policies.faq_content || '';
       }
     }
