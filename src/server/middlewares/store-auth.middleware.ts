@@ -29,7 +29,8 @@ export function createStoreAuthMiddleware(merchantRepo?: MerchantRepository) {
       }
 
       let store = await repo.getStoreByWidgetKey(widgetKey.trim());
-      if (!store) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(widgetKey.trim());
+      if (!store && isUuid) {
         store = await repo.getStoreById(widgetKey.trim());
       }
       if (!store) {

@@ -628,6 +628,13 @@ function updatePillVisualState(pillId, isEnabled) {
 }
 
 async function saveAgentSettings(payload) {
+  const saveBtn = document.getElementById('btn-save-agent') || document.querySelector('#agent-form button[type="submit"]');
+  const origBtnText = saveBtn ? saveBtn.textContent : 'Save Agent Settings';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving Settings...';
+  }
+
   try {
     const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/agent`, {
       method: 'PUT',
@@ -638,8 +645,11 @@ async function saveAgentSettings(payload) {
       body: JSON.stringify(payload)
     });
     
-    if (!res.ok) throw new Error('Failed to save settings');
-    showToast('Agent settings saved successfully!');
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson?.error?.message || errJson?.message || 'Failed to save settings');
+    }
+    showToast('Agent settings & Quick Action Pills saved successfully!');
     
     // Refresh overview to update badges
     if (!document.getElementById('overview').classList.contains('hidden')) {
@@ -649,6 +659,11 @@ async function saveAgentSettings(payload) {
     await loadSectionData('my-agent');
   } catch (err) {
     showToast(err.message, true);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = origBtnText;
+    }
   }
 }
 
@@ -1049,22 +1064,30 @@ async function loadSectionData(section) {
             ? rawPills
             : (typeof rawPills === 'string' ? JSON.parse(rawPills || '[]') : []);
 
-          pills.forEach(pill => {
-            const isEnabled = pill.enabled === true || pill.enabled === 'true';
-            updatePillVisualState(pill.id, isEnabled);
+          const pillMap = new Map((pills || []).map(p => [p.id, p]));
+          const allPillIds = ['track_order', 'return_policy', 'shipping_delivery', 'whatsapp_support', 'current_offers', 'best_sellers', 'size_guide', 'gift_ideas'];
 
-            const nameEl = document.getElementById(`pill-name-${pill.id}`);
-            const urlEl = document.getElementById(`pill-url-${pill.id}`);
-            const previewEl = document.getElementById(`label-preview-${pill.id}`);
+          allPillIds.forEach(id => {
+            const pill = pillMap.get(id);
+            const isEnabled = pill
+              ? (pill.enabled !== false && pill.enabled !== 'false' && pill.enabled !== 0 && pill.enabled !== '0')
+              : true;
+            updatePillVisualState(id, isEnabled);
 
-            if (nameEl && pill.label) {
-              nameEl.value = pill.label;
-              if (previewEl) previewEl.textContent = pill.label;
-            }
-            if (urlEl && pill.url !== undefined) urlEl.value = pill.url || '';
-            if (pill.id === 'size_guide') {
-              const imgEl = document.getElementById('pill-image-size_guide');
-              if (imgEl && pill.image_url !== undefined) imgEl.value = pill.image_url || '';
+            const nameEl = document.getElementById(`pill-name-${id}`);
+            const urlEl = document.getElementById(`pill-url-${id}`);
+            const previewEl = document.getElementById(`label-preview-${id}`);
+
+            if (pill) {
+              if (nameEl && pill.label) {
+                nameEl.value = pill.label;
+                if (previewEl) previewEl.textContent = pill.label;
+              }
+              if (urlEl && pill.url !== undefined) urlEl.value = pill.url || '';
+              if (id === 'size_guide') {
+                const imgEl = document.getElementById('pill-image-size_guide');
+                if (imgEl && pill.image_url !== undefined) imgEl.value = pill.image_url || '';
+              }
             }
           });
         } catch (e) {

@@ -72,9 +72,14 @@ export function createApp(deps: AppDependencies = {}): Express {
     : path.join(__dirname, '../../src/public');
 
   app.use(express.static(publicDir, {
-    setHeaders: (res) => {
+    setHeaders: (res, filePath) => {
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       res.setHeader('Access-Control-Allow-Origin', '*');
+      if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
     },
   }));
 
