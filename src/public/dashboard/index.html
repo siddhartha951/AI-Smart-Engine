@@ -188,6 +188,14 @@
               Ad Intelligence
             </a>
           </li>
+          <li>
+            <a href="#" data-target="meta-ads">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path><path d="M12 8v8"></path></svg>
+              </span>
+              Meta Ads
+            </a>
+          </li>
         </ul>
         <div class="sidebar-footer">
           <button id="logout-btn" class="btn-secondary btn-sm" style="width: 100%;">Sign Out</button>
@@ -2112,6 +2120,163 @@
               <button id="btn-ask-ad-ai" class="btn btn-primary btn-sm">Ask AI</button>
             </div>
             <div id="ad-ai-question-answer" class="callout-box hidden" style="margin-top: 12px;"></div>
+          </div>
+        </section>
+
+        <section id="meta-ads" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <h2>Meta Ads — Live Performance</h2>
+              <p class="section-subtitle">Connect your Meta ad account and see live campaigns, ad sets and ads with real spend, CTR, CPC, conversions and ROAS from the Meta Marketing API.</p>
+            </div>
+            <div class="header-actions">
+              <span id="meta-ads-connection-pill" class="badge badge--danger">Disconnected</span>
+            </div>
+          </header>
+
+          <div id="meta-ads-expiry-warning" class="callout-box hidden" style="margin-bottom: 16px;"></div>
+
+          <!-- Meta Ads Metrics -->
+          <div class="metrics-grid">
+            <div class="stat-card">
+              <h3>Total Spend</h3>
+              <p id="meta-stat-spend">—</p>
+              <span id="meta-stat-spend-sub">Selected period</span>
+            </div>
+            <div class="stat-card">
+              <h3>Impressions</h3>
+              <p id="meta-stat-impressions">—</p>
+              <span>Ad views served</span>
+            </div>
+            <div class="stat-card">
+              <h3>Clicks</h3>
+              <p id="meta-stat-clicks">—</p>
+              <span>Link clicks</span>
+            </div>
+            <div class="stat-card">
+              <h3>CTR</h3>
+              <p id="meta-stat-ctr">—</p>
+              <span>Click-through rate</span>
+            </div>
+            <div class="stat-card">
+              <h3>Avg CPC</h3>
+              <p id="meta-stat-cpc">—</p>
+              <span>Cost per click</span>
+            </div>
+            <div class="stat-card">
+              <h3>Conversions</h3>
+              <p id="meta-stat-conversions">—</p>
+              <span>Meta-reported purchases</span>
+            </div>
+            <div class="stat-card">
+              <h3>ROAS</h3>
+              <p id="meta-stat-roas">—</p>
+              <span>Conversion value / spend</span>
+            </div>
+          </div>
+
+          <!-- Connection + Controls -->
+          <div class="ad-studio-grid">
+            <div class="panel ad-controls-card">
+              <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">Meta API Connection</h3>
+              <p class="section-subtitle" style="margin-bottom: 16px;">Paste a Meta user access token with <strong>ads_read</strong> permission. Tokens are encrypted at rest (AES-256-GCM) and never displayed again.</p>
+
+              <div class="form-group">
+                <label for="meta-access-token">Meta Access Token</label>
+                <input type="password" id="meta-access-token" class="form-control" placeholder="EAA..." autocomplete="off" spellcheck="false">
+                <small class="form-hint">Meta App Dashboard → Tools → Graph API Explorer, or your System User token. Needs <strong>ads_read</strong>.</small>
+              </div>
+
+              <div class="form-group">
+                <label for="meta-ad-account-select">Ad Account</label>
+                <select id="meta-ad-account-select" class="form-control">
+                  <option value="">— connect a token first —</option>
+                </select>
+                <small class="form-hint">Accounts this token can access. Saved with the connection.</small>
+              </div>
+
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
+                <button id="btn-meta-test" class="btn btn-secondary btn-sm">Test Token</button>
+                <button id="btn-meta-connect" class="btn btn-primary btn-sm">Connect &amp; Save</button>
+                <button id="btn-meta-disconnect" class="btn btn-secondary btn-sm hidden">Disconnect</button>
+              </div>
+              <div id="meta-connection-message" class="callout-box hidden" style="margin-top: 12px;"></div>
+            </div>
+
+            <div class="panel ad-controls-card">
+              <h3 class="card-title" style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">Performance Report</h3>
+              <p class="section-subtitle" style="margin-bottom: 16px;">Live data pulled on demand from the Meta Marketing API. <span id="meta-last-sync" style="font-weight: 600;"></span></p>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="meta-level-select">Breakdown</label>
+                  <select id="meta-level-select" class="form-control">
+                    <option value="campaign">Campaigns</option>
+                    <option value="adset">Ad Sets</option>
+                    <option value="ad">Ads</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="meta-date-preset">Date Range</label>
+                  <select id="meta-date-preset" class="form-control">
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="last_7d">Last 7 days</option>
+                    <option value="last_14d">Last 14 days</option>
+                    <option value="last_30d" selected>Last 30 days</option>
+                    <option value="last_90d">Last 90 days</option>
+                    <option value="custom">Custom…</option>
+                  </select>
+                </div>
+              </div>
+
+              <div id="meta-custom-dates" class="hidden" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="meta-since">From</label>
+                  <input type="date" id="meta-since" class="form-control">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="meta-until">To</label>
+                  <input type="date" id="meta-until" class="form-control">
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px;">
+                <button id="btn-meta-refresh" class="btn btn-primary btn-sm" style="flex: 1;">↻ Refresh Live Data</button>
+              </div>
+              <div id="meta-insights-message" class="callout-box hidden" style="margin-top: 12px;"></div>
+            </div>
+          </div>
+
+          <!-- Ads Performance Table -->
+          <div class="panel" style="margin-top: 16px;">
+            <div class="panel-header-clean" style="margin-bottom: 14px;">
+              <div>
+                <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Ads Performance</h3>
+                <p class="section-subtitle" style="margin-top: 2px;" id="meta-table-subtitle">Connect your Meta account to load live ad performance.</p>
+              </div>
+            </div>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Spend</th>
+                    <th>Impr.</th>
+                    <th>Clicks</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>Conv.</th>
+                    <th>ROAS</th>
+                    <th>Store Revenue*</th>
+                  </tr>
+                </thead>
+                <tbody id="meta-ads-table-body">
+                  <tr><td colspan="9" style="text-align: center; color: var(--color-text-secondary);">No data yet.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <small class="form-hint" style="display: block; margin-top: 8px;">*Store Revenue = revenue attributed on your store via the multi-touch attribution ledger (Meta-family sources), per campaign name.</small>
           </div>
         </section>
       </main>

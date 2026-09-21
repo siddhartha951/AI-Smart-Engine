@@ -263,6 +263,24 @@ export interface WhatsAppConfig {
   updated_at: Date;
 }
 
+export type MetaAdsConfigStatus = 'disconnected' | 'connected' | 'error';
+
+export interface MetaAdsConfig {
+  id: string;
+  store_id: string;
+  encrypted_access_token: string | null;
+  ad_account_id: string | null;
+  ad_account_name: string | null;
+  account_currency: string | null;
+  token_connected_at: Date | null;
+  token_expires_at: Date | null;
+  status: MetaAdsConfigStatus;
+  last_error: string | null;
+  last_sync_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface WhatsAppConsent {
   id: string;
   store_id: string;

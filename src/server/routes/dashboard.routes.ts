@@ -15,6 +15,7 @@ import { replenishmentRouter } from './replenishment.routes';
 import { attributionRouter } from './attribution.routes';
 import { growthRouter } from './growth.routes';
 import { aiRouter } from './ai.routes';
+import { metaAdsRouter } from './meta-ads.routes';
 import { enforceFeature } from '../middlewares/entitlement.middleware';
 import { FeatureKey } from '../../modules/entitlements/entitlement.types';
 import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
@@ -1483,6 +1484,9 @@ router.use('/:storeId/growth', enforceStoreAccess, enforceFeature(FeatureKey.GRO
 
 // 13. AI Intelligence Layer & Domain Analytics
 router.use('/:storeId/ai', enforceStoreAccess, aiRouter);
+
+// 14. Meta Ads Integration (live ads + performance from Meta Marketing API)
+router.use('/:storeId/meta-ads', enforceStoreAccess, enforceFeature(FeatureKey.AD_INTELLIGENCE), metaAdsRouter);
 
 export default router;
 
