@@ -52,6 +52,20 @@ export class GrowthService {
       reorder_schedules_due: telemetry.reordersDue,
       estimated_growth_opportunity: parseFloat(totalOpportunity.toFixed(2)),
       currency: telemetry.currency,
+      email_recovery: {
+        jobs_total: telemetry.emailRecovery.jobsTotal,
+        jobs_sent: telemetry.emailRecovery.jobsSent,
+        jobs_failed: telemetry.emailRecovery.jobsFailed,
+        jobs_cancelled: telemetry.emailRecovery.jobsCancelled,
+        recovered_shoppers: telemetry.emailRecovery.recoveredShoppers,
+        recovered_revenue: parseFloat(telemetry.emailRecovery.recoveredRevenue.toFixed(2)),
+      },
+      whatsapp: {
+        messages_sent: telemetry.whatsapp.messagesSent,
+        conversations: telemetry.whatsapp.conversations,
+        recovery_jobs_total: telemetry.whatsapp.recoveryJobsTotal,
+        recovery_jobs_sent: telemetry.whatsapp.recoveryJobsSent,
+      },
     };
   }
 
@@ -224,6 +238,45 @@ export class GrowthService {
     }
 
     // ----------------------------------------------------
+    // RULE 8: Email Recovery Underperforming (email module -> growth)
+    // ----------------------------------------------------
+    if (telemetry.emailRecovery.jobsSent >= 5 && telemetry.emailRecovery.recoveredRevenue === 0) {
+      rawOpportunities.push({
+        action_key: 'email_recovery_underperforming',
+        title: 'Recovery emails sent but converting nothing',
+        priority: 'high',
+        reason: `${telemetry.emailRecovery.jobsSent} abandoned cart recovery emails were sent, but none have converted into purchases yet. Review subject lines, timing, and discount incentives.`,
+        estimated_opportunity: parseFloat((telemetry.emailRecovery.jobsSent * 0.05 * aov).toFixed(2)),
+        action_type: 'OPEN_CART_RECOVERY',
+        target_module: 'email-automation',
+        target_id: 'recovery',
+        metadata: {
+          emails_sent: telemetry.emailRecovery.jobsSent,
+          emails_failed: telemetry.emailRecovery.jobsFailed,
+          recovered_revenue: telemetry.emailRecovery.recoveredRevenue
+        }
+      });
+    }
+
+    // ----------------------------------------------------
+    // RULE 9: WhatsApp Recovery Not Activated (whatsapp module -> growth)
+    // ----------------------------------------------------
+    if (telemetry.eligibleAbandonedCarts > 0 && telemetry.whatsapp.recoveryJobsSent === 0) {
+      const estimatedOpp = parseFloat((telemetry.eligibleAbandonedCarts * aov * 0.12).toFixed(2));
+      rawOpportunities.push({
+        action_key: 'whatsapp_recovery_inactive',
+        title: 'Activate WhatsApp cart recovery',
+        priority: 'medium',
+        reason: `${telemetry.eligibleAbandonedCarts} consented shoppers abandoned carts, but no WhatsApp recovery messages have been sent. WhatsApp typically converts faster than email for cart recovery.`,
+        estimated_opportunity: estimatedOpp,
+        action_type: 'OPEN_WHATSAPP_RECOVERY',
+        target_module: 'whatsapp',
+        target_id: 'recovery',
+        metadata: { eligible_count: telemetry.eligibleAbandonedCarts }
+      });
+    }
+
+    // ----------------------------------------------------
     // Apply Dynamic Goal-Based Prioritization
     // ----------------------------------------------------
     const prioritized = rawOpportunities.map(opp => {
@@ -231,7 +284,7 @@ export class GrowthService {
 
       if (primaryGoal === 'improve_roas' && (opp.action_key.includes('campaign') || opp.action_type === 'VIEW_CAMPAIGN')) {
         finalPriority = 'critical';
-      } else if (primaryGoal === 'recover_abandoned_carts' && opp.action_type === 'OPEN_CART_RECOVERY') {
+      } else if (primaryGoal === 'recover_abandoned_carts' && (opp.action_type === 'OPEN_CART_RECOVERY' || opp.action_type === 'OPEN_WHATSAPP_RECOVERY')) {
         finalPriority = 'critical';
       } else if (primaryGoal === 'increase_repeat_purchases' && opp.action_type === 'OPEN_REORDER') {
         finalPriority = 'critical';
@@ -361,6 +414,14 @@ export class GrowthService {
       whatChanged.push(`AI Assistant has influenced ${telemetry.currency} ${telemetry.aiAssistedRevenue.toFixed(2)} in sales.`);
     }
 
+    if (telemetry.emailRecovery.jobsSent > 0) {
+      whatChanged.push(`Email recovery sent ${telemetry.emailRecovery.jobsSent} abandoned cart emails, recovering ${telemetry.currency} ${telemetry.emailRecovery.recoveredRevenue.toFixed(2)} from ${telemetry.emailRecovery.recoveredShoppers} shoppers.`);
+    }
+
+    if (telemetry.whatsapp.messagesSent > 0) {
+      whatChanged.push(`WhatsApp channel dispatched ${telemetry.whatsapp.messagesSent} outbound messages across ${telemetry.whatsapp.conversations} conversations.`);
+    }
+
     return {
       period_start: sevenDaysAgo.toISOString().split('T')[0],
       period_end: now.toISOString().split('T')[0],
@@ -371,7 +432,7 @@ export class GrowthService {
         ad_spend: telemetry.totalSpend,
         roas,
         ai_assisted_revenue: telemetry.aiAssistedRevenue,
-        recovered_revenue: 0, // Tracked when recovery clicks convert
+        recovered_revenue: parseFloat(telemetry.emailRecovery.recoveredRevenue.toFixed(2)),
         reorder_revenue: 0,
         currency: telemetry.currency
       },
@@ -409,6 +470,11 @@ export class GrowthService {
       ai_assisted_revenue: telemetry.aiAssistedRevenue,
       abandoned_carts: telemetry.abandonedCartsCount,
       reorders_due: telemetry.reordersDue,
+      email_recovery_sent: telemetry.emailRecovery.jobsSent,
+      email_recovered_revenue: telemetry.emailRecovery.recoveredRevenue,
+      email_recovered_shoppers: telemetry.emailRecovery.recoveredShoppers,
+      whatsapp_messages_sent: telemetry.whatsapp.messagesSent,
+      whatsapp_recovery_sent: telemetry.whatsapp.recoveryJobsSent,
       top_action: actions[0]?.title || 'Maintain current growth trajectory',
       currency: telemetry.currency
     };
@@ -430,6 +496,8 @@ Verified Metrics:
 - Ad Spend: ${verifiedMetrics.currency} ${verifiedMetrics.total_ad_spend}
 - ROAS: ${verifiedMetrics.roas}
 - AI-Assisted Revenue: ${verifiedMetrics.currency} ${verifiedMetrics.ai_assisted_revenue}
+- Email Recovery: ${verifiedMetrics.email_recovery_sent} recovery emails sent, ${verifiedMetrics.currency} ${verifiedMetrics.email_recovered_revenue} recovered from ${verifiedMetrics.email_recovered_shoppers} shoppers
+- WhatsApp: ${verifiedMetrics.whatsapp_messages_sent} outbound messages sent (${verifiedMetrics.whatsapp_recovery_sent} recovery messages)
 - Abandoned Carts: ${verifiedMetrics.abandoned_carts}
 - Due Reorders: ${verifiedMetrics.reorders_due}
 - Recommended Next Step: ${verifiedMetrics.top_action}

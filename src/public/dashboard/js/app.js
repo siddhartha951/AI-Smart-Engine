@@ -4341,34 +4341,69 @@ async function openStoreAuditModal() {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${state.token}`
       },
-      body: JSON.stringify({ forceRefresh: false })
+      body: JSON.stringify({ forceRefresh: true })
     });
-    if (!res.ok) throw new Error('Failed to run store audit');
+    if (!res.ok) throw new Error(`Failed to run store audit (HTTP ${res.status})`);
     const { data } = await res.json();
 
-    document.getElementById('audit-overall-score').textContent = `${data.overall_health_score}/100`;
-    document.getElementById('audit-conv-score').textContent = `${data.conversion_health_score}/100`;
-    document.getElementById('audit-listing-score').textContent = `${data.listing_quality_score}/100`;
-    document.getElementById('audit-ad-score').textContent = `${data.traffic_and_ad_quality_score}/100`;
+    // Backend StoreAnalysisSchema fields: health_score, summary, strengths,
+    // problems, opportunities, priority_actions, catalogue_issues,
+    // conversion_issues, marketing_issues, revenue_opportunities.
+    const healthScore = typeof data.health_score === 'number' ? data.health_score : null;
+    document.getElementById('audit-overall-score').textContent = healthScore !== null ? `${healthScore}/100` : 'N/A';
 
-    summaryEl.textContent = data.summary;
+    const convIssues = Array.isArray(data.conversion_issues) ? data.conversion_issues : [];
+    const catalogueIssues = Array.isArray(data.catalogue_issues) ? data.catalogue_issues : [];
+    const marketingIssues = Array.isArray(data.marketing_issues) ? data.marketing_issues : [];
+    const problems = Array.isArray(data.problems) ? data.problems : [];
 
-    if (Array.isArray(data.top_friction_points)) {
-      frictionList.innerHTML = data.top_friction_points.map(f => `<li>${escapeHtml(f)}</li>`).join('');
-    }
+    document.getElementById('audit-conv-score').textContent = `${convIssues.length}`;
+    document.getElementById('audit-listing-score').textContent = `${catalogueIssues.length}`;
+    document.getElementById('audit-ad-score').textContent = `${marketingIssues.length}`;
 
-    if (Array.isArray(data.step_by_step_recommendations)) {
-      recList.innerHTML = data.step_by_step_recommendations.map(r => `
+    summaryEl.textContent = data.summary || 'No summary available.';
+
+    const frictionPoints = [...problems, ...convIssues, ...catalogueIssues, ...marketingIssues];
+    frictionList.innerHTML = frictionPoints.length
+      ? frictionPoints.map(f => `<li>${escapeHtml(String(f))}</li>`).join('')
+      : '<li>No friction points detected.</li>';
+
+    const priorityActions = Array.isArray(data.priority_actions) ? data.priority_actions : [];
+    const opportunities = Array.isArray(data.opportunities) ? data.opportunities : [];
+    const revenueOpps = Array.isArray(data.revenue_opportunities) ? data.revenue_opportunities : [];
+
+    const cards = [];
+    priorityActions.forEach((a, i) => {
+      cards.push(`
         <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <strong style="font-size: 13px; color: #34d399;">Step ${r.step}: ${escapeHtml(r.action)}</strong>
-            <span class="badge" style="font-size: 10px; text-transform: uppercase;">${r.priority} Priority</span>
+            <strong style="font-size: 13px; color: #34d399;">Step ${i + 1}: ${escapeHtml(a.title || 'Recommended action')}</strong>
+            <span class="badge" style="font-size: 10px; text-transform: uppercase;">${escapeHtml(a.impact || a.priority || '')}</span>
           </div>
-          <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(r.rationale)}</div>
-          <div style="font-size: 11px; color: #818cf8; margin-top: 2px;">Expected Impact: ${escapeHtml(r.expected_impact)}</div>
-        </div>
-      `).join('');
-    }
+          <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(a.explanation || '')}</div>
+          ${a.suggested_action ? `<div style="font-size: 11px; color: #818cf8; margin-top: 2px;">Next: ${escapeHtml(a.suggested_action)}</div>` : ''}
+          ${a.supporting_metric ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Metric: ${escapeHtml(a.supporting_metric)}</div>` : ''}
+        </div>`);
+    });
+    opportunities.forEach(o => {
+      cards.push(`
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
+          <strong style="font-size: 13px; color: #34d399;">Opportunity</strong>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${escapeHtml(String(o))}</div>
+        </div>`);
+    });
+    revenueOpps.forEach(o => {
+      cards.push(`
+        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <strong style="font-size: 13px; color: #34d399;">${escapeHtml(o.title || 'Revenue opportunity')}</strong>
+            ${o.estimated_monthly_impact_usd ? `<span class="badge" style="font-size: 10px;">+$${escapeHtml(String(o.estimated_monthly_impact_usd))}/mo</span>` : ''}
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted);">${escapeHtml(o.rationale || '')}</div>
+          ${o.action ? `<div style="font-size: 11px; color: #818cf8; margin-top: 2px;">Action: ${escapeHtml(o.action)}</div>` : ''}
+        </div>`);
+    });
+    recList.innerHTML = cards.length ? cards.join('') : '<div>No recommendations available.</div>';
   } catch (err) {
     summaryEl.innerHTML = `<span style="color: var(--danger);">${escapeHtml(err.message)}</span>`;
   }

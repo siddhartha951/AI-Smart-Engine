@@ -7,6 +7,7 @@ import {
   MerchantGoalType,
 } from '../../database/types';
 import { TenantIsolationError } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 
 export class GrowthRepository {
   private db: IDatabaseClient;
@@ -394,6 +395,79 @@ export class GrowthRepository {
     );
     const totalProductClicks = parseInt(productClickRes.rows[0]?.click_count || '0', 10);
 
+    // 9. Email Recovery Performance (connects the email module to growth telemetry)
+    const emailRes = await this.db.query(
+      `SELECT
+         COUNT(*) as jobs_total,
+         COUNT(*) FILTER (WHERE status = 'sent') as jobs_sent,
+         COUNT(*) FILTER (WHERE status = 'failed') as jobs_failed,
+         COUNT(*) FILTER (WHERE status = 'cancelled') as jobs_cancelled
+       FROM email_campaign_events
+       WHERE store_id = $1`,
+      [storeId]
+    );
+    const emailJobs = emailRes.rows[0] || {};
+    const emailJobsTotal = parseInt(emailJobs.jobs_total || '0', 10);
+    const emailJobsSent = parseInt(emailJobs.jobs_sent || '0', 10);
+    const emailJobsFailed = parseInt(emailJobs.jobs_failed || '0', 10);
+    const emailJobsCancelled = parseInt(emailJobs.jobs_cancelled || '0', 10);
+
+    // Revenue recovered via email: purchases by visitors who received a sent
+    // recovery email before completing the purchase. Written without a
+    // correlated subquery for pg-mem compatibility (tests run on pg-mem).
+    const emailRecoveredRes = await this.db.query(
+      `SELECT
+         COUNT(DISTINCT e.visitor_id) as recovered_shoppers,
+         COALESCE(SUM(CAST(e.payload->>'total_price' AS NUMERIC)), 0) as recovered_revenue
+       FROM events e
+       JOIN (
+         SELECT visitor_id, MIN(sent_at) as first_sent_at
+         FROM email_campaign_events
+         WHERE store_id = $1 AND status = 'sent' AND sent_at IS NOT NULL
+         GROUP BY visitor_id
+       ) fre ON fre.visitor_id = e.visitor_id AND fre.first_sent_at <= e.created_at
+       WHERE e.store_id = $1
+         AND e.type = 'purchase_completed'
+         AND e.payload->>'total_price' IS NOT NULL
+         AND e.payload->>'total_price' <> ''`,
+      [storeId, storeId]
+    );
+    const emailRecovered = emailRecoveredRes.rows[0] || {};
+    const emailRecoveredShoppers = parseInt(emailRecovered.recovered_shoppers || '0', 10);
+    const emailRecoveredRevenue = parseFloat(emailRecovered.recovered_revenue || '0');
+
+    // 10. WhatsApp Performance (connects the whatsapp module to growth telemetry)
+    // whatsapp_* tables ship with newer migrations; degrade gracefully if absent.
+    let whatsappSent = 0;
+    let whatsappConversations = 0;
+    let whatsappRecoveryJobsTotal = 0;
+    let whatsappRecoveryJobsSent = 0;
+    try {
+      const waRes = await this.db.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE direction = 'outbound' AND status IN ('sent', 'delivered', 'read')) as sent_count,
+           COUNT(DISTINCT conversation_id) as conversation_count
+         FROM whatsapp_messages
+         WHERE store_id = $1`,
+        [storeId]
+      );
+      whatsappSent = parseInt(waRes.rows[0]?.sent_count || '0', 10);
+      whatsappConversations = parseInt(waRes.rows[0]?.conversation_count || '0', 10);
+
+      const waJobsRes = await this.db.query(
+        `SELECT
+           COUNT(*) as jobs_total,
+           COUNT(*) FILTER (WHERE status = 'sent') as jobs_sent
+         FROM whatsapp_recovery_jobs
+         WHERE store_id = $1`,
+        [storeId]
+      );
+      whatsappRecoveryJobsTotal = parseInt(waJobsRes.rows[0]?.jobs_total || '0', 10);
+      whatsappRecoveryJobsSent = parseInt(waJobsRes.rows[0]?.jobs_sent || '0', 10);
+    } catch (waErr: any) {
+      logger.warn(`WhatsApp telemetry unavailable for store ${storeId}: ${waErr?.message || waErr}`);
+    }
+
     return {
       storeId,
       currency,
@@ -419,7 +493,21 @@ export class GrowthRepository {
         roas: parseFloat(r.spend) > 0 ? parseFloat((parseFloat(r.revenue) / parseFloat(r.spend)).toFixed(2)) : 0
       })),
       totalRecommendations,
-      totalProductClicks
+      totalProductClicks,
+      emailRecovery: {
+        jobsTotal: emailJobsTotal,
+        jobsSent: emailJobsSent,
+        jobsFailed: emailJobsFailed,
+        jobsCancelled: emailJobsCancelled,
+        recoveredShoppers: emailRecoveredShoppers,
+        recoveredRevenue: emailRecoveredRevenue,
+      },
+      whatsapp: {
+        messagesSent: whatsappSent,
+        conversations: whatsappConversations,
+        recoveryJobsTotal: whatsappRecoveryJobsTotal,
+        recoveryJobsSent: whatsappRecoveryJobsSent,
+      },
     };
   }
 }

@@ -327,24 +327,34 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
 
     try {
       logger.info(`Generating AI ad image via OpenAI for product "${product.title}"`);
-      let response;
-      let usedModel = 'gpt-image-1.5';
 
       const candidateModels = ['gpt-image-1.5', 'gpt-image-1', 'dall-e-3'];
       let lastErr: any = null;
+      let imageUrl: string | undefined;
+      let revisedPrompt: string | undefined;
+      let usedModel = candidateModels[0];
 
       for (const m of candidateModels) {
         try {
-          usedModel = m;
-          response = await this.openai.images.generate({
+          const response = await this.openai.images.generate({
             model: m,
             prompt: dallEPrompt,
             n: 1,
             size: '1024x1024',
           });
-          if (response?.data?.[0]?.url) {
+          const datum: any = response?.data?.[0];
+          // NOTE: the gpt-image-1 family returns `b64_json` (no hosted URL);
+          // dall-e models return `url`. Accept either so successful
+          // generations are never discarded as failures.
+          const url = datum?.url
+            || (datum?.b64_json ? `data:image/png;base64,${datum.b64_json}` : undefined);
+          if (url) {
+            imageUrl = url;
+            revisedPrompt = datum?.revised_prompt;
+            usedModel = m;
             break;
           }
+          lastErr = new Error(`Model ${m} returned an empty image response.`);
         } catch (mErr: any) {
           lastErr = mErr;
           if (mErr?.message?.includes('does not exist') || mErr?.code === 'invalid_value') {
@@ -354,18 +364,13 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
         }
       }
 
-      if (!response?.data?.[0]?.url) {
-        throw lastErr || new Error('OpenAI returned empty image response.');
-      }
-
-      const imageUrl = response.data?.[0]?.url;
       if (!imageUrl) {
-        throw new Error('OpenAI returned empty image response.');
+        throw lastErr || new Error('OpenAI returned empty image response.');
       }
 
       return {
         image_url: imageUrl,
-        revised_prompt: response.data?.[0]?.revised_prompt || dallEPrompt,
+        revised_prompt: revisedPrompt || dallEPrompt,
         model: usedModel,
         estimated_cost_usd: 0.040,
       };
@@ -415,14 +420,39 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
         err?.message?.includes('quota') ||
         err?.message?.includes('billing');
 
-      // Dynamically generate a brand-new AI commercial visual via Flux for this exact product
+      // Last resort: free Flux engine via pollinations.ai. The URL is verified
+      // server-side before it reaches the merchant, so a broken or
+      // rate-limited upstream never surfaces as a broken image in the studio.
       const seed = Math.floor(Math.random() * 900000) + 100000;
       const cleanPrompt = encodeURIComponent(`Commercial advertising visual of ${product.title}, ${product.category || 'fashion'}, professional studio lighting, 8k resolution, photorealistic commercial product photography`);
       const aiGeneratedUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
 
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000);
+        let verifyRes: Response;
+        try {
+          verifyRes = await fetch(aiGeneratedUrl, { signal: controller.signal });
+        } finally {
+          clearTimeout(timeout);
+        }
+        const contentType = verifyRes.headers.get('content-type') || '';
+        if (!verifyRes.ok || !contentType.startsWith('image/')) {
+          throw new Error(`Pollinations returned ${verifyRes.status} (${contentType || 'non-image response'})`);
+        }
+      } catch (verifyErr: any) {
+        logger.warn('Pollinations Flux fallback verification failed:', verifyErr?.message || verifyErr);
+        throw new Error(
+          'All AI image providers failed. ' +
+          (isQuotaOrCredits
+            ? 'Your OpenAI API key has no credits — add credits at platform.openai.com/billing, or set GEMINI_API_KEY (free tier) to use Google Imagen 3.'
+            : `Last provider error: ${err?.message || err}`)
+        );
+      }
+
       const notice = isQuotaOrCredits
-        ? '✨ Real AI visual generated via Flux engine! (OpenAI API key has $0.00 credits. Add credits at platform.openai.com/billing to switch to DALL-E 3).'
-        : `✨ AI visual generated via Flux engine (${err?.message || 'OpenAI API limit'}).`;
+        ? '✨ AI visual generated via free Flux engine (OpenAI key has no credits — add credits at platform.openai.com/billing for premium models, or set GEMINI_API_KEY).'
+        : `✨ AI visual generated via free Flux engine (${err?.message || 'OpenAI API limit'}).`;
 
       return {
         image_url: aiGeneratedUrl,
@@ -465,7 +495,12 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
       try {
         parsed = extractAndParseJson<any>(raw);
       } catch (err: any) {
-        logger.warn('Failed to parse OpenAI JSON response, activating fallback engine:', err.message);
+        logger.warn('Failed to parse OpenAI JSON response:', err.message);
+        if (env.NODE_ENV === 'production') {
+          // Never serve canned mock audit data in production; surface the failure honestly.
+          throw new Error(`AI provider returned an unparseable response: ${err.message}`);
+        }
+        logger.warn('Activating mock fallback engine (non-production)');
         const mockFallback = new MockAiProvider();
         return mockFallback.generateStructuredJson<T>(prompt, schema, options);
       }
@@ -480,7 +515,12 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
           try {
             validated = schema.parse(parsed);
           } catch (_parseErr) {
-            logger.warn('Tolerant schema parse failed, activating fallback engine');
+            logger.warn('Tolerant schema parse failed');
+            if (env.NODE_ENV === 'production') {
+              // Never serve canned mock audit data in production; surface the failure honestly.
+              throw new Error('AI provider response did not match the required schema.');
+            }
+            logger.warn('Activating mock fallback engine (non-production)');
             const mockFallback = new MockAiProvider();
             return mockFallback.generateStructuredJson<T>(prompt, schema, options);
           }
@@ -499,7 +539,12 @@ Generate 3 diverse, highly engaging creative variations tailored to this product
         model,
       };
     } catch (err: any) {
-      logger.warn('OpenAiProvider.generateStructuredJson error, activating fallback engine:', err?.message || err);
+      logger.warn('OpenAiProvider.generateStructuredJson error:', err?.message || err);
+      if (env.NODE_ENV === 'production') {
+        // Never serve canned mock audit data in production; surface the failure honestly.
+        throw err;
+      }
+      logger.warn('Activating mock fallback engine (non-production)');
       const mockFallback = new MockAiProvider();
       return mockFallback.generateStructuredJson<T>(prompt, schema, options);
     }

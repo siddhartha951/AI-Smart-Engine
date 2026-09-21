@@ -321,6 +321,10 @@ Target Platform: ${platformLabel}
     }
 
     // Resilient fallback via MockAiProvider / dynamic visual
+    if (getEnvConfig().NODE_ENV === 'production') {
+      // Never serve a generic stock photo as an "AI generated" visual in production.
+      throw new Error('Google Imagen 3 is unavailable and no fallback image provider is configured.');
+    }
     logger.warn('Gemini Imagen 3 not available or no key, falling back to mock / commercial visual');
     return this.mockFallback.generateAdImage(context);
   }
@@ -330,7 +334,12 @@ Target Platform: ${platformLabel}
     schema: any,
     options?: StructuredAiOptions
   ): Promise<StructuredAiResult<T>> {
+    const isProduction = getEnvConfig().NODE_ENV === 'production';
     if (!this.apiKey) {
+      if (isProduction) {
+        // Never serve canned mock audit data in production; surface the failure honestly.
+        throw new Error('GEMINI_API_KEY is not configured, so AI analysis is unavailable.');
+      }
       logger.warn('GeminiAiProvider: No GEMINI_API_KEY found, falling back to mock structured JSON');
       return this.mockFallback.generateStructuredJson<T>(prompt, schema, options);
     }
@@ -373,7 +382,12 @@ Target Platform: ${platformLabel}
           try {
             validatedData = schema.parse(parsed);
           } catch (_parseErr) {
-            logger.warn('Tolerant schema parse failed, falling back to mock provider');
+            logger.warn('Tolerant schema parse failed');
+            if (isProduction) {
+              // Never serve canned mock audit data in production; surface the failure honestly.
+              throw new Error('AI provider response did not match the required schema.');
+            }
+            logger.warn('Falling back to mock provider (non-production)');
             return this.mockFallback.generateStructuredJson<T>(prompt, schema, options);
           }
         }
@@ -393,6 +407,10 @@ Target Platform: ${platformLabel}
       };
     } catch (err: any) {
       logger.warn('GeminiAiProvider.generateStructuredJson error:', { error: err.message });
+      if (isProduction) {
+        // Never serve canned mock audit data in production; surface the failure honestly.
+        throw err;
+      }
       return this.mockFallback.generateStructuredJson<T>(prompt, schema, options);
     }
   }
