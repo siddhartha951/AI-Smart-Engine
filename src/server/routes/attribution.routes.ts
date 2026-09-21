@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { AttributionService } from '../../modules/attribution/attribution.service';
 import { getDatabaseClient } from '../../database/client';
-import { ValidationError, TenantIsolationError } from '../../utils/errors';
+import { ValidationError } from '../../utils/errors';
 import { AttributionModel } from '../../database/types';
 
 export const attributionRouter = Router({ mergeParams: true });
@@ -187,24 +187,25 @@ attributionRouter.delete('/spend/:id', async (req: Request, res: Response, next:
 // ==========================================
 
 // POST /api/v1/attribution/touchpoint
+// Public storefront beacon. This endpoint must NEVER hard-fail on stale
+// identifiers: merchants can embed an outdated store_id in their theme
+// snippet, and the widget can send session/visitor ids restored from browser
+// storage after a DB reset. Unknown references are dropped gracefully with a
+// warning instead of a 403/500 that spams the server logs.
+const TOUCHPOINT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 publicAttributionRouter.post('/touchpoint', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const body = req.body || {};
     const {
       store_id,
       visitor_id,
       session_id,
       touchpoint_type,
-      source,
-      medium,
-      campaign,
-      content,
-      term,
       fbclid,
       gclid,
       ttclid,
-      landing_page_url,
-      referrer_url,
-    } = req.body;
+    } = body;
 
     if (!store_id) {
       throw new ValidationError('store_id is required');
@@ -215,10 +216,41 @@ publicAttributionRouter.post('/touchpoint', async (req: Request, res: Response, 
 
     const db = (req as any).db || getDatabaseClient();
 
-    // Verify store exists
+    // The storefront widget sends utm_* field names; accept both the
+    // canonical names and the utm_* aliases so attribution data is not
+    // silently recorded with null source/medium/campaign.
+    const source = body.source ?? body.utm_source;
+    const medium = body.medium ?? body.utm_medium;
+    const campaign = body.campaign ?? body.utm_campaign;
+    const content = body.content ?? body.utm_content;
+    const term = body.term ?? body.utm_term;
+    const landingPageUrl = body.landing_page_url ?? body.landing_page;
+    const referrerUrl = body.referrer_url ?? body.referrer;
+
+    // Verify store exists — drop gracefully on unknown/stale store ids
+    if (!TOUCHPOINT_UUID_RE.test(String(store_id))) {
+      console.warn(`[Attribution] Dropping touchpoint with malformed store_id ${store_id}`);
+      res.status(200).json({ success: true, dropped: true, reason: 'unknown_store' });
+      return;
+    }
     const storeRes = await db.query('SELECT id FROM stores WHERE id = $1', [store_id]);
     if (storeRes.rows.length === 0) {
-      throw new TenantIsolationError(`Store not found: ${store_id}`);
+      console.warn(`[Attribution] Dropping touchpoint for unknown store_id ${store_id}`);
+      res.status(200).json({ success: true, dropped: true, reason: 'unknown_store' });
+      return;
+    }
+
+    // Verify visitor exists and belongs to the store — drop gracefully otherwise
+    if (!TOUCHPOINT_UUID_RE.test(String(visitor_id))) {
+      console.warn(`[Attribution] Dropping touchpoint with malformed visitor_id ${visitor_id} for store ${store_id}`);
+      res.status(200).json({ success: true, dropped: true, reason: 'unknown_visitor' });
+      return;
+    }
+    const visitorRes = await db.query('SELECT id FROM visitors WHERE id = $1 AND store_id = $2', [visitor_id, store_id]);
+    if (visitorRes.rows.length === 0) {
+      console.warn(`[Attribution] Dropping touchpoint for unknown visitor ${visitor_id} in store ${store_id}`);
+      res.status(200).json({ success: true, dropped: true, reason: 'unknown_visitor' });
+      return;
     }
 
     const service = new AttributionService({ db });
@@ -234,8 +266,8 @@ publicAttributionRouter.post('/touchpoint', async (req: Request, res: Response, 
       fbclid,
       gclid,
       ttclid,
-      landingPageUrl: landing_page_url,
-      referrerUrl: referrer_url,
+      landingPageUrl,
+      referrerUrl,
     });
 
     res.status(201).json({

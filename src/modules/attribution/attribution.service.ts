@@ -72,8 +72,34 @@ export class AttributionService {
       }
     }
 
+    // Guard: the storefront widget can send a stale session_id (restored from
+    // browser storage after a DB reset/migration). Inserting it blindly would
+    // violate the marketing_touchpoints session FK and turn a telemetry write
+    // into a 500. Unknown sessions degrade to NULL instead.
+    let safeSessionId: string | null = params.sessionId || null;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(safeSessionId || '');
+    if (safeSessionId && !isUuid) {
+      logger.warn(
+        `[Attribution] Dropping malformed session_id ${safeSessionId} for store ${storeId}`
+      );
+      safeSessionId = null;
+    }
+    if (safeSessionId) {
+      const sessionCheck = await this.db.query(
+        `SELECT id FROM chat_sessions WHERE store_id = $1 AND id = $2`,
+        [storeId, safeSessionId]
+      );
+      if (sessionCheck.rows.length === 0) {
+        logger.warn(
+          `[Attribution] Dropping stale session_id ${safeSessionId} for store ${storeId}: session not found`
+        );
+        safeSessionId = null;
+      }
+    }
+
     return this.repo.recordTouchpoint(storeId, {
       ...params,
+      sessionId: safeSessionId,
       source,
       medium,
       campaign,

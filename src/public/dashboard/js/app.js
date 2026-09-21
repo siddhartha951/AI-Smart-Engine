@@ -84,7 +84,8 @@ const sections = {
   'whatsapp-growth': document.getElementById('whatsapp-growth'),
   'email-automation': document.getElementById('email-automation'),
   'reorder-reminders': document.getElementById('reorder-reminders'),
-  'ad-intelligence': document.getElementById('ad-intelligence')
+  'ad-intelligence': document.getElementById('ad-intelligence'),
+  'meta-ads': document.getElementById('meta-ads')
 };
 
 let adStudioState = {
@@ -1016,6 +1017,11 @@ async function loadSectionData(section) {
 
     if (section === 'ad-intelligence') {
       await loadAdIntelligenceData();
+      return;
+    }
+
+    if (section === 'meta-ads') {
+      await loadMetaAdsData();
       return;
     }
 
@@ -4203,6 +4209,7 @@ const NAV_FEATURE_MAP = {
   'email-automation': 'email_automation',
   'reorder-reminders': 'smart_reorder',
   'ad-intelligence': 'ad_intelligence',
+  'meta-ads': 'ad_intelligence',
 };
 
 async function fetchStoreFeatures() {
@@ -4901,6 +4908,15 @@ function setupAiIntelligenceListeners() {
     if (e.key === 'Enter') { e.preventDefault(); askAdAi(); }
   });
 
+  // Meta Ads Integration
+  document.getElementById('btn-meta-test')?.addEventListener('click', testMetaToken);
+  document.getElementById('btn-meta-connect')?.addEventListener('click', connectMetaAds);
+  document.getElementById('btn-meta-disconnect')?.addEventListener('click', disconnectMetaAds);
+  document.getElementById('btn-meta-refresh')?.addEventListener('click', () => refreshMetaInsights(true));
+  document.getElementById('meta-date-preset')?.addEventListener('change', onMetaDatePresetChange);
+  document.getElementById('meta-level-select')?.addEventListener('change', () => refreshMetaInsights(false));
+  document.getElementById('meta-ad-account-select')?.addEventListener('change', () => refreshMetaInsights(false));
+
   // Growth Copilot Ask Modal
   document.getElementById('close-copilot-ask-modal')?.addEventListener('click', () => {
     document.getElementById('copilot-ask-modal')?.classList.add('hidden');
@@ -4924,4 +4940,284 @@ function setupAiIntelligenceListeners() {
       }
     });
   });
+}
+
+// ============================================================================
+// Meta Ads Integration (live Meta Marketing API performance)
+// ============================================================================
+
+const META_API_BASE = () => `/api/v1/dashboard/${state.activeStoreId}/meta-ads`;
+
+async function metaApi(path, options = {}) {
+  const res = await fetch(`${META_API_BASE()}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${state.token}`,
+      ...(options.headers || {}),
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `Request failed (${res.status})`);
+  }
+  return body.data;
+}
+
+function setMetaMessage(elId, text, isError = false) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!text) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.innerHTML = `<span style="color: ${isError ? 'var(--danger)' : 'var(--color-success)'};">${escapeHtml(text)}</span>`;
+}
+
+function metaMoney(value, currency) {
+  const num = Number(value || 0);
+  const sym = getCurrencySymbol(currency || state.activeStoreCurrency);
+  return `${sym}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+async function loadMetaAdsData() {
+  if (!state.activeStoreId) return;
+  try {
+    const status = await metaApi('/config');
+    renderMetaStatus(status);
+    if (status.connected) {
+      await refreshMetaInsights(false);
+    } else {
+      renderMetaInsightsEmpty();
+    }
+  } catch (err) {
+    setMetaMessage('meta-connection-message', err.message, true);
+  }
+}
+
+function renderMetaStatus(status) {
+  const pill = document.getElementById('meta-ads-connection-pill');
+  if (pill) {
+    if (status.connected) {
+      pill.className = 'badge badge--success';
+      pill.textContent = status.adAccountName ? `Connected · ${status.adAccountName}` : 'Connected';
+    } else if (status.status === 'error') {
+      pill.className = 'badge badge--danger';
+      pill.textContent = 'Connection Error';
+    } else {
+      pill.className = 'badge badge--danger';
+      pill.textContent = 'Disconnected';
+    }
+  }
+
+  const disconnectBtn = document.getElementById('btn-meta-disconnect');
+  if (disconnectBtn) disconnectBtn.classList.toggle('hidden', !status.connected);
+
+  const select = document.getElementById('meta-ad-account-select');
+  if (select && status.connected && status.adAccountId) {
+    select.innerHTML = `<option value="${escapeHtml(status.adAccountId)}">${escapeHtml(status.adAccountName || status.adAccountId)}${status.accountCurrency ? ` (${escapeHtml(status.accountCurrency)})` : ''}</option>`;
+    select.value = status.adAccountId;
+  }
+
+  const warnBox = document.getElementById('meta-ads-expiry-warning');
+  if (warnBox) {
+    if (status.tokenExpiryNote) {
+      warnBox.classList.remove('hidden');
+      warnBox.innerHTML = `<span style="color: var(--color-warning);">⚠️ ${escapeHtml(status.tokenExpiryNote)}</span>`;
+    } else if (status.lastError) {
+      warnBox.classList.remove('hidden');
+      warnBox.innerHTML = `<span style="color: var(--danger);">⚠️ ${escapeHtml(status.lastError)}</span>`;
+    } else {
+      warnBox.classList.add('hidden');
+      warnBox.innerHTML = '';
+    }
+  }
+
+  const lastSync = document.getElementById('meta-last-sync');
+  if (lastSync) {
+    lastSync.textContent = status.lastSyncAt ? `Last synced ${new Date(status.lastSyncAt).toLocaleString()}` : '';
+  }
+
+  if (status.lastError && !status.connected) {
+    setMetaMessage('meta-connection-message', status.lastError, true);
+  }
+}
+
+function renderMetaInsightsEmpty() {
+  ['meta-stat-spend', 'meta-stat-impressions', 'meta-stat-clicks', 'meta-stat-ctr', 'meta-stat-cpc', 'meta-stat-conversions', 'meta-stat-roas']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+  const tbody = document.getElementById('meta-ads-table-body');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--color-text-secondary);">Connect your Meta account to load live ad performance.</td></tr>';
+  const sub = document.getElementById('meta-table-subtitle');
+  if (sub) sub.textContent = 'Connect your Meta account to load live ad performance.';
+}
+
+function onMetaDatePresetChange() {
+  const preset = document.getElementById('meta-date-preset')?.value;
+  const custom = document.getElementById('meta-custom-dates');
+  if (custom) custom.classList.toggle('hidden', preset !== 'custom');
+  if (preset !== 'custom') refreshMetaInsights(false);
+}
+
+async function testMetaToken() {
+  const tokenInput = document.getElementById('meta-access-token');
+  const token = tokenInput?.value.trim();
+  if (!token) {
+    showToast('Please paste a Meta access token first', true);
+    return;
+  }
+  setMetaMessage('meta-connection-message', 'Testing token against the Meta API…');
+  try {
+    const result = await metaApi('/test', { method: 'POST', body: JSON.stringify({ access_token: token }) });
+    const names = result.accounts.map(a => `${a.name} (${a.currency || '—'})`).join(', ') || 'none';
+    setMetaMessage('meta-connection-message', `✓ Token valid for ${result.userName}. Ad accounts: ${names}. Click “Connect & Save” to store it.`);
+    const select = document.getElementById('meta-ad-account-select');
+    if (select && result.accounts.length > 0) {
+      select.innerHTML = result.accounts
+        .map(a => `<option value="${escapeHtml(a.accountId)}">${escapeHtml(a.name)}${a.currency ? ` (${escapeHtml(a.currency)})` : ''}</option>`)
+        .join('');
+    }
+    showToast('Meta token is valid');
+  } catch (err) {
+    setMetaMessage('meta-connection-message', err.message, true);
+    showToast(err.message, true);
+  }
+}
+
+async function connectMetaAds() {
+  const tokenInput = document.getElementById('meta-access-token');
+  const accountSelect = document.getElementById('meta-ad-account-select');
+  const token = tokenInput?.value.trim();
+  if (!token) {
+    showToast('Please paste a Meta access token first', true);
+    return;
+  }
+  setMetaMessage('meta-connection-message', 'Validating with Meta and saving…');
+  try {
+    const status = await metaApi('/config', {
+      method: 'POST',
+      body: JSON.stringify({ access_token: token, ad_account_id: accountSelect?.value || null }),
+    });
+    if (tokenInput) tokenInput.value = ''; // never keep the raw token in the DOM
+    renderMetaStatus(status);
+    setMetaMessage('meta-connection-message', `✓ Connected to ${status.adAccountName || 'Meta Ads'}. Loading live performance…`);
+    showToast('Meta Ads connected');
+    await refreshMetaInsights(false);
+  } catch (err) {
+    setMetaMessage('meta-connection-message', err.message, true);
+    showToast(err.message, true);
+  }
+}
+
+async function disconnectMetaAds() {
+  showConfirmModal('Disconnect Meta Ads?', 'This removes the stored Meta access token for this store. Live ad data will no longer load.', async () => {
+    try {
+      await metaApi('/config', { method: 'DELETE' });
+      const tokenInput = document.getElementById('meta-access-token');
+      if (tokenInput) tokenInput.value = '';
+      const select = document.getElementById('meta-ad-account-select');
+      if (select) select.innerHTML = '<option value="">— connect a token first —</option>';
+      renderMetaStatus({ connected: false, status: 'disconnected' });
+      renderMetaInsightsEmpty();
+      setMetaMessage('meta-connection-message', 'Disconnected. Token removed.');
+      showToast('Meta Ads disconnected');
+    } catch (err) {
+      showToast(err.message, true);
+    }
+  });
+}
+
+async function refreshMetaInsights(manual) {
+  const status = await metaApi('/config').catch(() => null);
+  if (!status || !status.connected) {
+    renderMetaInsightsEmpty();
+    return;
+  }
+  renderMetaStatus(status);
+
+  const level = document.getElementById('meta-level-select')?.value || 'campaign';
+  const preset = document.getElementById('meta-date-preset')?.value || 'last_30d';
+  const accountId = document.getElementById('meta-ad-account-select')?.value || '';
+
+  const params = new URLSearchParams({ level, limit: '100' });
+  if (preset === 'custom') {
+    const since = document.getElementById('meta-since')?.value;
+    const until = document.getElementById('meta-until')?.value;
+    if (!since || !until) {
+      showToast('Pick both From and To dates for a custom range', true);
+      return;
+    }
+    params.set('since', since);
+    params.set('until', until);
+  } else {
+    params.set('date_preset', preset);
+  }
+  if (accountId) params.set('ad_account_id', accountId);
+
+  setMetaMessage('meta-insights-message', manual ? 'Fetching live data from Meta…' : '');
+  try {
+    const data = await metaApi(`/insights?${params.toString()}`);
+    renderMetaInsights(data, level);
+    const lastSync = document.getElementById('meta-last-sync');
+    if (lastSync) lastSync.textContent = `Last synced ${new Date().toLocaleString()}`;
+    if (manual) showToast('Meta Ads data refreshed');
+  } catch (err) {
+    setMetaMessage('meta-insights-message', err.message, true);
+    if (manual) showToast(err.message, true);
+    // Re-render status in case the token was flagged as expired
+    const fresh = await metaApi('/config').catch(() => null);
+    if (fresh) renderMetaStatus(fresh);
+  }
+}
+
+function renderMetaInsights(data, level) {
+  const t = data.totals || {};
+  const currency = data.accountCurrency || state.activeStoreCurrency;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+  set('meta-stat-spend', metaMoney(t.spend, currency));
+  set('meta-stat-impressions', Number(t.impressions || 0).toLocaleString());
+  set('meta-stat-clicks', Number(t.clicks || 0).toLocaleString());
+  set('meta-stat-ctr', `${Number(t.ctr || 0).toFixed(2)}%`);
+  set('meta-stat-cpc', metaMoney(t.cpc, currency));
+  set('meta-stat-conversions', Number(t.conversions || 0).toLocaleString());
+  set('meta-stat-roas', `${Number(t.roas || 0).toFixed(2)}x`);
+
+  const labelMap = { campaign: 'Campaigns', adset: 'Ad Sets', ad: 'Ads', account: 'Account' };
+  const sub = document.getElementById('meta-table-subtitle');
+  if (sub) sub.textContent = `Live ${labelMap[level] || level} performance · ${data.rows.length} rows · ${currency}`;
+
+  const attributionByCampaign = {};
+  (data.attribution || []).forEach(a => { attributionByCampaign[String(a.campaignName).toLowerCase()] = a; });
+
+  const nameFor = (r) => {
+    if (level === 'ad') return r.adName || r.adId || '—';
+    if (level === 'adset') return r.adsetName || r.adsetId || '—';
+    return r.campaignName || r.campaignId || '—';
+  };
+
+  const tbody = document.getElementById('meta-ads-table-body');
+  if (tbody) {
+    if (!data.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--color-text-secondary);">No ads data for this period.</td></tr>';
+    } else {
+      tbody.innerHTML = data.rows.map(r => {
+        const name = nameFor(r);
+        const attr = level === 'campaign' ? attributionByCampaign[name.toLowerCase()] : null;
+        return `<tr>
+          <td style="max-width: 260px; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(name)}">${escapeHtml(name)}</td>
+          <td>${metaMoney(r.spend, currency)}</td>
+          <td>${Number(r.impressions || 0).toLocaleString()}</td>
+          <td>${Number(r.clicks || 0).toLocaleString()}</td>
+          <td>${Number(r.ctr || 0).toFixed(2)}%</td>
+          <td>${metaMoney(r.cpc, currency)}</td>
+          <td>${Number(r.conversions || 0)}</td>
+          <td>${Number(r.roas || 0).toFixed(2)}x</td>
+          <td>${attr ? metaMoney(attr.storeAttributedRevenue, currency) : '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
 }
