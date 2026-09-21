@@ -586,6 +586,20 @@ export interface GrowthOverview {
   reorder_schedules_due: number;
   estimated_growth_opportunity: number;
   currency: string;
+  email_recovery: {
+    jobs_total: number;
+    jobs_sent: number;
+    jobs_failed: number;
+    jobs_cancelled: number;
+    recovered_shoppers: number;
+    recovered_revenue: number;
+  };
+  whatsapp: {
+    messages_sent: number;
+    conversations: number;
+    recovery_jobs_total: number;
+    recovery_jobs_sent: number;
+  };
 }
 
 export interface WeeklyGrowthSummary {
