@@ -14,7 +14,7 @@ import { errorHandler } from './middlewares/error.middleware';
 import { ValidationError, TenantIsolationError } from '../utils/errors';
 import path from 'path';
 import fs from 'fs';
-import { getShopifyAdapter } from '../providers/shopify';
+import { getShopifyAdapter, ShopifyProduct } from '../providers/shopify';
 import { getAiProvider, BudgetGuard } from '../providers/ai';
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
@@ -137,7 +137,7 @@ export function createApp(deps: AppDependencies = {}): Express {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
 
-        let rawPills = (assistantSettings as any)?.quick_action_pills;
+        const rawPills = (assistantSettings as any)?.quick_action_pills;
         let parsedPills: any[] = [];
         if (Array.isArray(rawPills)) {
           parsedPills = rawPills;
@@ -335,12 +335,18 @@ export function createApp(deps: AppDependencies = {}): Express {
         const maxBudgetMatch = message.match(/under\s*\$?(\d+)/i);
         const budgetMax = maxBudgetMatch ? parseInt(maxBudgetMatch[1], 10) : undefined;
 
-        // Fetch catalog subset
-        const adapter = getShopifyAdapter();
-        const catalogSubset = await adapter.searchProducts(storeId, {
-          budget_max: budgetMax,
-          keywords: message.split(' '),
-        });
+        // Fetch catalog subset — a catalog failure (e.g. store has not
+        // connected Shopify yet) must never break the chat conversation.
+        let catalogSubset: ShopifyProduct[] = [];
+        try {
+          const adapter = getShopifyAdapter();
+          catalogSubset = await adapter.searchProducts(storeId, {
+            budget_max: budgetMax,
+            keywords: message.split(' '),
+          });
+        } catch (catalogErr) {
+          console.warn(`[WidgetChat] Catalog lookup failed for store ${storeId}, continuing without products:`, catalogErr);
+        }
 
         // Query AI Provider
         const aiProvider = getAiProvider();

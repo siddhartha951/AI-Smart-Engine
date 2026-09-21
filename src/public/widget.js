@@ -168,6 +168,114 @@
       return headers;
     }
 
+    // --- Per-store browser storage -------------------------------------------
+    // Session ids must never leak across stores: a shopper who visits store A
+    // then store B on the same backend would otherwise reuse store A's session
+    // and hit "Session ... does not belong to store" errors. All keys are
+    // namespaced by widget key, with a legacy fallback for existing visitors.
+    storageScope() {
+      return String(this.widgetKey || this.storeId || 'default');
+    }
+
+    storageKey(base) {
+      return `${base}:${this.storageScope()}`;
+    }
+
+    readStored(base) {
+      try {
+        return (
+          sessionStorage.getItem(this.storageKey(base)) ||
+          localStorage.getItem(this.storageKey(base)) ||
+          sessionStorage.getItem(base) ||
+          localStorage.getItem(base)
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
+    writeStored(base, value) {
+      try {
+        const key = this.storageKey(base);
+        sessionStorage.setItem(key, value);
+        localStorage.setItem(key, value);
+      } catch (_) {}
+    }
+
+    // Session-only variant: preserves the original sessionStorage-only
+    // semantics for transient UI state (messages, view, open flag).
+    writeSessionStored(base, value) {
+      try {
+        sessionStorage.setItem(this.storageKey(base), value);
+      } catch (_) {}
+    }
+
+    clearStored(base) {
+      try {
+        const key = this.storageKey(base);
+        sessionStorage.removeItem(key);
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(base);
+        localStorage.removeItem(base);
+      } catch (_) {}
+    }
+
+    // --- Session error handling ----------------------------------------------
+    // Detects backend responses that mean "this session id is unusable":
+    // it never existed, expired, was wiped (DB reset/migration), or belongs
+    // to a different store. The widget recovers by starting a fresh session
+    // instead of showing a permanent error.
+    isSessionError(json) {
+      if (!json || json.success) return false;
+      const code = json.error && json.error.code;
+      if (code === 'TENANT_ISOLATION_VIOLATION') return true;
+      const msg = typeof json.error === 'string' ? json.error : (json.error && json.error.message) || '';
+      return /session.*(not found|unauthorized)|does not belong to store/i.test(String(msg));
+    }
+
+    async resetSession() {
+      this.clearStored('ai_session_id');
+      this.clearStored('ai_visitor_id');
+      this.clearStored('ai_chat_messages');
+      this.sessionId = null;
+      this.visitorId = null;
+      const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
+      await this.startSession(anonymousId);
+    }
+
+    // Validates a session id restored from browser storage. Returns true when
+    // the session is usable; clears stale sessions and returns false otherwise.
+    // Network failures are treated as "unknown" and keep the session.
+    async ensureValidSession() {
+      if (!this.sessionId) return false;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/widget/chat/history?session_id=${this.sessionId}`, {
+          headers: this.getHeaders()
+        });
+        const json = await res.json();
+        if (!json.success && this.isSessionError(json)) {
+          this.clearStored('ai_session_id');
+          this.clearStored('ai_visitor_id');
+          this.clearStored('ai_chat_messages');
+          this.sessionId = null;
+          this.visitorId = null;
+          return false;
+        }
+        if (json.success && json.data && json.data.messages && json.data.messages.length > 0) {
+          const recs = json.data.recommendations || [];
+          const formatted = json.data.messages.map((m, idx) => ({
+            role: m.role,
+            content: m.content,
+            recommendations: m.role === 'assistant' && idx === json.data.messages.length - 1 ? recs : []
+          }));
+          this.setState({ messages: formatted, view: 'chat' });
+        }
+        return true;
+      } catch (_) {
+        return true;
+      }
+    }
+
     async connectedCallback() {
       this.widgetKey = this.getAttribute('data-widget-key') || '';
       this.storeId = this.getAttribute('data-store-id') || this.widgetKey;
@@ -186,15 +294,16 @@
       }
 
       // Restore previously saved session and chat history if active
+      // (per-store namespaced keys; legacy unprefixed keys still honoured)
       try {
-        const savedSid = sessionStorage.getItem('ai_session_id') || localStorage.getItem('ai_session_id');
-        const savedVid = sessionStorage.getItem('ai_visitor_id') || localStorage.getItem('ai_visitor_id');
+        const savedSid = this.readStored('ai_session_id');
+        const savedVid = this.readStored('ai_visitor_id');
         if (savedSid) this.sessionId = savedSid;
         if (savedVid) this.visitorId = savedVid;
 
-        const savedMsgs = sessionStorage.getItem('ai_chat_messages');
-        const savedView = sessionStorage.getItem('ai_widget_view');
-        const savedOpen = sessionStorage.getItem('ai_widget_open');
+        const savedMsgs = this.readStored('ai_chat_messages');
+        const savedView = this.readStored('ai_widget_view');
+        const savedOpen = this.readStored('ai_widget_open');
 
         if (savedMsgs) {
           try {
@@ -220,8 +329,11 @@
           syncShopifyCartAttributes(savedSid, savedVid);
         }
 
+        // Validate any restored session against the backend: a stale session id
+        // (DB reset, different store, pruned session) is discarded here so it
+        // can never cause "Session not found or unauthorized" chat failures.
         if (savedSid && (!this.state.messages || this.state.messages.length === 0)) {
-          this.loadChatHistory(savedSid);
+          await this.ensureValidSession();
         }
       } catch (_) {}
       
@@ -398,10 +510,8 @@
           this.sessionId = json.data.session_id;
           this.visitorId = json.data.visitor_id;
           try {
-            sessionStorage.setItem('ai_session_id', this.sessionId);
-            sessionStorage.setItem('ai_visitor_id', this.visitorId);
-            localStorage.setItem('ai_session_id', this.sessionId);
-            localStorage.setItem('ai_visitor_id', this.visitorId);
+            this.writeStored('ai_session_id', this.sessionId);
+            this.writeStored('ai_visitor_id', this.visitorId);
             syncShopifyCartAttributes(this.sessionId, this.visitorId);
           } catch (_) {}
           this.initHeartbeat();
@@ -457,6 +567,13 @@
     async sendMessage(text) {
       if (!text.trim()) return;
 
+      // Ensure we have a live session before sending (e.g. tracking was
+      // disabled at init, or the earlier session creation failed).
+      if (!this.sessionId || !this.visitorId) {
+        const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
+        await this.startSession(anonymousId);
+      }
+
       // Add user message to state immediately
       const newMessages = [...this.state.messages, { role: 'user', content: text }];
       this.setState({ messages: newMessages });
@@ -464,6 +581,13 @@
       // Add loading state
       this.setState({ messages: [...newMessages, { role: 'assistant', content: '...', isLoading: true }] });
 
+      await this.deliverMessage(text, false);
+    }
+
+    // Posts one chat message. If the backend rejects the session id as stale
+    // ("Session not found or unauthorized" / "does not belong to store"), a
+    // fresh session is created and the message is retried once automatically.
+    async deliverMessage(text, retried) {
       try {
         const res = await fetch(`${API_BASE_URL}/api/v1/widget/chat/message`, {
           method: 'POST',
@@ -475,16 +599,26 @@
         });
 
         const json = await res.json();
-        
+
+        if (!json.success && !retried && this.isSessionError(json)) {
+          // Stale session id (DB reset, cross-store contamination, pruned
+          // session): heal transparently and retry the message once.
+          await this.resetSession();
+          if (this.sessionId) {
+            return this.deliverMessage(text, true);
+          }
+        }
+
         // Remove loading state and add real response
         const updatedMessages = [...this.state.messages];
         // replace the loading message at the end
+        const errMsg = json.error && typeof json.error === 'object' ? json.error.message : json.error;
         updatedMessages[updatedMessages.length - 1] = {
           role: 'assistant',
-          content: json.success ? json.data.message : 'Error: ' + json.error.message,
+          content: json.success ? json.data.message : 'Error: ' + (errMsg || 'Unknown error'),
           recommendations: json.success ? json.data.recommendations : []
         };
-        
+
         this.setState({ messages: updatedMessages });
       } catch (err) {
         console.error('Chat error', err);
@@ -498,22 +632,11 @@
     }
 
     async loadChatHistory(sessionId) {
-      if (!sessionId) return;
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/v1/widget/chat/history?session_id=${sessionId}`, {
-          headers: this.getHeaders()
-        });
-        const json = await res.json();
-        if (json.success && json.data?.messages && json.data.messages.length > 0) {
-          const recs = json.data.recommendations || [];
-          const formatted = json.data.messages.map((m, idx) => ({
-            role: m.role,
-            content: m.content,
-            recommendations: m.role === 'assistant' && idx === json.data.messages.length - 1 ? recs : []
-          }));
-          this.setState({ messages: formatted, view: 'chat' });
-        }
-      } catch (_) {}
+      // Kept for backward compatibility; delegates to the validating loader.
+      if (sessionId) {
+        this.sessionId = this.sessionId || sessionId;
+        await this.ensureValidSession();
+      }
     }
 
     setState(newState) {
@@ -523,10 +646,10 @@
       this.state = { ...this.state, ...newState };
       try {
         if (this.state.messages && this.state.messages.length > 0) {
-          sessionStorage.setItem('ai_chat_messages', JSON.stringify(this.state.messages));
+          this.writeSessionStored('ai_chat_messages', JSON.stringify(this.state.messages));
         }
-        sessionStorage.setItem('ai_widget_view', this.state.view || 'welcome');
-        sessionStorage.setItem('ai_widget_open', this.state.isOpen ? 'true' : 'false');
+        this.writeSessionStored('ai_widget_view', this.state.view || 'welcome');
+        this.writeSessionStored('ai_widget_open', this.state.isOpen ? 'true' : 'false');
       } catch (_) {}
       this.render();
       
