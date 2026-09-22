@@ -526,7 +526,21 @@ function setupEventListeners() {
   if (gotoHealthBtn) gotoHealthBtn.addEventListener('click', () => {
     const link = document.querySelector('.nav-links a[data-target="shopify-connection"]');
     if (link) { link.click(); } else { showSection('shopify-connection'); loadSectionData('shopify-connection'); }
+    // The banner means the token needs attention — open the reconnect modal directly.
+    setTimeout(openShopifyReconnectModal, 150);
   });
+
+  // 3b. Shopify token reconnect / disconnect actions
+  const shopifyReconnectBtn = document.getElementById('btn-shopify-reconnect');
+  if (shopifyReconnectBtn) shopifyReconnectBtn.addEventListener('click', openShopifyReconnectModal);
+  const shopifyDisconnectBtn = document.getElementById('btn-shopify-disconnect');
+  if (shopifyDisconnectBtn) shopifyDisconnectBtn.addEventListener('click', disconnectShopify);
+  const shopifyReconnectForm = document.getElementById('shopify-reconnect-form');
+  if (shopifyReconnectForm) shopifyReconnectForm.addEventListener('submit', submitShopifyReconnect);
+  const closeReconnectBtn = document.getElementById('close-shopify-reconnect-modal');
+  if (closeReconnectBtn) closeReconnectBtn.addEventListener('click', closeShopifyReconnectModal);
+  const cancelReconnectBtn = document.getElementById('cancel-shopify-reconnect');
+  if (cancelReconnectBtn) cancelReconnectBtn.addEventListener('click', closeShopifyReconnectModal);
 
   // Store Currency Update Handler
   const btnSaveCurrency = document.getElementById('btn-save-currency');
@@ -1098,6 +1112,85 @@ function updateShopifyScopeBanner(data) {
   }
   text.textContent = msg;
   banner.classList.remove('hidden');
+}
+
+// ---- Shopify token reconnect / disconnect ----
+function openShopifyReconnectModal() {
+  const modal = document.getElementById('shopify-reconnect-modal');
+  if (!modal) return;
+  const input = document.getElementById('shopify-reconnect-token');
+  if (input) input.value = '';
+  setShopifyReconnectError(null);
+  modal.classList.remove('hidden');
+  if (input) input.focus();
+}
+
+function closeShopifyReconnectModal() {
+  const modal = document.getElementById('shopify-reconnect-modal');
+  if (modal) modal.classList.add('hidden');
+  const input = document.getElementById('shopify-reconnect-token');
+  if (input) input.value = ''; // never keep the raw token in the DOM
+  setShopifyReconnectError(null);
+}
+
+function setShopifyReconnectError(msg) {
+  const err = document.getElementById('shopify-reconnect-error');
+  if (!err) return;
+  if (msg) { err.textContent = msg; err.classList.remove('hidden'); }
+  else { err.textContent = ''; err.classList.add('hidden'); }
+}
+
+async function submitShopifyReconnect(event) {
+  if (event) event.preventDefault();
+  const input = document.getElementById('shopify-reconnect-token');
+  const saveBtn = document.getElementById('btn-save-shopify-token');
+  const token = (input && input.value ? input.value : '').trim();
+  if (!token) { setShopifyReconnectError('Please paste your Admin API access token.'); return; }
+  setShopifyReconnectError(null);
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Verifying…'; }
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/reconnect`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_token: token }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (input) input.value = ''; // clear the raw token from the DOM immediately
+    if (!res.ok) throw new Error((body && body.error && body.error.message) || 'Reconnect failed');
+    closeShopifyReconnectModal();
+    if (body.data && body.data.health) {
+      renderShopifyHealth(body.data.health);
+    } else {
+      loadShopifyHealth();
+    }
+    loadSectionData('shopify-connection'); // refresh status line (credentials configured etc.)
+    showToast('Shopify token updated and verified ✓');
+  } catch (err) {
+    setShopifyReconnectError(err.message || 'Reconnect failed. Please try again.');
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Verify'; }
+  }
+}
+
+async function disconnectShopify() {
+  showConfirmModal('Disconnect Shopify?', 'This removes the stored Shopify token for this store. Sales sync, product sync and AI sales answers will stop until you reconnect. Your existing store data stays untouched.', async () => {
+    try {
+      const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/connection`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${state.token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((body && body.error && body.error.message) || 'Disconnect failed');
+      const pill = document.getElementById('shopify-status');
+      if (pill) { pill.textContent = 'Disconnected'; pill.className = 'badge badge--neutral'; }
+      const creds = document.getElementById('shopify-creds');
+      if (creds) creds.textContent = 'No';
+      renderShopifyHealth({ checked: false });
+      showToast('Shopify disconnected');
+    } catch (err) {
+      showToast(err.message || 'Disconnect failed', true);
+    }
+  });
 }
 
 function showSection(sectionName) {
