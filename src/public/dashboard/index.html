@@ -219,6 +219,16 @@
       </nav>
 
       <main class="dashboard-content">
+        <!-- Shopify scope/token warning banner (dismissible, non-blocking) -->
+        <div id="shopify-scope-banner" class="alert-banner hidden" style="border-left: 4px solid var(--color-warning);">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <p id="shopify-scope-banner-text" style="margin: 0; font-size: 13px; color: var(--color-text-primary);">--</p>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-goto-shopify-health" class="btn btn-secondary btn-sm">Fix now</button>
+              <button id="btn-dismiss-shopify-banner" class="btn btn-ghost btn-sm" style="padding: 2px 8px;" aria-label="Dismiss">✕</button>
+            </div>
+          </div>
+        </div>
         <!-- 0. Growth Copilot Section (Phase 16) -->
         <section id="growth-copilot" class="content-section active">
           <header class="section-header-flex">
@@ -1163,6 +1173,8 @@
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Status: <span id="shopify-status" class="badge badge--neutral">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Last Product Sync: <span id="shopify-last-sync" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px;">Credentials Configured: <span id="shopify-creds" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
+            <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Connection Health: <span id="shopify-health-badge" class="badge badge--neutral">Not checked</span> <span id="shopify-health-checked-at" style="font-size: 12px; color: var(--color-text-muted);"></span> <button id="btn-recheck-shopify-health" class="btn btn-secondary btn-sm" style="margin-left: 8px;">Re-check</button></p>
+            <div id="shopify-health-panel" style="margin-top: 12px;"></div>
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
               <label for="store-currency-select" style="font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin: 0;">Store Currency:</label>
               <select id="store-currency-select" class="form-select form-select-sm" style="width: 140px;">

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { getDatabaseClient } from '../../database/client';
 import { encryptString } from '../../utils/crypto';
 import { ValidationError } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 import { getShopifyAdapter } from '../../providers/shopify';
 import { getEmailProvider } from '../../providers/email';
 import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
@@ -178,6 +179,15 @@ router.post('/step2-shopify', requireOnboardingToken, async (req: Request, res: 
         res.status(400).json({ error: 'Shopify credentials invalid or lacking required scopes.' });
         return;
       }
+    }
+
+    // Auto-run the connection health check so the dashboard badge/panel is
+    // populated immediately. A health-check failure must never fail the connect.
+    try {
+      const { ShopifyHealthService } = await import('../../modules/shopify_health/shopify_health.service');
+      await new ShopifyHealthService().checkHealth(input.store_id);
+    } catch {
+      logger.warn('Shopify health auto-check failed after connect', { storeId: input.store_id });
     }
 
     res.json({ success: true, message: 'Shopify credentials saved and verified' });

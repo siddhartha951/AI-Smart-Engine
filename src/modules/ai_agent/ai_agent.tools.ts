@@ -8,6 +8,7 @@
  */
 import { MetaAdsService } from '../meta_ads/meta_ads.service';
 import { fetchShopifyOrders } from './shopify_orders.service';
+import { ShopifyHealthService } from '../shopify_health/shopify_health.service';
 import { AgentToolName, AgentToolResult } from './ai_agent.types';
 import { TenantIsolationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
@@ -139,7 +140,7 @@ async function getTodayOverview(storeId: string, _args: ToolArgs): Promise<Agent
             revenue_today: round2(shopify.orders.reduce((s, o) => s + o.total_price, 0)),
             currency: shopify.currency,
           }
-        : { connected: false, note: 'Shopify is not connected for this store.' },
+        : { connected: false, note: await withScopeGuidance('Shopify is not connected for this store.', storeId) },
       meta_ads: meta
         ? {
             connected: true,
@@ -194,6 +195,20 @@ function round2(n: number): number {
   return parseFloat(n.toFixed(2));
 }
 
+/**
+ * Appends the cached Shopify health summary (scope/token guidance) to an
+ * honest "data unavailable" note, so the agent can suggest the exact fix.
+ * Reads the stored check only — never live-probes Shopify from a tool call.
+ */
+async function withScopeGuidance(note: string, storeId: string): Promise<string> {
+  try {
+    const summary = await new ShopifyHealthService().getShopifyHealthSummary(storeId);
+    return summary ? `${note}\n\n${summary}` : note;
+  } catch {
+    return note;
+  }
+}
+
 async function getShopifySummary(storeId: string, args: ToolArgs): Promise<AgentToolResult> {
   requireStore(storeId);
   const range = defaultRange(30);
@@ -208,7 +223,10 @@ async function getShopifySummary(storeId: string, args: ToolArgs): Promise<Agent
     financialStatus: 'paid',
   });
   if (!connected) {
-    return { ok: false, note: 'Shopify is not connected for this store.' };
+    return {
+      ok: false,
+      note: await withScopeGuidance('Shopify is not connected for this store.', storeId),
+    };
   }
   const revenue = round2(orders.reduce((s, o) => s + o.total_price, 0));
   const productSales = new Map<string, { title: string; quantity: number; revenue: number }>();

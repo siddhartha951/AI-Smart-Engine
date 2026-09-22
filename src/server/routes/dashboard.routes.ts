@@ -20,6 +20,7 @@ import { aiAgentRouter } from './ai-agent.routes';
 import { enforceFeature } from '../middlewares/entitlement.middleware';
 import { FeatureKey } from '../../modules/entitlements/entitlement.types';
 import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
+import { ShopifyHealthService } from '../../modules/shopify_health/shopify_health.service';
 
 const router = Router();
 
@@ -406,6 +407,17 @@ router.get('/:storeId/shopify', enforceStoreAccess, async (req: Request, res: Re
       db.query('SELECT id, updated_at FROM store_credentials WHERE store_id = $1', [storeId])
     ]);
 
+    // Attach the last cached health check (no live Shopify calls here).
+    let health: { overall_status: string; checked_at: string } | null = null;
+    try {
+      const lastHealth = await new ShopifyHealthService().getLastHealth(storeId);
+      if (lastHealth) {
+        health = { overall_status: lastHealth.overall_status, checked_at: lastHealth.checked_at };
+      }
+    } catch {
+      health = null;
+    }
+
     res.json({
       success: true,
       data: {
@@ -413,7 +425,8 @@ router.get('/:storeId/shopify', enforceStoreAccess, async (req: Request, res: Re
         status: storeRes.rows[0]?.status,
         currency: storeRes.rows[0]?.currency || 'INR',
         last_sync: storeRes.rows[0]?.updated_at,
-        credentials_configured: credsRes.rows.length > 0
+        credentials_configured: credsRes.rows.length > 0,
+        health
       }
     });
   } catch (err) {
@@ -424,6 +437,29 @@ router.get('/:storeId/shopify', enforceStoreAccess, async (req: Request, res: Re
 router.post('/:storeId/shopify/test', enforceStoreAccess, async (req: Request, res: Response, next) => {
   // Just simulate success for Phase 7.1 since no real validator is built yet
   res.json({ success: true, message: 'Connection valid' });
+});
+
+// 4.0 Shopify Connection Health Check — per-scope diagnostics.
+// GET returns the last cached check (fast, no Shopify calls).
+// POST runs a fresh live check (4 lightweight limit=1 probes) and stores it.
+router.get('/:storeId/shopify/health', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const data = await new ShopifyHealthService().getLastHealth(storeId);
+    res.json({ success: true, data: data || { checked: false } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:storeId/shopify/health/check', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const data = await new ShopifyHealthService().checkHealth(storeId);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/:storeId/shopify/sync', enforceStoreAccess, async (req: Request, res: Response, next) => {

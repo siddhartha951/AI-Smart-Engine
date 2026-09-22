@@ -513,6 +513,21 @@ function setupEventListeners() {
     });
   });
 
+  // 3a. Shopify Health Check actions
+  const recheckHealthBtn = document.getElementById('btn-recheck-shopify-health');
+  if (recheckHealthBtn) recheckHealthBtn.addEventListener('click', runShopifyHealthCheck);
+  const dismissScopeBannerBtn = document.getElementById('btn-dismiss-shopify-banner');
+  if (dismissScopeBannerBtn) dismissScopeBannerBtn.addEventListener('click', () => {
+    try { localStorage.setItem('shopifyHealthBannerDismissed:' + state.activeStoreId, '1'); } catch (_) {}
+    const banner = document.getElementById('shopify-scope-banner');
+    if (banner) banner.classList.add('hidden');
+  });
+  const gotoHealthBtn = document.getElementById('btn-goto-shopify-health');
+  if (gotoHealthBtn) gotoHealthBtn.addEventListener('click', () => {
+    const link = document.querySelector('.nav-links a[data-target="shopify-connection"]');
+    if (link) { link.click(); } else { showSection('shopify-connection'); loadSectionData('shopify-connection'); }
+  });
+
   // Store Currency Update Handler
   const btnSaveCurrency = document.getElementById('btn-save-currency');
   if (btnSaveCurrency) {
@@ -775,6 +790,7 @@ async function updateActiveStoreUI() {
     const activeSectionEl = document.querySelector('.nav-links a.active');
     const activeSection = activeSectionEl ? activeSectionEl.getAttribute('data-target') : 'overview';
     loadSectionData(activeSection);
+    refreshShopifyScopeBanner();
   }
 }
 
@@ -937,6 +953,151 @@ function updateLivePreview() {
 function showView(viewName) {
   Object.values(views).forEach(v => v.classList.add('hidden'));
   if(views[viewName]) views[viewName].classList.remove('hidden');
+}
+
+// ---- Shopify Connection Health (badge, details panel, scope banner) ----
+function shopifyHealthBadgeClass(status) {
+  if (status === 'healthy') return 'badge badge--success';
+  if (status === 'degraded') return 'badge badge--warning';
+  if (status === 'down') return 'badge badge--danger';
+  return 'badge badge--neutral';
+}
+
+function shopifyHealthLabel(status) {
+  if (status === 'healthy') return 'Healthy';
+  if (status === 'degraded') return 'Needs attention';
+  if (status === 'down') return 'Down';
+  return 'Not checked';
+}
+
+async function fetchShopifyHealth() {
+  const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/health`, {
+    headers: { 'Authorization': `Bearer ${state.token}` }
+  });
+  if (!res.ok) throw new Error('Health fetch failed');
+  const { data } = await res.json();
+  return data;
+}
+
+async function loadShopifyHealth() {
+  const badge = document.getElementById('shopify-health-badge');
+  const checkedAt = document.getElementById('shopify-health-checked-at');
+  const panel = document.getElementById('shopify-health-panel');
+  if (!badge || !panel) return;
+  badge.textContent = 'Checking…';
+  badge.className = 'badge badge--neutral';
+  try {
+    const data = await fetchShopifyHealth();
+    renderShopifyHealth(data);
+  } catch (err) {
+    badge.textContent = 'Check failed';
+    badge.className = 'badge badge--danger';
+    if (checkedAt) checkedAt.textContent = '';
+    panel.innerHTML = '<p style="font-size:13px;color:var(--color-text-secondary);">Could not load the health check. Press Re-check to try again.</p>';
+  }
+}
+
+function renderShopifyHealth(data) {
+  const badge = document.getElementById('shopify-health-badge');
+  const checkedAt = document.getElementById('shopify-health-checked-at');
+  const panel = document.getElementById('shopify-health-panel');
+  if (!badge || !panel) return;
+  if (!data || data.checked === false) {
+    badge.textContent = 'Not checked';
+    badge.className = 'badge badge--neutral';
+    if (checkedAt) checkedAt.textContent = '';
+    panel.innerHTML = '<p style="font-size:13px;color:var(--color-text-secondary);">No health check has run yet. Press <strong>Re-check</strong> to diagnose the token and API scopes.</p>';
+    return;
+  }
+  badge.textContent = shopifyHealthLabel(data.overall_status);
+  badge.className = shopifyHealthBadgeClass(data.overall_status);
+  if (checkedAt) checkedAt.textContent = data.checked_at ? ('· checked ' + new Date(data.checked_at).toLocaleString()) : '';
+
+  const scopeIcon = (s) => s === 'ok' ? '✅' : (s === 'missing' ? '❌' : (s === 'error' ? '⚠️' : '➖'));
+  let html = '<div style="display:grid;gap:8px;">';
+  if (data.shop_name || data.store_match === false) {
+    const matchBadge = data.store_match === false
+      ? '<span class="badge badge--danger">wrong store</span>'
+      : (data.store_match ? '<span class="badge badge--success">domain match</span>' : '');
+    html += `<div style="font-size:13px;">Store: <strong>${escapeHtml(data.shop_name || '—')}</strong> ${matchBadge}</div>`;
+  }
+  for (const s of (data.scopes || [])) {
+    html += `<div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:8px 10px;border:1px solid var(--color-border-default);border-radius:8px;">`
+      + `<span style="font-size:15px;">${scopeIcon(s.status)}</span>`
+      + `<div><div style="font-weight:600;">${escapeHtml(s.scope)} <span style="font-weight:400;color:var(--color-text-muted);font-size:12px;">${escapeHtml(s.tested_endpoint || '')}</span></div>`
+      + `<div style="color:var(--color-text-secondary);font-size:12px;">Unlocks: ${escapeHtml(s.unlocks || '')}</div>`
+      + (s.detail ? `<div style="color:var(--color-danger);font-size:12px;">${escapeHtml(s.detail)}</div>` : '')
+      + `</div></div>`;
+  }
+  html += '</div>';
+  if (data.rate_limit) {
+    html += `<p style="font-size:12px;color:var(--color-text-muted);margin:8px 0 0;">Shopify API call limit: ${escapeHtml(data.rate_limit)}</p>`;
+  }
+  if (data.fix_steps && data.fix_steps.length > 0) {
+    html += `<div class="callout-box" style="margin-top:10px;"><div style="font-weight:600;margin-bottom:6px;">How to fix</div><ol style="margin:0;padding-left:18px;display:grid;gap:4px;">`
+      + data.fix_steps.map(st => `<li>${escapeHtml(st)}</li>`).join('')
+      + `</ol></div>`;
+  }
+  panel.innerHTML = html;
+
+  updateShopifyScopeBanner(data);
+}
+
+async function runShopifyHealthCheck() {
+  const btn = document.getElementById('btn-recheck-shopify-health');
+  const original = btn ? btn.textContent : 'Re-check';
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/health/check`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error((body && (body.message || (body.error && body.error.message))) || 'Health check failed');
+    renderShopifyHealth(body.data);
+    showToast('Health check complete: ' + shopifyHealthLabel(body.data.overall_status));
+  } catch (err) {
+    showToast(err.message || 'Health check failed', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+// Dismissible, non-blocking banner shown when the Shopify connection is down
+// or the critical read_orders scope is missing.
+async function refreshShopifyScopeBanner() {
+  const banner = document.getElementById('shopify-scope-banner');
+  if (!banner || !state.activeStoreId) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1'; } catch (_) {}
+  if (dismissed) { banner.classList.add('hidden'); return; }
+  try {
+    const data = await fetchShopifyHealth();
+    updateShopifyScopeBanner(data);
+  } catch (_) { /* banner stays hidden when the check can't load */ }
+}
+
+function updateShopifyScopeBanner(data) {
+  const banner = document.getElementById('shopify-scope-banner');
+  const text = document.getElementById('shopify-scope-banner-text');
+  if (!banner || !text || !state.activeStoreId) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1'; } catch (_) {}
+  if (dismissed || !data || data.checked === false || data.overall_status === 'healthy') {
+    banner.classList.add('hidden');
+    return;
+  }
+  const ordersScope = (data.scopes || []).find(s => s.scope === 'read_orders');
+  let msg;
+  if (data.overall_status === 'down') {
+    msg = '⚠️ Shopify connection is down — sales data and AI sales answers are unavailable. Open Connections → Shopify for the exact fix.';
+  } else if (ordersScope && ordersScope.status !== 'ok') {
+    msg = '⚠️ Your Shopify token is missing the read_orders scope — the revenue timeline and AI sales answers are disabled until you reconnect with that scope granted.';
+  } else {
+    msg = '⚠️ Your Shopify connection needs attention — some features are limited. Open Connections → Shopify for details.';
+  }
+  text.textContent = msg;
+  banner.classList.remove('hidden');
 }
 
 function showSection(sectionName) {
@@ -1278,6 +1439,7 @@ async function loadSectionData(section) {
         if (curSelect) curSelect.value = data.currency;
       }
       loadProductsTable();
+      loadShopifyHealth();
     }
     else if (section === 'email-automation') {
       if (data.settings) {
