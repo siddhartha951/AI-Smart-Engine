@@ -4,12 +4,32 @@
  * Supports PDF, CSV, and XLSX. Everything is parsed in-memory from the
  * uploaded buffer; extracted text is token-capped (with a truncation flag)
  * before it ever reaches the LLM. Document contents are never logged.
+ *
+ * NOTE: pdf-parse is loaded lazily (never at module top-level). pdf-parse v2
+ * requires Node >= 20.16, and a parser load failure must never crash the
+ * server at boot — it degrades to an honest per-upload error instead.
  */
-import pdfParse from 'pdf-parse';
 import * as XLSX from 'xlsx';
 import { ValidationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import { ParsedDocument } from './ai_agent.types';
+
+/** pdf-parse's callable signature: buffer in, extracted text out. */
+type PdfParseFn = (buffer: Buffer) => Promise<{ text?: string }>;
+
+async function loadPdfParser(): Promise<PdfParseFn> {
+  const mod = (await import('pdf-parse')) as unknown as
+    | { default?: unknown }
+    | PdfParseFn;
+  const candidate =
+    typeof mod === 'function'
+      ? mod
+      : (mod as { default?: unknown }).default;
+  if (typeof candidate !== 'function') {
+    throw new Error('pdf-parse module did not export a parser function');
+  }
+  return candidate as PdfParseFn;
+}
 
 /** Max characters of extracted text forwarded to the LLM (~3k tokens). */
 export const MAX_DOC_CHARS = 12000;
@@ -97,6 +117,15 @@ function csvRowsToText(rows: string[][], maxRows = 500): { text: string; dropped
 }
 
 async function parsePdf(buffer: Buffer, fileName: string): Promise<ParsedDocument> {
+  let pdfParse: PdfParseFn;
+  try {
+    pdfParse = await loadPdfParser();
+  } catch {
+    logger.warn('AI agent: PDF parser failed to load', { fileName });
+    throw new ValidationError(
+      'PDF reading is temporarily unavailable. Please try again later or upload a CSV/XLSX instead.'
+    );
+  }
   let result;
   try {
     result = await pdfParse(buffer);
