@@ -423,4 +423,50 @@ export class ShopifyHealthService {
       logger.warn('Could not persist Shopify health check', { storeId });
     }
   }
+
+  /**
+   * Validates a CANDIDATE Admin API token with a single lightweight shop.json
+   * call — before it is ever saved. The token is passed in, never read from
+   * storage, never logged, never persisted, and never included in the result.
+   */
+  async probeTokenValidity(
+    shopDomain: string,
+    adminToken: string
+  ): Promise<{ valid: boolean; reason: 'ok' | 'invalid' | 'unreachable'; shopName: string | null }> {
+    if (!shopDomain || !adminToken) {
+      throw new TenantIsolationError('shop_domain and admin_token are required');
+    }
+    const outcome = await probeShopify(normalizeDomain(shopDomain), adminToken, 'shop.json');
+    if (outcome.status === null) {
+      return { valid: false, reason: 'unreachable', shopName: null };
+    }
+    if (outcome.status === 401 || outcome.status === 403) {
+      return { valid: false, reason: 'invalid', shopName: null };
+    }
+    if (outcome.status >= 200 && outcome.status < 300) {
+      const shop = (outcome.body && outcome.body.shop) || {};
+      return {
+        valid: true,
+        reason: 'ok',
+        shopName: typeof shop.name === 'string' ? shop.name : null,
+      };
+    }
+    return { valid: false, reason: 'invalid', shopName: null };
+  }
+
+  /**
+   * Removes the cached health check for a store (used on disconnect).
+   * Never throws — a missing table must not break the disconnect flow.
+   */
+  async clearHealth(storeId: string): Promise<void> {
+    if (!storeId) {
+      throw new TenantIsolationError('store_id is required');
+    }
+    try {
+      const db = getDatabaseClient();
+      await db.query('DELETE FROM shopify_health_checks WHERE store_id = $1', [storeId]);
+    } catch {
+      // Table may not exist on a database that hasn't run migration 029 yet.
+    }
+  }
 }

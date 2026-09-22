@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { getDatabaseClient } from '../../database/client';
+import { encryptString } from '../../utils/crypto';
 import { verifyJwt, requireRole, enforceStoreAccess } from '../middlewares/auth.middleware';
 import { AuditRepository } from '../../modules/merchant/audit.repository';
 import { getEmailProvider, getTestEmailProvider } from '../../providers/email';
@@ -457,6 +459,105 @@ router.post('/:storeId/shopify/health/check', enforceStoreAccess, async (req: Re
     const storeId = req.params.storeId as string;
     const data = await new ShopifyHealthService().checkHealth(storeId);
     res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 4.2 Shopify token reconnect — the new token is validated with a lightweight
+// shop.json call BEFORE anything is saved, so an invalid token never replaces
+// the working one. Security: the token travels in the request body and the
+// X-Shopify-Access-Token header only; it is never logged, persisted in plain
+// text, or returned in any response.
+const ShopifyReconnectSchema = z.object({
+  admin_token: z.string().trim().min(8, 'Token is too short').max(2000, 'Token is too long'),
+});
+
+router.post('/:storeId/shopify/reconnect', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const input = ShopifyReconnectSchema.parse(req.body);
+    const db = getDatabaseClient();
+
+    const storeRes = await db.query('SELECT shop_domain FROM stores WHERE id = $1', [storeId]);
+    const shopDomain: string | undefined = storeRes.rows[0]?.shop_domain;
+    if (!shopDomain) {
+      throw new AppError('Store not found.', 404, 'STORE_NOT_FOUND');
+    }
+
+    const healthSvc = new ShopifyHealthService();
+    const probe = await healthSvc.probeTokenValidity(shopDomain, input.admin_token);
+    if (!probe.valid) {
+      if (probe.reason === 'invalid') {
+        throw new AppError(
+          'Ye token kaam nahi kar raha (Shopify ne reject kar diya). Shopify admin → Apps → your custom app → API credentials se Admin API access token dobara copy karke paste karo. Tumhara purana token abhi bhi saved hai.',
+          400,
+          'SHOPIFY_TOKEN_INVALID'
+        );
+      }
+      throw new AppError(
+        'Shopify se connect nahi ho paya (network timeout). Store domain check karke dobara try karo. Tumhara purana token abhi bhi saved hai.',
+        503,
+        'SHOPIFY_UNREACHABLE'
+      );
+    }
+
+    // Replace only the admin token; the existing storefront token stays as-is.
+    // (INSERT only happens if the store never had credentials; the storefront
+    // slot gets an encrypted empty string so the adapter's decrypt never breaks.)
+    const encAdmin = encryptString(input.admin_token);
+    const encEmptyStorefront = encryptString('');
+    await db.query(
+      `INSERT INTO store_credentials (store_id, encrypted_admin_token, encrypted_storefront_token, encryption_iv)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (store_id) DO UPDATE SET
+         encrypted_admin_token = EXCLUDED.encrypted_admin_token,
+         encryption_iv = EXCLUDED.encryption_iv,
+         updated_at = NOW()`,
+      [storeId, encAdmin.encryptedString, encEmptyStorefront.encryptedString, encAdmin.iv]
+    );
+
+    try {
+      const auditRepo = new AuditRepository(db);
+      await auditRepo.logAction(req.user!.id, storeId, 'SHOPIFY_TOKEN_RECONNECT', 'store_credentials', {}, { reconnected: true });
+    } catch {
+      // Audit must never break the reconnect flow.
+    }
+
+    // Auto-run the health check so the badge/panel reflect the new token.
+    // A health-check failure must never fail the reconnect itself.
+    let health = null;
+    try {
+      health = await healthSvc.checkHealth(storeId);
+    } catch {
+      logger.warn('Shopify health auto-check failed after reconnect', { storeId });
+    }
+
+    res.json({ success: true, data: { reconnected: true, health } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 4.3 Shopify disconnect — removes the stored credentials and the cached
+// health check only. Orders, products, snapshots and all other store data
+// are left untouched.
+router.delete('/:storeId/shopify/connection', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const db = getDatabaseClient();
+
+    await db.query('DELETE FROM store_credentials WHERE store_id = $1', [storeId]);
+    await new ShopifyHealthService().clearHealth(storeId);
+
+    try {
+      const auditRepo = new AuditRepository(db);
+      await auditRepo.logAction(req.user!.id, storeId, 'SHOPIFY_DISCONNECT', 'store_credentials', {}, { disconnected: true });
+    } catch {
+      // Audit must never break the disconnect flow.
+    }
+
+    res.json({ success: true, data: { disconnected: true } });
   } catch (err) {
     next(err);
   }
