@@ -86,7 +86,8 @@ const sections = {
   'reorder-reminders': document.getElementById('reorder-reminders'),
   'ad-intelligence': document.getElementById('ad-intelligence'),
   'meta-ads': document.getElementById('meta-ads'),
-  'ads-explorer': document.getElementById('ads-explorer')
+  'ads-explorer': document.getElementById('ads-explorer'),
+  'ai-agent': document.getElementById('ai-agent')
 };
 
 let adStudioState = {
@@ -1028,6 +1029,11 @@ async function loadSectionData(section) {
 
     if (section === 'ads-explorer') {
       await loadExplorerData();
+      return;
+    }
+
+    if (section === 'ai-agent') {
+      await loadAiAgentData();
       return;
     }
 
@@ -4217,6 +4223,7 @@ const NAV_FEATURE_MAP = {
   'ad-intelligence': 'ad_intelligence',
   'meta-ads': 'ad_intelligence',
   'ads-explorer': 'ad_intelligence',
+  'ai-agent': 'growth_copilot',
 };
 
 async function fetchStoreFeatures() {
@@ -5560,4 +5567,197 @@ function setupExplorerEventListeners() {
     renderExplorerGrid();
   });
   document.getElementById('explorer-clear-filters')?.addEventListener('click', clearExplorerFilters);
+}
+
+// ============================================================
+// Merchant AI Agent (in-dashboard chat assistant + doc verdicts)
+// ============================================================
+const AI_AGENT_API_BASE = () => `/api/v1/dashboard/${state.activeStoreId}/ai-agent`;
+
+const aiAgentState = {
+  history: [], // {role, content} — sent back to the server each turn
+  busy: false,
+  listenersBound: false,
+};
+
+function agentApi(path, options = {}) {
+  return fetch(`${AI_AGENT_API_BASE()}${path}`, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${state.token}`,
+      ...(options.headers || {}),
+    },
+  });
+}
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function agentScrollDown() {
+  const box = document.getElementById('ai-agent-messages');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+function agentAddMessage(kind, html, rawText) {
+  const box = document.getElementById('ai-agent-messages');
+  if (!box) return;
+  const div = document.createElement('div');
+  div.className = `agent-msg agent-msg--${kind}`;
+  div.innerHTML = html;
+  box.appendChild(div);
+  agentScrollDown();
+  return div;
+}
+
+function agentAddUserMessage(text) {
+  agentAddMessage('user', escapeHtml(text));
+  aiAgentState.history.push({ role: 'user', content: text });
+}
+
+function agentAddAssistantMessage(text) {
+  agentAddMessage('assistant', escapeHtml(text));
+  aiAgentState.history.push({ role: 'assistant', content: text });
+  // Keep history bounded (server also caps at 20).
+  if (aiAgentState.history.length > 20) {
+    aiAgentState.history = aiAgentState.history.slice(-20);
+  }
+}
+
+function agentAddError(text) {
+  agentAddMessage('error', escapeHtml(text));
+}
+
+function agentAddVerdict(data) {
+  const box = document.getElementById('ai-agent-messages');
+  if (!box) return;
+  const v = data.verdict || {};
+  const list = (items) => (items || []).map((i) => `<li>${escapeHtml(i)}</li>`).join('');
+  const div = document.createElement('div');
+  div.className = 'agent-verdict';
+  div.innerHTML = `
+    <h4>Document: ${escapeHtml(data.fileName || 'upload')}</h4>
+    <p>${escapeHtml(v.summary || '')}</p>
+    <h4>Key findings</h4>
+    <ul>${list(v.key_findings)}</ul>
+    ${(v.risks_and_flags && v.risks_and_flags.length) ? `<h4>Risks &amp; flags</h4><ul>${list(v.risks_and_flags)}</ul>` : ''}
+    <div class="agent-verdict-callout"><strong>Final verdict:</strong> ${escapeHtml(v.final_verdict || '')}</div>
+    ${(v.recommended_actions && v.recommended_actions.length) ? `<h4>Recommended actions</h4><ul>${list(v.recommended_actions)}</ul>` : ''}
+    ${data.truncated ? `<p style="font-size:12px;color:var(--color-text-secondary);margin-top:8px;">Note: very long document — analysis used the first portion.</p>` : ''}
+  `;
+  box.appendChild(div);
+  agentScrollDown();
+  aiAgentState.history.push({ role: 'assistant', content: `[Verdict for ${data.fileName}] ${v.final_verdict || ''}` });
+}
+
+function agentSetBusy(busy) {
+  aiAgentState.busy = busy;
+  document.getElementById('ai-agent-typing')?.classList.toggle('hidden', !busy);
+  const input = document.getElementById('ai-agent-input');
+  const send = document.getElementById('btn-agent-send');
+  if (input) input.disabled = busy;
+  if (send) send.disabled = busy;
+  if (busy) agentScrollDown();
+}
+
+async function agentSendMessage() {
+  const input = document.getElementById('ai-agent-input');
+  const text = (input?.value || '').trim();
+  if (!text || aiAgentState.busy) return;
+  input.value = '';
+  agentAddUserMessage(text);
+  agentSetBusy(true);
+  try {
+    const res = await agentApi('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history: aiAgentState.history.slice(0, -1) }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) {
+      const msg = json?.error?.message || 'Something went wrong. Please try again.';
+      agentAddError(msg);
+      // Drop the user message from history on failure so a retry stays clean.
+      aiAgentState.history.pop();
+      return;
+    }
+    agentAddAssistantMessage(json.data?.answer || 'No answer returned.');
+  } catch (err) {
+    agentAddError('Could not reach the AI agent. Check your connection and try again.');
+    aiAgentState.history.pop();
+  } finally {
+    agentSetBusy(false);
+  }
+}
+
+async function agentUploadDocument(file) {
+  if (!file || aiAgentState.busy) return;
+  agentAddMessage('system', `Uploading <strong>${escapeHtml(file.name)}</strong> for analysis&hellip;`);
+  agentSetBusy(true);
+  try {
+    const form = new FormData();
+    form.append('document', file);
+    const res = await agentApi('/upload', { method: 'POST', body: form });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) {
+      agentAddError(json?.error?.message || 'Document analysis failed. Please try again.');
+      return;
+    }
+    agentAddVerdict(json.data);
+  } catch (err) {
+    agentAddError('Could not upload the document. Check your connection and try again.');
+  } finally {
+    agentSetBusy(false);
+    const picker = document.getElementById('ai-agent-file');
+    if (picker) picker.value = '';
+  }
+}
+
+function bindAiAgentListeners() {
+  if (aiAgentState.listenersBound) return;
+  aiAgentState.listenersBound = true;
+  document.getElementById('btn-agent-send')?.addEventListener('click', agentSendMessage);
+  document.getElementById('ai-agent-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      agentSendMessage();
+    }
+  });
+  document.getElementById('btn-agent-upload')?.addEventListener('click', () => {
+    document.getElementById('ai-agent-file')?.click();
+  });
+  document.getElementById('ai-agent-file')?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) agentUploadDocument(file);
+  });
+}
+
+async function loadAiAgentData() {
+  bindAiAgentListeners();
+  const pill = document.getElementById('ai-agent-status-pill');
+  const offline = document.getElementById('ai-agent-offline');
+  const chatWrap = document.getElementById('ai-agent-chat-wrap');
+  try {
+    const res = await agentApi('/status');
+    const json = await res.json().catch(() => ({}));
+    const configured = Boolean(json?.data?.configured);
+    if (pill) {
+      pill.textContent = configured ? 'Ready' : 'Not configured';
+      pill.className = `badge ${configured ? 'badge--success' : 'badge--danger'}`;
+    }
+    offline?.classList.toggle('hidden', configured);
+    chatWrap?.classList.toggle('hidden', !configured);
+    if (configured && document.getElementById('ai-agent-messages')?.children.length === 0) {
+      agentAddMessage('system', 'Ask me anything about your store — I answer from your live Shopify + Meta data. You can also attach a document for an AI verdict.');
+    }
+  } catch (err) {
+    if (pill) {
+      pill.textContent = 'Unavailable';
+      pill.className = 'badge badge--danger';
+    }
+  }
 }

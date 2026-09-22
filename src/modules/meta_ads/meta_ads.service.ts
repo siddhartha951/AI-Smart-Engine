@@ -248,6 +248,19 @@ export class MetaAdsService {
   // 2. Insights (Meta-reported + store attribution)
   // ==========================================
 
+  /**
+   * Public store-side campaign attribution for the Merchant AI Agent.
+   * Thin wrapper over the private ledger query — always tenant-scoped.
+   */
+  async getCampaignAttribution(
+    storeId: string,
+    since?: string,
+    until?: string
+  ): Promise<MetaCampaignAttribution[]> {
+    if (!storeId) throw new TenantIsolationError('store_id is required');
+    return this.getStoreCampaignAttribution(storeId, since, until);
+  }
+
   private async getStoreCampaignAttribution(
     storeId: string,
     since?: string,

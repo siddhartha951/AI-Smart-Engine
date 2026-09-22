@@ -16,6 +16,7 @@ import { attributionRouter } from './attribution.routes';
 import { growthRouter } from './growth.routes';
 import { aiRouter } from './ai.routes';
 import { metaAdsRouter } from './meta-ads.routes';
+import { aiAgentRouter } from './ai-agent.routes';
 import { enforceFeature } from '../middlewares/entitlement.middleware';
 import { FeatureKey } from '../../modules/entitlements/entitlement.types';
 import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
@@ -1487,6 +1488,9 @@ router.use('/:storeId/ai', enforceStoreAccess, aiRouter);
 
 // 14. Meta Ads Integration (live ads + performance from Meta Marketing API)
 router.use('/:storeId/meta-ads', enforceStoreAccess, enforceFeature(FeatureKey.AD_INTELLIGENCE), metaAdsRouter);
+
+// 15. Merchant AI Agent (in-dashboard chat assistant + document verdicts)
+router.use('/:storeId/ai-agent', enforceStoreAccess, enforceFeature(FeatureKey.GROWTH_COPILOT), aiAgentRouter);
 
 export default router;
 

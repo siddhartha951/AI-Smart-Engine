@@ -204,6 +204,14 @@
               Ads Explorer
             </a>
           </li>
+          <li>
+            <a href="#" data-target="ai-agent">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.2-2.6 5.6-.9.9-1.4 2-1.4 3.4H9c0-1.4-.5-2.5-1.4-3.4C6.2 13.2 5 11.4 5 9a7 7 0 0 1 7-7z"></path><path d="M9 21h6"></path></svg>
+              </span>
+              AI Agent
+            </a>
+          </li>
         </ul>
         <div class="sidebar-footer">
           <button id="logout-btn" class="btn-secondary btn-sm" style="width: 100%;">Sign Out</button>
@@ -2345,6 +2353,40 @@
           <div id="explorer-empty" class="panel hidden" style="text-align: center; padding: 40px; margin-top: 8px;">
             <p style="font-weight: 600; margin-bottom: 6px;">No ads synced yet.</p>
             <p class="section-subtitle">Connect Meta Ads above, pick an ad account, then press &ldquo;Sync Ads&rdquo; to pull your ad creatives.</p>
+          </div>
+        </section>
+
+        <!-- AI Agent: Merchant AI assistant (chat + document verdicts) -->
+        <section id="ai-agent" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <h2>AI Agent</h2>
+              <p class="section-subtitle">Ask anything about your store — sales, ad spend, campaigns — or upload a document for an AI verdict. Every number comes from your live data.</p>
+            </div>
+            <div class="header-actions">
+              <span id="ai-agent-status-pill" class="badge badge--danger">Checking&hellip;</span>
+            </div>
+          </header>
+
+          <div id="ai-agent-offline" class="panel hidden" style="text-align: center; padding: 40px; margin-bottom: 16px;">
+            <p style="font-weight: 600; margin-bottom: 6px;">AI agent is not configured yet.</p>
+            <p class="section-subtitle">Ask the store owner to set an <code>OPENAI_API_KEY</code> on the server to enable the AI agent.</p>
+          </div>
+
+          <div id="ai-agent-chat-wrap" class="panel" style="padding: 0; overflow: hidden;">
+            <div id="ai-agent-messages" class="agent-messages"></div>
+            <div id="ai-agent-typing" class="agent-typing hidden">
+              <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+            </div>
+            <div class="agent-inputbar">
+              <input type="file" id="ai-agent-file" class="hidden" accept=".pdf,.csv,.xlsx,.xls,.txt">
+              <button id="btn-agent-upload" class="btn btn-secondary btn-sm" title="Upload a document (PDF, CSV, XLSX)" type="button">&#128206; Attach</button>
+              <input type="text" id="ai-agent-input" class="form-control" placeholder="Ask me anything about your store&hellip;" autocomplete="off" maxlength="2000">
+              <button id="btn-agent-send" class="btn btn-primary btn-sm" type="button">Send</button>
+            </div>
+            <div id="ai-agent-hint" class="agent-hint">
+              Try: &ldquo;Aaj kitni sale hui?&rdquo; &middot; &ldquo;Which campaign has the best ROAS?&rdquo; &middot; &ldquo;Show my top products this month&rdquo;
+            </div>
           </div>
         </section>
       </main>
