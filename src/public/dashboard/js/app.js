@@ -85,7 +85,9 @@ const sections = {
   'email-automation': document.getElementById('email-automation'),
   'reorder-reminders': document.getElementById('reorder-reminders'),
   'ad-intelligence': document.getElementById('ad-intelligence'),
-  'meta-ads': document.getElementById('meta-ads')
+  'meta-ads': document.getElementById('meta-ads'),
+  'ads-explorer': document.getElementById('ads-explorer'),
+  'ai-agent': document.getElementById('ai-agent')
 };
 
 let adStudioState = {
@@ -511,6 +513,21 @@ function setupEventListeners() {
     });
   });
 
+  // 3a. Shopify Health Check actions
+  const recheckHealthBtn = document.getElementById('btn-recheck-shopify-health');
+  if (recheckHealthBtn) recheckHealthBtn.addEventListener('click', runShopifyHealthCheck);
+  const dismissScopeBannerBtn = document.getElementById('btn-dismiss-shopify-banner');
+  if (dismissScopeBannerBtn) dismissScopeBannerBtn.addEventListener('click', () => {
+    try { localStorage.setItem('shopifyHealthBannerDismissed:' + state.activeStoreId, '1'); } catch (_) {}
+    const banner = document.getElementById('shopify-scope-banner');
+    if (banner) banner.classList.add('hidden');
+  });
+  const gotoHealthBtn = document.getElementById('btn-goto-shopify-health');
+  if (gotoHealthBtn) gotoHealthBtn.addEventListener('click', () => {
+    const link = document.querySelector('.nav-links a[data-target="shopify-connection"]');
+    if (link) { link.click(); } else { showSection('shopify-connection'); loadSectionData('shopify-connection'); }
+  });
+
   // Store Currency Update Handler
   const btnSaveCurrency = document.getElementById('btn-save-currency');
   if (btnSaveCurrency) {
@@ -773,6 +790,7 @@ async function updateActiveStoreUI() {
     const activeSectionEl = document.querySelector('.nav-links a.active');
     const activeSection = activeSectionEl ? activeSectionEl.getAttribute('data-target') : 'overview';
     loadSectionData(activeSection);
+    refreshShopifyScopeBanner();
   }
 }
 
@@ -937,6 +955,151 @@ function showView(viewName) {
   if(views[viewName]) views[viewName].classList.remove('hidden');
 }
 
+// ---- Shopify Connection Health (badge, details panel, scope banner) ----
+function shopifyHealthBadgeClass(status) {
+  if (status === 'healthy') return 'badge badge--success';
+  if (status === 'degraded') return 'badge badge--warning';
+  if (status === 'down') return 'badge badge--danger';
+  return 'badge badge--neutral';
+}
+
+function shopifyHealthLabel(status) {
+  if (status === 'healthy') return 'Healthy';
+  if (status === 'degraded') return 'Needs attention';
+  if (status === 'down') return 'Down';
+  return 'Not checked';
+}
+
+async function fetchShopifyHealth() {
+  const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/health`, {
+    headers: { 'Authorization': `Bearer ${state.token}` }
+  });
+  if (!res.ok) throw new Error('Health fetch failed');
+  const { data } = await res.json();
+  return data;
+}
+
+async function loadShopifyHealth() {
+  const badge = document.getElementById('shopify-health-badge');
+  const checkedAt = document.getElementById('shopify-health-checked-at');
+  const panel = document.getElementById('shopify-health-panel');
+  if (!badge || !panel) return;
+  badge.textContent = 'Checking…';
+  badge.className = 'badge badge--neutral';
+  try {
+    const data = await fetchShopifyHealth();
+    renderShopifyHealth(data);
+  } catch (err) {
+    badge.textContent = 'Check failed';
+    badge.className = 'badge badge--danger';
+    if (checkedAt) checkedAt.textContent = '';
+    panel.innerHTML = '<p style="font-size:13px;color:var(--color-text-secondary);">Could not load the health check. Press Re-check to try again.</p>';
+  }
+}
+
+function renderShopifyHealth(data) {
+  const badge = document.getElementById('shopify-health-badge');
+  const checkedAt = document.getElementById('shopify-health-checked-at');
+  const panel = document.getElementById('shopify-health-panel');
+  if (!badge || !panel) return;
+  if (!data || data.checked === false) {
+    badge.textContent = 'Not checked';
+    badge.className = 'badge badge--neutral';
+    if (checkedAt) checkedAt.textContent = '';
+    panel.innerHTML = '<p style="font-size:13px;color:var(--color-text-secondary);">No health check has run yet. Press <strong>Re-check</strong> to diagnose the token and API scopes.</p>';
+    return;
+  }
+  badge.textContent = shopifyHealthLabel(data.overall_status);
+  badge.className = shopifyHealthBadgeClass(data.overall_status);
+  if (checkedAt) checkedAt.textContent = data.checked_at ? ('· checked ' + new Date(data.checked_at).toLocaleString()) : '';
+
+  const scopeIcon = (s) => s === 'ok' ? '✅' : (s === 'missing' ? '❌' : (s === 'error' ? '⚠️' : '➖'));
+  let html = '<div style="display:grid;gap:8px;">';
+  if (data.shop_name || data.store_match === false) {
+    const matchBadge = data.store_match === false
+      ? '<span class="badge badge--danger">wrong store</span>'
+      : (data.store_match ? '<span class="badge badge--success">domain match</span>' : '');
+    html += `<div style="font-size:13px;">Store: <strong>${escapeHtml(data.shop_name || '—')}</strong> ${matchBadge}</div>`;
+  }
+  for (const s of (data.scopes || [])) {
+    html += `<div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:8px 10px;border:1px solid var(--color-border-default);border-radius:8px;">`
+      + `<span style="font-size:15px;">${scopeIcon(s.status)}</span>`
+      + `<div><div style="font-weight:600;">${escapeHtml(s.scope)} <span style="font-weight:400;color:var(--color-text-muted);font-size:12px;">${escapeHtml(s.tested_endpoint || '')}</span></div>`
+      + `<div style="color:var(--color-text-secondary);font-size:12px;">Unlocks: ${escapeHtml(s.unlocks || '')}</div>`
+      + (s.detail ? `<div style="color:var(--color-danger);font-size:12px;">${escapeHtml(s.detail)}</div>` : '')
+      + `</div></div>`;
+  }
+  html += '</div>';
+  if (data.rate_limit) {
+    html += `<p style="font-size:12px;color:var(--color-text-muted);margin:8px 0 0;">Shopify API call limit: ${escapeHtml(data.rate_limit)}</p>`;
+  }
+  if (data.fix_steps && data.fix_steps.length > 0) {
+    html += `<div class="callout-box" style="margin-top:10px;"><div style="font-weight:600;margin-bottom:6px;">How to fix</div><ol style="margin:0;padding-left:18px;display:grid;gap:4px;">`
+      + data.fix_steps.map(st => `<li>${escapeHtml(st)}</li>`).join('')
+      + `</ol></div>`;
+  }
+  panel.innerHTML = html;
+
+  updateShopifyScopeBanner(data);
+}
+
+async function runShopifyHealthCheck() {
+  const btn = document.getElementById('btn-recheck-shopify-health');
+  const original = btn ? btn.textContent : 'Re-check';
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/shopify/health/check`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error((body && (body.message || (body.error && body.error.message))) || 'Health check failed');
+    renderShopifyHealth(body.data);
+    showToast('Health check complete: ' + shopifyHealthLabel(body.data.overall_status));
+  } catch (err) {
+    showToast(err.message || 'Health check failed', true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+// Dismissible, non-blocking banner shown when the Shopify connection is down
+// or the critical read_orders scope is missing.
+async function refreshShopifyScopeBanner() {
+  const banner = document.getElementById('shopify-scope-banner');
+  if (!banner || !state.activeStoreId) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1'; } catch (_) {}
+  if (dismissed) { banner.classList.add('hidden'); return; }
+  try {
+    const data = await fetchShopifyHealth();
+    updateShopifyScopeBanner(data);
+  } catch (_) { /* banner stays hidden when the check can't load */ }
+}
+
+function updateShopifyScopeBanner(data) {
+  const banner = document.getElementById('shopify-scope-banner');
+  const text = document.getElementById('shopify-scope-banner-text');
+  if (!banner || !text || !state.activeStoreId) return;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1'; } catch (_) {}
+  if (dismissed || !data || data.checked === false || data.overall_status === 'healthy') {
+    banner.classList.add('hidden');
+    return;
+  }
+  const ordersScope = (data.scopes || []).find(s => s.scope === 'read_orders');
+  let msg;
+  if (data.overall_status === 'down') {
+    msg = '⚠️ Shopify connection is down — sales data and AI sales answers are unavailable. Open Connections → Shopify for the exact fix.';
+  } else if (ordersScope && ordersScope.status !== 'ok') {
+    msg = '⚠️ Your Shopify token is missing the read_orders scope — the revenue timeline and AI sales answers are disabled until you reconnect with that scope granted.';
+  } else {
+    msg = '⚠️ Your Shopify connection needs attention — some features are limited. Open Connections → Shopify for details.';
+  }
+  text.textContent = msg;
+  banner.classList.remove('hidden');
+}
+
 function showSection(sectionName) {
   const featKey = NAV_FEATURE_MAP[sectionName];
   if (featKey && state.features && state.features[featKey] === false) {
@@ -1022,6 +1185,16 @@ async function loadSectionData(section) {
 
     if (section === 'meta-ads') {
       await loadMetaAdsData();
+      return;
+    }
+
+    if (section === 'ads-explorer') {
+      await loadExplorerData();
+      return;
+    }
+
+    if (section === 'ai-agent') {
+      await loadAiAgentData();
       return;
     }
 
@@ -1266,6 +1439,7 @@ async function loadSectionData(section) {
         if (curSelect) curSelect.value = data.currency;
       }
       loadProductsTable();
+      loadShopifyHealth();
     }
     else if (section === 'email-automation') {
       if (data.settings) {
@@ -4210,6 +4384,8 @@ const NAV_FEATURE_MAP = {
   'reorder-reminders': 'smart_reorder',
   'ad-intelligence': 'ad_intelligence',
   'meta-ads': 'ad_intelligence',
+  'ads-explorer': 'ad_intelligence',
+  'ai-agent': 'growth_copilot',
 };
 
 async function fetchStoreFeatures() {
@@ -4917,6 +5093,9 @@ function setupAiIntelligenceListeners() {
   document.getElementById('meta-level-select')?.addEventListener('change', () => refreshMetaInsights(false));
   document.getElementById('meta-ad-account-select')?.addEventListener('change', () => refreshMetaInsights(false));
 
+  // Ads Explorer
+  setupExplorerEventListeners();
+
   // Growth Copilot Ask Modal
   document.getElementById('close-copilot-ask-modal')?.addEventListener('click', () => {
     document.getElementById('copilot-ask-modal')?.classList.add('hidden');
@@ -5218,6 +5397,529 @@ function renderMetaInsights(data, level) {
           <td>${attr ? metaMoney(attr.storeAttributedRevenue, currency) : '—'}</td>
         </tr>`;
       }).join('');
+    }
+  }
+}
+
+// ============================================================================
+// Ads Explorer (Meta creative explorer, served from cache)
+// ============================================================================
+
+const EXPLORER_API_BASE = () => `/api/v1/dashboard/${state.activeStoreId}/meta-ads/explorer`;
+
+async function explorerApi(path, options = {}) {
+  const res = await fetch(`${EXPLORER_API_BASE()}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${state.token}`,
+      ...(options.headers || {}),
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `Request failed (${res.status})`);
+  }
+  return body.data;
+}
+
+const explorerState = {
+  ads: [],
+  accountId: '',
+  lastSyncAt: null,
+  synced: false,
+  filters: { search: '', campaign: '', adset: '', status: '', missingCreative: false, missingUrl: false },
+};
+
+function setExplorerMessage(text, isError = false) {
+  const el = document.getElementById('explorer-message');
+  if (!el) return;
+  if (!text) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.innerHTML = `<span style="color: ${isError ? 'var(--danger)' : 'var(--color-success)'};">${escapeHtml(text)}</span>`;
+}
+
+function explorerRelativeTime(iso) {
+  if (!iso) return 'Never synced';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  if (diffMs < 0) return 'Just now';
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function renderExplorerConnection(status) {
+  const pill = document.getElementById('explorer-connection-pill');
+  if (!pill) return;
+  if (status && status.connected) {
+    pill.className = 'badge badge--success';
+    pill.textContent = 'Connected';
+  } else if (status && status.status === 'error') {
+    pill.className = 'badge badge--warning';
+    pill.textContent = 'Needs attention';
+  } else {
+    pill.className = 'badge badge--danger';
+    pill.textContent = 'Disconnected';
+  }
+}
+
+async function loadExplorerData() {
+  if (!state.activeStoreId) return;
+  try {
+    setExplorerMessage('');
+    const status = await metaApi('/config');
+    renderExplorerConnection(status);
+    if (status.connected) {
+      const accounts = await metaApi('/accounts').catch(() => []);
+      const sel = document.getElementById('explorer-account-select');
+      if (sel) {
+        sel.innerHTML = accounts.length
+          ? accounts.map(a => `<option value="${escapeHtml(a.accountId)}">${escapeHtml(a.name)} (${escapeHtml(a.accountId)})</option>`).join('')
+          : '<option value="">— no ad accounts —</option>';
+        const preferred = status.adAccountId || (accounts[0] && accounts[0].accountId) || '';
+        if (preferred) sel.value = preferred;
+      }
+      await refreshExplorerAds();
+    } else {
+      renderExplorerEmpty();
+    }
+  } catch (err) {
+    setExplorerMessage(err.message, true);
+  }
+}
+
+async function refreshExplorerAds() {
+  const accountId = document.getElementById('explorer-account-select')?.value || '';
+  const q = accountId ? `?ad_account_id=${encodeURIComponent(accountId)}` : '';
+  const data = await explorerApi(`/ads${q}`);
+  explorerState.ads = data.ads || [];
+  explorerState.accountId = data.adAccountId || accountId;
+  explorerState.lastSyncAt = data.lastSyncAt;
+  explorerState.synced = !!data.synced;
+
+  const lastSyncEl = document.getElementById('explorer-last-sync');
+  if (lastSyncEl) lastSyncEl.textContent = explorerRelativeTime(data.lastSyncAt);
+
+  buildExplorerFilterOptions();
+  renderExplorerGrid();
+}
+
+async function syncExplorerAds() {
+  const btn = document.getElementById('btn-explorer-sync');
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  setExplorerMessage('Syncing ads from Meta — this may take a few seconds…');
+  try {
+    const accountId = document.getElementById('explorer-account-select')?.value || null;
+    const data = await explorerApi('/sync', {
+      method: 'POST',
+      body: JSON.stringify({ ad_account_id: accountId }),
+    });
+    setExplorerMessage(`Synced ${data.adsFetched} ads from Meta.`, false);
+    await refreshExplorerAds();
+  } catch (err) {
+    setExplorerMessage(err.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#8635; Sync Ads'; }
+  }
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter(v => v && String(v).trim() !== ''))).sort((a, b) =>
+    String(a).localeCompare(String(b))
+  );
+}
+
+function buildExplorerFilterOptions() {
+  const ads = explorerState.ads;
+  const fill = (id, values, allLabel) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` +
+      uniqueSorted(values).map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (current && uniqueSorted(values).includes(current)) sel.value = current;
+  };
+  fill('explorer-campaign-filter', ads.map(a => a.campaign_name), 'Campaign: all');
+  fill('explorer-adset-filter', ads.map(a => a.adset_name), 'Ad Set: all');
+  fill('explorer-status-filter', ads.map(a => a.status), 'Status: all');
+}
+
+function readExplorerFilters() {
+  explorerState.filters.search = (document.getElementById('explorer-search')?.value || '').trim().toLowerCase();
+  explorerState.filters.campaign = document.getElementById('explorer-campaign-filter')?.value || '';
+  explorerState.filters.adset = document.getElementById('explorer-adset-filter')?.value || '';
+  explorerState.filters.status = document.getElementById('explorer-status-filter')?.value || '';
+}
+
+function getFilteredExplorerAds() {
+  const f = explorerState.filters;
+  return explorerState.ads.filter(ad => {
+    if (f.search) {
+      const hay = `${ad.name || ''} ${ad.ad_id || ''}`.toLowerCase();
+      if (!hay.includes(f.search)) return false;
+    }
+    if (f.campaign && ad.campaign_name !== f.campaign) return false;
+    if (f.adset && ad.adset_name !== f.adset) return false;
+    if (f.status && ad.status !== f.status) return false;
+    if (f.missingCreative && ad.thumbnail_url) return false;
+    if (f.missingUrl && ad.destination_url) return false;
+    return true;
+  });
+}
+
+function explorerStatusBadge(status) {
+  const s = (status || 'UNKNOWN').toUpperCase();
+  const cls = s === 'ACTIVE' ? 'badge--success' : (s === 'PAUSED' ? 'badge--warning' : 'badge--neutral');
+  return `<span class="badge ${cls}">${escapeHtml(s)}</span>`;
+}
+
+function renderExplorerEmpty() {
+  const grid = document.getElementById('explorer-grid');
+  const empty = document.getElementById('explorer-empty');
+  const count = document.getElementById('explorer-count');
+  if (grid) grid.innerHTML = '';
+  if (count) count.textContent = '';
+  if (empty) empty.classList.remove('hidden');
+}
+
+function renderExplorerGrid() {
+  const grid = document.getElementById('explorer-grid');
+  const empty = document.getElementById('explorer-empty');
+  const count = document.getElementById('explorer-count');
+  if (!grid) return;
+
+  const filtered = getFilteredExplorerAds();
+  const total = explorerState.ads.length;
+
+  if (count) {
+    count.textContent = total === 0
+      ? ''
+      : (filtered.length === total ? `${total} ads found` : `${filtered.length} of ${total} ads`);
+  }
+
+  if (total === 0) {
+    renderExplorerEmpty();
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+
+  grid.innerHTML = filtered.map(ad => {
+    const title = ad.name || ad.ad_id || 'Untitled ad';
+    const media = ad.thumbnail_url
+      ? `<img loading="lazy" src="${escapeHtml(ad.thumbnail_url)}" alt="${escapeHtml(title)}" onerror="this.closest('.explorer-card-media').innerHTML='<span class=&quot;media-placeholder&quot;>&#128444;</span>'">`
+      : '<span class="media-placeholder">&#128444;</span>';
+    const linkBtn = ad.destination_url
+      ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(ad.destination_url)}" target="_blank" rel="noopener" title="Open destination URL">&#8599;</a>`
+      : '';
+    return `<div class="explorer-card" data-ad-id="${escapeHtml(ad.ad_id)}">
+      <div class="explorer-card-media">
+        ${media}
+        <span class="explorer-card-status">${explorerStatusBadge(ad.status)}</span>
+      </div>
+      <div class="explorer-card-body">
+        <div class="explorer-card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <div class="explorer-card-tags">
+          ${ad.campaign_name ? `<span class="tag-row">&#10003; ${escapeHtml(ad.campaign_name)}</span>` : ''}
+          ${ad.adset_name ? `<span class="tag-row">&#10003; ${escapeHtml(ad.adset_name)}</span>` : ''}
+          <span class="tag-row" style="color: var(--color-text-tertiary);">ID ${escapeHtml(ad.ad_id || '')}</span>
+        </div>
+        <div class="explorer-card-actions">
+          <button class="btn btn-secondary btn-sm" data-explorer-download="${escapeHtml(ad.ad_id)}" ${ad.thumbnail_url ? '' : 'disabled'}>&#8681; Creative</button>
+          ${linkBtn}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<p class="section-subtitle" style="grid-column: 1 / -1; text-align: center; padding: 24px;">No ads match these filters.</p>';
+
+  grid.querySelectorAll('[data-explorer-download]').forEach(btn => {
+    btn.addEventListener('click', () => downloadExplorerCreative(btn.getAttribute('data-explorer-download')));
+  });
+}
+
+function triggerBrowserDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'creative';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function downloadExplorerCreative(adId) {
+  const ad = explorerState.ads.find(a => String(a.ad_id) === String(adId));
+  if (!ad || !ad.thumbnail_url) return;
+  const filename = `meta-ad-${ad.ad_id}.jpg`;
+  try {
+    const res = await fetch(ad.thumbnail_url, { mode: 'cors' });
+    if (!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerBrowserDownload(objectUrl, filename);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+  } catch (err) {
+    // CORS-blocked CDN: fall back to opening the creative in a new tab.
+    window.open(ad.thumbnail_url, '_blank', 'noopener');
+  }
+}
+
+async function downloadAllExplorerCreatives() {
+  const ads = getFilteredExplorerAds().filter(a => a.thumbnail_url);
+  if (!ads.length) {
+    setExplorerMessage('No creatives to download for the current filters.', true);
+    return;
+  }
+  setExplorerMessage(`Downloading ${ads.length} creatives…`, false);
+  for (const ad of ads) {
+    await downloadExplorerCreative(ad.ad_id);
+    await new Promise(r => setTimeout(r, 400));
+  }
+}
+
+function clearExplorerFilters() {
+  const search = document.getElementById('explorer-search');
+  if (search) search.value = '';
+  const campaign = document.getElementById('explorer-campaign-filter');
+  if (campaign) campaign.value = '';
+  const adset = document.getElementById('explorer-adset-filter');
+  if (adset) adset.value = '';
+  const status = document.getElementById('explorer-status-filter');
+  if (status) status.value = '';
+  explorerState.filters.missingCreative = false;
+  explorerState.filters.missingUrl = false;
+  document.getElementById('explorer-chip-missing-creative')?.classList.remove('active');
+  document.getElementById('explorer-chip-missing-url')?.classList.remove('active');
+  readExplorerFilters();
+  renderExplorerGrid();
+}
+
+function setupExplorerEventListeners() {
+  document.getElementById('btn-explorer-sync')?.addEventListener('click', syncExplorerAds);
+  document.getElementById('btn-explorer-download')?.addEventListener('click', downloadAllExplorerCreatives);
+  document.getElementById('explorer-account-select')?.addEventListener('change', () => {
+    refreshExplorerAds().catch(err => setExplorerMessage(err.message, true));
+  });
+  document.getElementById('explorer-search')?.addEventListener('input', () => {
+    readExplorerFilters();
+    renderExplorerGrid();
+  });
+  ['explorer-campaign-filter', 'explorer-adset-filter', 'explorer-status-filter'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      readExplorerFilters();
+      renderExplorerGrid();
+    });
+  });
+  document.getElementById('explorer-chip-missing-creative')?.addEventListener('click', (e) => {
+    explorerState.filters.missingCreative = !explorerState.filters.missingCreative;
+    e.currentTarget.classList.toggle('active', explorerState.filters.missingCreative);
+    renderExplorerGrid();
+  });
+  document.getElementById('explorer-chip-missing-url')?.addEventListener('click', (e) => {
+    explorerState.filters.missingUrl = !explorerState.filters.missingUrl;
+    e.currentTarget.classList.toggle('active', explorerState.filters.missingUrl);
+    renderExplorerGrid();
+  });
+  document.getElementById('explorer-clear-filters')?.addEventListener('click', clearExplorerFilters);
+}
+
+// ============================================================
+// Merchant AI Agent (in-dashboard chat assistant + doc verdicts)
+// ============================================================
+const AI_AGENT_API_BASE = () => `/api/v1/dashboard/${state.activeStoreId}/ai-agent`;
+
+const aiAgentState = {
+  history: [], // {role, content} — sent back to the server each turn
+  busy: false,
+  listenersBound: false,
+};
+
+function agentApi(path, options = {}) {
+  return fetch(`${AI_AGENT_API_BASE()}${path}`, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${state.token}`,
+      ...(options.headers || {}),
+    },
+  });
+}
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function agentScrollDown() {
+  const box = document.getElementById('ai-agent-messages');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+function agentAddMessage(kind, html, rawText) {
+  const box = document.getElementById('ai-agent-messages');
+  if (!box) return;
+  const div = document.createElement('div');
+  div.className = `agent-msg agent-msg--${kind}`;
+  div.innerHTML = html;
+  box.appendChild(div);
+  agentScrollDown();
+  return div;
+}
+
+function agentAddUserMessage(text) {
+  agentAddMessage('user', escapeHtml(text));
+  aiAgentState.history.push({ role: 'user', content: text });
+}
+
+function agentAddAssistantMessage(text) {
+  agentAddMessage('assistant', escapeHtml(text));
+  aiAgentState.history.push({ role: 'assistant', content: text });
+  // Keep history bounded (server also caps at 20).
+  if (aiAgentState.history.length > 20) {
+    aiAgentState.history = aiAgentState.history.slice(-20);
+  }
+}
+
+function agentAddError(text) {
+  agentAddMessage('error', escapeHtml(text));
+}
+
+function agentAddVerdict(data) {
+  const box = document.getElementById('ai-agent-messages');
+  if (!box) return;
+  const v = data.verdict || {};
+  const list = (items) => (items || []).map((i) => `<li>${escapeHtml(i)}</li>`).join('');
+  const div = document.createElement('div');
+  div.className = 'agent-verdict';
+  div.innerHTML = `
+    <h4>Document: ${escapeHtml(data.fileName || 'upload')}</h4>
+    <p>${escapeHtml(v.summary || '')}</p>
+    <h4>Key findings</h4>
+    <ul>${list(v.key_findings)}</ul>
+    ${(v.risks_and_flags && v.risks_and_flags.length) ? `<h4>Risks &amp; flags</h4><ul>${list(v.risks_and_flags)}</ul>` : ''}
+    <div class="agent-verdict-callout"><strong>Final verdict:</strong> ${escapeHtml(v.final_verdict || '')}</div>
+    ${(v.recommended_actions && v.recommended_actions.length) ? `<h4>Recommended actions</h4><ul>${list(v.recommended_actions)}</ul>` : ''}
+    ${data.truncated ? `<p style="font-size:12px;color:var(--color-text-secondary);margin-top:8px;">Note: very long document — analysis used the first portion.</p>` : ''}
+  `;
+  box.appendChild(div);
+  agentScrollDown();
+  aiAgentState.history.push({ role: 'assistant', content: `[Verdict for ${data.fileName}] ${v.final_verdict || ''}` });
+}
+
+function agentSetBusy(busy) {
+  aiAgentState.busy = busy;
+  document.getElementById('ai-agent-typing')?.classList.toggle('hidden', !busy);
+  const input = document.getElementById('ai-agent-input');
+  const send = document.getElementById('btn-agent-send');
+  if (input) input.disabled = busy;
+  if (send) send.disabled = busy;
+  if (busy) agentScrollDown();
+}
+
+async function agentSendMessage() {
+  const input = document.getElementById('ai-agent-input');
+  const text = (input?.value || '').trim();
+  if (!text || aiAgentState.busy) return;
+  input.value = '';
+  agentAddUserMessage(text);
+  agentSetBusy(true);
+  try {
+    const res = await agentApi('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history: aiAgentState.history.slice(0, -1) }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) {
+      const msg = json?.error?.message || 'Something went wrong. Please try again.';
+      agentAddError(msg);
+      // Drop the user message from history on failure so a retry stays clean.
+      aiAgentState.history.pop();
+      return;
+    }
+    agentAddAssistantMessage(json.data?.answer || 'No answer returned.');
+  } catch (err) {
+    agentAddError('Could not reach the AI agent. Check your connection and try again.');
+    aiAgentState.history.pop();
+  } finally {
+    agentSetBusy(false);
+  }
+}
+
+async function agentUploadDocument(file) {
+  if (!file || aiAgentState.busy) return;
+  agentAddMessage('system', `Uploading <strong>${escapeHtml(file.name)}</strong> for analysis&hellip;`);
+  agentSetBusy(true);
+  try {
+    const form = new FormData();
+    form.append('document', file);
+    const res = await agentApi('/upload', { method: 'POST', body: form });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) {
+      agentAddError(json?.error?.message || 'Document analysis failed. Please try again.');
+      return;
+    }
+    agentAddVerdict(json.data);
+  } catch (err) {
+    agentAddError('Could not upload the document. Check your connection and try again.');
+  } finally {
+    agentSetBusy(false);
+    const picker = document.getElementById('ai-agent-file');
+    if (picker) picker.value = '';
+  }
+}
+
+function bindAiAgentListeners() {
+  if (aiAgentState.listenersBound) return;
+  aiAgentState.listenersBound = true;
+  document.getElementById('btn-agent-send')?.addEventListener('click', agentSendMessage);
+  document.getElementById('ai-agent-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      agentSendMessage();
+    }
+  });
+  document.getElementById('btn-agent-upload')?.addEventListener('click', () => {
+    document.getElementById('ai-agent-file')?.click();
+  });
+  document.getElementById('ai-agent-file')?.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) agentUploadDocument(file);
+  });
+}
+
+async function loadAiAgentData() {
+  bindAiAgentListeners();
+  const pill = document.getElementById('ai-agent-status-pill');
+  const offline = document.getElementById('ai-agent-offline');
+  const chatWrap = document.getElementById('ai-agent-chat-wrap');
+  try {
+    const res = await agentApi('/status');
+    const json = await res.json().catch(() => ({}));
+    const configured = Boolean(json?.data?.configured);
+    if (pill) {
+      pill.textContent = configured ? 'Ready' : 'Not configured';
+      pill.className = `badge ${configured ? 'badge--success' : 'badge--danger'}`;
+    }
+    offline?.classList.toggle('hidden', configured);
+    chatWrap?.classList.toggle('hidden', !configured);
+    if (configured && document.getElementById('ai-agent-messages')?.children.length === 0) {
+      agentAddMessage('system', 'Ask me anything about your store — I answer from your live Shopify + Meta data. You can also attach a document for an AI verdict.');
+    }
+  } catch (err) {
+    if (pill) {
+      pill.textContent = 'Unavailable';
+      pill.className = 'badge badge--danger';
     }
   }
 }

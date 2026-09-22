@@ -121,3 +121,35 @@ metaAdsRouter.delete('/config', async (req: Request, res: Response, next: NextFu
     next(err);
   }
 });
+
+const ExplorerSyncSchema = z.object({
+  ad_account_id: z.string().min(1).optional().nullable(),
+});
+
+const ExplorerQuerySchema = z.object({
+  ad_account_id: z.string().min(1).optional(),
+});
+
+// 7. Ads Explorer — sync ad + creative snapshots from Meta into cache (on demand)
+metaAdsRouter.post('/explorer/sync', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const input = ExplorerSyncSchema.parse(req.body || {});
+    const data = await getService().syncExplorerAds(storeId, { adAccountId: input.ad_account_id });
+    res.json({ success: true, message: `Synced ${data.adsFetched} ads from Meta.`, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 8. Ads Explorer — list cached ads (fast, no Meta API call)
+metaAdsRouter.get('/explorer/ads', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const q = ExplorerQuerySchema.parse(req.query);
+    const data = await getService().getExplorerAds(storeId, { adAccountId: q.ad_account_id });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});

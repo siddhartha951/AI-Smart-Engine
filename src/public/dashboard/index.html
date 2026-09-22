@@ -196,6 +196,22 @@
               Meta Ads
             </a>
           </li>
+          <li>
+            <a href="#" data-target="ads-explorer">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
+              </span>
+              Ads Explorer
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="ai-agent">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.2-2.6 5.6-.9.9-1.4 2-1.4 3.4H9c0-1.4-.5-2.5-1.4-3.4C6.2 13.2 5 11.4 5 9a7 7 0 0 1 7-7z"></path><path d="M9 21h6"></path></svg>
+              </span>
+              AI Agent
+            </a>
+          </li>
         </ul>
         <div class="sidebar-footer">
           <button id="logout-btn" class="btn-secondary btn-sm" style="width: 100%;">Sign Out</button>
@@ -203,6 +219,16 @@
       </nav>
 
       <main class="dashboard-content">
+        <!-- Shopify scope/token warning banner (dismissible, non-blocking) -->
+        <div id="shopify-scope-banner" class="alert-banner hidden" style="border-left: 4px solid var(--color-warning);">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <p id="shopify-scope-banner-text" style="margin: 0; font-size: 13px; color: var(--color-text-primary);">--</p>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btn-goto-shopify-health" class="btn btn-secondary btn-sm">Fix now</button>
+              <button id="btn-dismiss-shopify-banner" class="btn btn-ghost btn-sm" style="padding: 2px 8px;" aria-label="Dismiss">✕</button>
+            </div>
+          </div>
+        </div>
         <!-- 0. Growth Copilot Section (Phase 16) -->
         <section id="growth-copilot" class="content-section active">
           <header class="section-header-flex">
@@ -1147,6 +1173,8 @@
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Status: <span id="shopify-status" class="badge badge--neutral">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Last Product Sync: <span id="shopify-last-sync" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px;">Credentials Configured: <span id="shopify-creds" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
+            <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Connection Health: <span id="shopify-health-badge" class="badge badge--neutral">Not checked</span> <span id="shopify-health-checked-at" style="font-size: 12px; color: var(--color-text-muted);"></span> <button id="btn-recheck-shopify-health" class="btn btn-secondary btn-sm" style="margin-left: 8px;">Re-check</button></p>
+            <div id="shopify-health-panel" style="margin-top: 12px;"></div>
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
               <label for="store-currency-select" style="font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin: 0;">Store Currency:</label>
               <select id="store-currency-select" class="form-select form-select-sm" style="width: 140px;">
@@ -2277,6 +2305,100 @@
               </table>
             </div>
             <small class="form-hint" style="display: block; margin-top: 8px;">*Store Revenue = revenue attributed on your store via the multi-touch attribution ledger (Meta-family sources), per campaign name.</small>
+          </div>
+        </section>
+
+        <section id="ads-explorer" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <h2>Ads Explorer</h2>
+              <p class="section-subtitle">Browse every ad creative in your Meta ad account. Served instantly from cache — press Sync Ads to refresh from Meta.</p>
+            </div>
+            <div class="header-actions">
+              <span id="explorer-connection-pill" class="badge badge--danger">Disconnected</span>
+            </div>
+          </header>
+
+          <!-- Top bar: last sync, account, sync + download -->
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="explorer-topbar">
+              <div>
+                <small class="form-hint">Last sync</small>
+                <div id="explorer-last-sync" style="font-weight: 600;">Never synced</div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0; min-width: 240px;">
+                <label for="explorer-account-select">Ad Account</label>
+                <select id="explorer-account-select" class="form-control">
+                  <option value="">— connect Meta Ads first —</option>
+                </select>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+                <button id="btn-explorer-sync" class="btn btn-primary btn-sm">&#8635; Sync Ads</button>
+                <button id="btn-explorer-download" class="btn btn-secondary btn-sm">&#8681; Download creatives</button>
+              </div>
+            </div>
+            <div id="explorer-message" class="callout-box hidden" style="margin-top: 12px;"></div>
+          </div>
+
+          <!-- Filters -->
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="explorer-filters">
+              <input type="text" id="explorer-search" class="form-control" placeholder="Search ads by name or ID&hellip;" autocomplete="off">
+              <select id="explorer-campaign-filter" class="form-control">
+                <option value="">Campaign: all</option>
+              </select>
+              <select id="explorer-adset-filter" class="form-control">
+                <option value="">Ad Set: all</option>
+              </select>
+              <select id="explorer-status-filter" class="form-control">
+                <option value="">Status: all</option>
+              </select>
+              <button id="explorer-chip-missing-creative" class="chip-toggle" type="button">Missing creative</button>
+              <button id="explorer-chip-missing-url" class="chip-toggle" type="button">Missing URL</button>
+              <button id="explorer-clear-filters" class="btn btn-secondary btn-sm" type="button">&#10005; Clear</button>
+            </div>
+            <div style="margin-top: 8px;"><small class="form-hint" id="explorer-count"></small></div>
+          </div>
+
+          <!-- Card grid -->
+          <div id="explorer-grid" class="explorer-grid"></div>
+          <div id="explorer-empty" class="panel hidden" style="text-align: center; padding: 40px; margin-top: 8px;">
+            <p style="font-weight: 600; margin-bottom: 6px;">No ads synced yet.</p>
+            <p class="section-subtitle">Connect Meta Ads above, pick an ad account, then press &ldquo;Sync Ads&rdquo; to pull your ad creatives.</p>
+          </div>
+        </section>
+
+        <!-- AI Agent: Merchant AI assistant (chat + document verdicts) -->
+        <section id="ai-agent" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <h2>AI Agent</h2>
+              <p class="section-subtitle">Ask anything about your store — sales, ad spend, campaigns — or upload a document for an AI verdict. Every number comes from your live data.</p>
+            </div>
+            <div class="header-actions">
+              <span id="ai-agent-status-pill" class="badge badge--danger">Checking&hellip;</span>
+            </div>
+          </header>
+
+          <div id="ai-agent-offline" class="panel hidden" style="text-align: center; padding: 40px; margin-bottom: 16px;">
+            <p style="font-weight: 600; margin-bottom: 6px;">AI agent is not configured yet.</p>
+            <p class="section-subtitle">Ask the store owner to set an <code>OPENAI_API_KEY</code> on the server to enable the AI agent.</p>
+          </div>
+
+          <div id="ai-agent-chat-wrap" class="panel" style="padding: 0; overflow: hidden;">
+            <div id="ai-agent-messages" class="agent-messages"></div>
+            <div id="ai-agent-typing" class="agent-typing hidden">
+              <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+            </div>
+            <div class="agent-inputbar">
+              <input type="file" id="ai-agent-file" class="hidden" accept=".pdf,.csv,.xlsx,.xls,.txt">
+              <button id="btn-agent-upload" class="btn btn-secondary btn-sm" title="Upload a document (PDF, CSV, XLSX)" type="button">&#128206; Attach</button>
+              <input type="text" id="ai-agent-input" class="form-control" placeholder="Ask me anything about your store&hellip;" autocomplete="off" maxlength="2000">
+              <button id="btn-agent-send" class="btn btn-primary btn-sm" type="button">Send</button>
+            </div>
+            <div id="ai-agent-hint" class="agent-hint">
+              Try: &ldquo;Aaj kitni sale hui?&rdquo; &middot; &ldquo;Which campaign has the best ROAS?&rdquo; &middot; &ldquo;Show my top products this month&rdquo;
+            </div>
           </div>
         </section>
       </main>
