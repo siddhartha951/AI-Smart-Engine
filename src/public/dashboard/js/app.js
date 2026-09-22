@@ -103,37 +103,57 @@ let adStudioState = {
 
 let liveAnalyticsTimer = null;
 
-// Initialization
-document.addEventListener('DOMContentLoaded', () => {
-  initAvatarPresets();
-  setupEventListeners();
+// ---------------------------------------------------------------------------
+// Login — registered at module top level, before any other init code, so a
+// failure in any feature section can never leave the form without a submit
+// handler. An unhandled login form natively GET-submits, which leaks the
+// password into the URL and reload-loops instead of signing in.
+// ---------------------------------------------------------------------------
+const loginFormEl = document.getElementById('login-form');
+if (loginFormEl) {
+  loginFormEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const errorEl = document.getElementById('login-error');
 
-  // Support URL query params auto-login (e.g. ?email=...&password=...)
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const emailParam = params.get('email');
-    const passParam = params.get('password');
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
 
-    if (emailParam && passParam) {
-      const emailInput = document.getElementById('email');
-      const passInput = document.getElementById('password');
-      if (emailInput && passInput) {
-        emailInput.value = emailParam;
-        passInput.value = passParam;
-      }
-      try {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      } catch (_) {}
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
 
-      const loginForm = document.getElementById('login-form');
-      if (loginForm) {
-        loginForm.dispatchEvent(new Event('submit', { cancelable: true }));
-        return;
-      }
+      state.token = data.token;
+      state.user = data.user;
+      localStorage.setItem('auth_token', data.token);
+
+      errorEl.textContent = '';
+      initDashboard();
+    } catch (err) {
+      errorEl.textContent = err.message;
     }
-  } catch (e) {
-    console.warn('Could not parse login query params:', e);
-  }
+  });
+}
+
+// Initialization
+// NOTE: credentials are never read from the URL. ?email=&password= links
+// would leak passwords into server logs, browser history, and screenshots.
+document.addEventListener('DOMContentLoaded', () => {
+  // Each init section is isolated: a failure in one must never break login
+  // or prevent the remaining sections from initializing.
+  const safeInit = (name, fn) => {
+    try {
+      fn();
+    } catch (err) {
+      console.error(`Dashboard init failed in ${name}:`, err);
+    }
+  };
+  safeInit('initAvatarPresets', initAvatarPresets);
+  safeInit('setupEventListeners', setupEventListeners);
 
   if (state.token) {
     verifySession();
@@ -182,33 +202,8 @@ function setupEventListeners() {
   // Multi-Touch Ad Intelligence controls (Phase 15)
   setupAdIntelligenceEventListeners();
 
-  // Login
-  document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const errorEl = document.getElementById('login-error');
-    
-    try {
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
-      
-      state.token = data.token;
-      state.user = data.user;
-      localStorage.setItem('auth_token', data.token);
-      
-      errorEl.textContent = '';
-      initDashboard();
-    } catch (err) {
-      errorEl.textContent = err.message;
-    }
-  });
+  // Login submit is handled at module top level (see above) so it can never
+  // be skipped by a failure in the feature sections below.
 
   // Logout
   document.getElementById('logout-btn').addEventListener('click', () => {
