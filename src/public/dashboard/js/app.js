@@ -1,6 +1,61 @@
+// ---- Safe storage ----
+// localStorage access can throw a SecurityError in some browser contexts
+// (blocked site data, strict privacy modes). An unguarded access at module
+// top level used to kill the ENTIRE module before the login handler was
+// attached — the form then natively GET-submitted and leaked the password
+// into the URL. These helpers make storage access infallible.
+function storageGet(key) {
+  try { return window.localStorage.getItem(key); } catch (_) { return null; }
+}
+function storageSet(key, value) {
+  try { window.localStorage.setItem(key, value); } catch (_) { /* storage unavailable */ }
+}
+function storageRemove(key) {
+  try { window.localStorage.removeItem(key); } catch (_) { /* storage unavailable */ }
+}
+
+// ---- Login submit handler — FIRST, before any other module code ----
+// A native (unintercepted) login submit GETs the form fields into the URL,
+// leaking the password into browser history, server logs and screenshots.
+// Registration of this handler must never depend on anything else in the
+// module evaluating successfully, so it lives at the very top.
+try {
+  const loginFormEl = document.getElementById('login-form');
+  if (loginFormEl) {
+    loginFormEl.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('login-error');
+
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Login failed');
+
+        state.token = data.token;
+        state.user = data.user;
+        storageSet('auth_token', data.token);
+
+        errorEl.textContent = '';
+        initDashboard();
+      } catch (err) {
+        errorEl.textContent = err.message;
+      }
+    });
+  }
+} catch (_) {
+  // Handler registration must never break module evaluation.
+}
+
 // Application State
 let state = {
-  token: localStorage.getItem('auth_token'),
+  token: storageGet('auth_token'),
   user: null,
   activeStoreId: null,
   activeStoreCurrency: 'INR',
@@ -103,42 +158,6 @@ let adStudioState = {
 
 let liveAnalyticsTimer = null;
 
-// ---------------------------------------------------------------------------
-// Login — registered at module top level, before any other init code, so a
-// failure in any feature section can never leave the form without a submit
-// handler. An unhandled login form natively GET-submits, which leaks the
-// password into the URL and reload-loops instead of signing in.
-// ---------------------------------------------------------------------------
-const loginFormEl = document.getElementById('login-form');
-if (loginFormEl) {
-  loginFormEl.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const errorEl = document.getElementById('login-error');
-
-    try {
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
-
-      state.token = data.token;
-      state.user = data.user;
-      localStorage.setItem('auth_token', data.token);
-
-      errorEl.textContent = '';
-      initDashboard();
-    } catch (err) {
-      errorEl.textContent = err.message;
-    }
-  });
-}
-
 // Initialization
 // NOTE: credentials are never read from the URL. ?email=&password= links
 // would leak passwords into server logs, browser history, and screenshots.
@@ -208,7 +227,7 @@ function setupEventListeners() {
   // Logout
   document.getElementById('logout-btn').addEventListener('click', () => {
     state = { token: null, user: null, activeStoreId: null, stores: [] };
-    localStorage.removeItem('auth_token');
+    storageRemove('auth_token');
     stopLiveAnalyticsPolling();
     showView('login');
   });
@@ -513,7 +532,7 @@ function setupEventListeners() {
   if (recheckHealthBtn) recheckHealthBtn.addEventListener('click', runShopifyHealthCheck);
   const dismissScopeBannerBtn = document.getElementById('btn-dismiss-shopify-banner');
   if (dismissScopeBannerBtn) dismissScopeBannerBtn.addEventListener('click', () => {
-    try { localStorage.setItem('shopifyHealthBannerDismissed:' + state.activeStoreId, '1'); } catch (_) {}
+    storageSet('shopifyHealthBannerDismissed:' + state.activeStoreId, '1');
     const banner = document.getElementById('shopify-scope-banner');
     if (banner) banner.classList.add('hidden');
   });
@@ -735,7 +754,7 @@ async function verifySession() {
     initDashboard();
   } catch (err) {
     state.token = null;
-    localStorage.removeItem('auth_token');
+    storageRemove('auth_token');
     showView('login');
   }
 }
@@ -762,21 +781,21 @@ async function initDashboard() {
           .map(s => `<option value="${s.id}">${s.brand_name || s.shop_domain} (${s.shop_domain})</option>`)
           .join('');
 
-        const savedStoreId = localStorage.getItem('ai_active_store_id');
+        const savedStoreId = storageGet('ai_active_store_id');
         const matchedStore = savedStoreId && state.stores.find(s => s.id === savedStoreId);
         selector.value = matchedStore ? matchedStore.id : (state.activeStoreId || state.stores[0].id);
         state.activeStoreId = selector.value;
-        try { localStorage.setItem('ai_active_store_id', state.activeStoreId); } catch (_) {}
+        storageSet('ai_active_store_id', state.activeStoreId);
 
         selector.onchange = (e) => {
           state.activeStoreId = e.target.value;
-          try { localStorage.setItem('ai_active_store_id', state.activeStoreId); } catch (_) {}
+          storageSet('ai_active_store_id', state.activeStoreId);
           updateActiveStoreUI();
         };
       } else {
         selectorContainer.classList.add('hidden');
         state.activeStoreId = state.user.store_id || (state.stores[0]?.id || null);
-        try { if (state.activeStoreId) localStorage.setItem('ai_active_store_id', state.activeStoreId); } catch (_) {}
+        if (state.activeStoreId) storageSet('ai_active_store_id', state.activeStoreId);
       }
     }
   } catch (err) {
@@ -785,7 +804,7 @@ async function initDashboard() {
   }
 
   if ((!state.activeStoreId || state.activeStoreId === 'null') && state.stores && state.stores.length > 0) {
-    const savedStoreId = localStorage.getItem('ai_active_store_id');
+    const savedStoreId = storageGet('ai_active_store_id');
     const matchedStore = savedStoreId && state.stores.find(s => s.id === savedStoreId);
     state.activeStoreId = matchedStore ? matchedStore.id : state.stores[0].id;
   }
@@ -1078,7 +1097,7 @@ async function refreshShopifyScopeBanner() {
   const banner = document.getElementById('shopify-scope-banner');
   if (!banner || !state.activeStoreId) return;
   let dismissed = false;
-  try { dismissed = localStorage.getItem('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1'; } catch (_) {}
+  dismissed = storageGet('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1';
   if (dismissed) { banner.classList.add('hidden'); return; }
   try {
     const data = await fetchShopifyHealth();
@@ -1091,7 +1110,7 @@ function updateShopifyScopeBanner(data) {
   const text = document.getElementById('shopify-scope-banner-text');
   if (!banner || !text || !state.activeStoreId) return;
   let dismissed = false;
-  try { dismissed = localStorage.getItem('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1'; } catch (_) {}
+  dismissed = storageGet('shopifyHealthBannerDismissed:' + state.activeStoreId) === '1';
   if (dismissed || !data || data.checked === false || data.overall_status === 'healthy') {
     banner.classList.add('hidden');
     return;
@@ -5838,14 +5857,6 @@ function agentApi(path, options = {}) {
       ...(options.headers || {}),
     },
   });
-}
-
-function escapeHtml(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function agentScrollDown() {
