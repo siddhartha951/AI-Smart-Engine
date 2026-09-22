@@ -1,6 +1,7 @@
 import { IDatabaseClient, getDatabaseClient } from '../../database/client';
 import { MetaAdsRepository } from './meta_ads.repository';
-import { MetaAdsConfig } from '../../database/types';
+import { MetaAdsExplorerRepository } from './meta_ads_explorer.repository';
+import { MetaAdsConfig, MetaAdsExplorerCache } from '../../database/types';
 import { encryptString, decryptString } from '../../utils/crypto';
 import {
   MetaAdsClient,
@@ -8,6 +9,7 @@ import {
   MetaAdAccount,
   MetaInsightOptions,
   MetaInsightsResult,
+  MetaExplorerAd,
   META_TOKEN_EXPIRY_WARNING_DAYS,
   getMetaAdsClient,
 } from '../../providers/meta';
@@ -46,14 +48,36 @@ export interface MetaInsightsResponse extends MetaInsightsResult {
   attributionNote: string;
 }
 
+export interface MetaExplorerSyncResult {
+  synced: boolean;
+  adAccountId: string;
+  adAccountName: string | null;
+  adsFetched: number;
+  cached: number;
+  removed: number;
+  lastSyncAt: string;
+}
+
+export interface MetaExplorerAdsResult {
+  ads: MetaAdsExplorerCache[];
+  count: number;
+  adAccountId: string;
+  adAccountName: string | null;
+  lastSyncAt: string | null;
+  /** False when the explorer was never synced — frontend shows the empty state. */
+  synced: boolean;
+}
+
 export class MetaAdsService {
   private db: IDatabaseClient;
   private repo: MetaAdsRepository;
+  private explorerRepo: MetaAdsExplorerRepository;
   private client: MetaAdsClient;
 
   constructor(opts?: { db?: IDatabaseClient; repo?: MetaAdsRepository; client?: MetaAdsClient }) {
     this.db = opts?.db || getDatabaseClient();
     this.repo = opts?.repo || new MetaAdsRepository(this.db);
+    this.explorerRepo = new MetaAdsExplorerRepository(this.db);
     this.client = opts?.client || getMetaAdsClient();
   }
 
@@ -214,6 +238,8 @@ export class MetaAdsService {
   async disconnect(storeId: string): Promise<{ disconnected: boolean }> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
     await this.repo.deleteConfig(storeId);
+    // Stale ad snapshots must not linger after credentials are removed.
+    await this.explorerRepo.clearStore(storeId).catch(() => undefined);
     logger.info('Meta Ads disconnected', { storeId });
     return { disconnected: true };
   }
@@ -315,6 +341,79 @@ export class MetaAdsService {
       attribution,
       attributionNote:
         'Store-side revenue comes from your on-site multi-touch attribution ledger (Meta-family sources only: facebook / instagram / meta). Meta-reported conversions come from the ad account.',
+    };
+  }
+
+  // ==========================================
+  // 3. Ads Explorer (cached ad + creative snapshots)
+  // ==========================================
+
+  /** Resolves the decrypted token + ad account for explorer operations. */
+  private async getExplorerContext(
+    storeId: string,
+    adAccountId?: string | null
+  ): Promise<{ token: string; accountId: string; accountName: string | null }> {
+    if (!storeId) throw new TenantIsolationError('store_id is required');
+    const config = await this.repo.getConfig(storeId);
+    const token = config ? this.decryptToken(config) : '';
+    if (!token || config?.status !== 'connected') {
+      throw new ValidationError('No Meta Ads connection for this store. Connect your Meta access token first.');
+    }
+    const accountId = ((adAccountId || config.ad_account_id || '').trim().replace(/^act_/, ''));
+    if (!accountId) {
+      throw new ValidationError('No Meta ad account selected for this store.');
+    }
+    return { token, accountId, accountName: config.ad_account_name };
+  }
+
+  /**
+   * Syncs the explorer cache from the Meta Marketing API (one paginated pass,
+   * on demand only). The dashboard serves explorer data from cache, never from
+   * a live Meta call, so page loads stay fast and rate limits are respected.
+   */
+  async syncExplorerAds(
+    storeId: string,
+    opts: { adAccountId?: string | null } = {}
+  ): Promise<MetaExplorerSyncResult> {
+    const { token, accountId, accountName } = await this.getExplorerContext(storeId, opts.adAccountId);
+
+    let ads: MetaExplorerAd[];
+    try {
+      ads = await this.client.listAdsWithCreatives(token, accountId);
+    } catch (err) {
+      throw await this.toMetaAppError(storeId, err);
+    }
+
+    const { cached, removed } = await this.explorerRepo.replaceAds(storeId, accountId, ads);
+    const lastSyncAt = await this.explorerRepo.getLastSyncAt(storeId, accountId);
+
+    logger.info('Meta Ads explorer synced', { storeId, adAccountId: accountId, cached, removed });
+    return {
+      synced: true,
+      adAccountId: accountId,
+      adAccountName: accountName,
+      adsFetched: ads.length,
+      cached,
+      removed,
+      lastSyncAt: (lastSyncAt || new Date()).toISOString(),
+    };
+  }
+
+  /** Serves explorer ads from cache (fast, no Meta API call). */
+  async getExplorerAds(
+    storeId: string,
+    opts: { adAccountId?: string | null } = {}
+  ): Promise<MetaExplorerAdsResult> {
+    const { accountId, accountName } = await this.getExplorerContext(storeId, opts.adAccountId);
+    const ads = await this.explorerRepo.listAds(storeId, accountId);
+    const lastSyncAt = await this.explorerRepo.getLastSyncAt(storeId, accountId);
+    return {
+      ads,
+      count: ads.length,
+      adAccountId: accountId,
+      adAccountName: accountName,
+      lastSyncAt: lastSyncAt ? lastSyncAt.toISOString() : null,
+      synced: lastSyncAt !== null,
     };
   }
 }

@@ -85,7 +85,8 @@ const sections = {
   'email-automation': document.getElementById('email-automation'),
   'reorder-reminders': document.getElementById('reorder-reminders'),
   'ad-intelligence': document.getElementById('ad-intelligence'),
-  'meta-ads': document.getElementById('meta-ads')
+  'meta-ads': document.getElementById('meta-ads'),
+  'ads-explorer': document.getElementById('ads-explorer')
 };
 
 let adStudioState = {
@@ -1022,6 +1023,11 @@ async function loadSectionData(section) {
 
     if (section === 'meta-ads') {
       await loadMetaAdsData();
+      return;
+    }
+
+    if (section === 'ads-explorer') {
+      await loadExplorerData();
       return;
     }
 
@@ -4210,6 +4216,7 @@ const NAV_FEATURE_MAP = {
   'reorder-reminders': 'smart_reorder',
   'ad-intelligence': 'ad_intelligence',
   'meta-ads': 'ad_intelligence',
+  'ads-explorer': 'ad_intelligence',
 };
 
 async function fetchStoreFeatures() {
@@ -4917,6 +4924,9 @@ function setupAiIntelligenceListeners() {
   document.getElementById('meta-level-select')?.addEventListener('change', () => refreshMetaInsights(false));
   document.getElementById('meta-ad-account-select')?.addEventListener('change', () => refreshMetaInsights(false));
 
+  // Ads Explorer
+  setupExplorerEventListeners();
+
   // Growth Copilot Ask Modal
   document.getElementById('close-copilot-ask-modal')?.addEventListener('click', () => {
     document.getElementById('copilot-ask-modal')?.classList.add('hidden');
@@ -5220,4 +5230,334 @@ function renderMetaInsights(data, level) {
       }).join('');
     }
   }
+}
+
+// ============================================================================
+// Ads Explorer (Meta creative explorer, served from cache)
+// ============================================================================
+
+const EXPLORER_API_BASE = () => `/api/v1/dashboard/${state.activeStoreId}/meta-ads/explorer`;
+
+async function explorerApi(path, options = {}) {
+  const res = await fetch(`${EXPLORER_API_BASE()}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${state.token}`,
+      ...(options.headers || {}),
+    },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `Request failed (${res.status})`);
+  }
+  return body.data;
+}
+
+const explorerState = {
+  ads: [],
+  accountId: '',
+  lastSyncAt: null,
+  synced: false,
+  filters: { search: '', campaign: '', adset: '', status: '', missingCreative: false, missingUrl: false },
+};
+
+function setExplorerMessage(text, isError = false) {
+  const el = document.getElementById('explorer-message');
+  if (!el) return;
+  if (!text) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.innerHTML = `<span style="color: ${isError ? 'var(--danger)' : 'var(--color-success)'};">${escapeHtml(text)}</span>`;
+}
+
+function explorerRelativeTime(iso) {
+  if (!iso) return 'Never synced';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  if (diffMs < 0) return 'Just now';
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function renderExplorerConnection(status) {
+  const pill = document.getElementById('explorer-connection-pill');
+  if (!pill) return;
+  if (status && status.connected) {
+    pill.className = 'badge badge--success';
+    pill.textContent = 'Connected';
+  } else if (status && status.status === 'error') {
+    pill.className = 'badge badge--warning';
+    pill.textContent = 'Needs attention';
+  } else {
+    pill.className = 'badge badge--danger';
+    pill.textContent = 'Disconnected';
+  }
+}
+
+async function loadExplorerData() {
+  if (!state.activeStoreId) return;
+  try {
+    setExplorerMessage('');
+    const status = await metaApi('/config');
+    renderExplorerConnection(status);
+    if (status.connected) {
+      const accounts = await metaApi('/accounts').catch(() => []);
+      const sel = document.getElementById('explorer-account-select');
+      if (sel) {
+        sel.innerHTML = accounts.length
+          ? accounts.map(a => `<option value="${escapeHtml(a.accountId)}">${escapeHtml(a.name)} (${escapeHtml(a.accountId)})</option>`).join('')
+          : '<option value="">— no ad accounts —</option>';
+        const preferred = status.adAccountId || (accounts[0] && accounts[0].accountId) || '';
+        if (preferred) sel.value = preferred;
+      }
+      await refreshExplorerAds();
+    } else {
+      renderExplorerEmpty();
+    }
+  } catch (err) {
+    setExplorerMessage(err.message, true);
+  }
+}
+
+async function refreshExplorerAds() {
+  const accountId = document.getElementById('explorer-account-select')?.value || '';
+  const q = accountId ? `?ad_account_id=${encodeURIComponent(accountId)}` : '';
+  const data = await explorerApi(`/ads${q}`);
+  explorerState.ads = data.ads || [];
+  explorerState.accountId = data.adAccountId || accountId;
+  explorerState.lastSyncAt = data.lastSyncAt;
+  explorerState.synced = !!data.synced;
+
+  const lastSyncEl = document.getElementById('explorer-last-sync');
+  if (lastSyncEl) lastSyncEl.textContent = explorerRelativeTime(data.lastSyncAt);
+
+  buildExplorerFilterOptions();
+  renderExplorerGrid();
+}
+
+async function syncExplorerAds() {
+  const btn = document.getElementById('btn-explorer-sync');
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  setExplorerMessage('Syncing ads from Meta — this may take a few seconds…');
+  try {
+    const accountId = document.getElementById('explorer-account-select')?.value || null;
+    const data = await explorerApi('/sync', {
+      method: 'POST',
+      body: JSON.stringify({ ad_account_id: accountId }),
+    });
+    setExplorerMessage(`Synced ${data.adsFetched} ads from Meta.`, false);
+    await refreshExplorerAds();
+  } catch (err) {
+    setExplorerMessage(err.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#8635; Sync Ads'; }
+  }
+}
+
+function uniqueSorted(values) {
+  return Array.from(new Set(values.filter(v => v && String(v).trim() !== ''))).sort((a, b) =>
+    String(a).localeCompare(String(b))
+  );
+}
+
+function buildExplorerFilterOptions() {
+  const ads = explorerState.ads;
+  const fill = (id, values, allLabel) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` +
+      uniqueSorted(values).map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if (current && uniqueSorted(values).includes(current)) sel.value = current;
+  };
+  fill('explorer-campaign-filter', ads.map(a => a.campaign_name), 'Campaign: all');
+  fill('explorer-adset-filter', ads.map(a => a.adset_name), 'Ad Set: all');
+  fill('explorer-status-filter', ads.map(a => a.status), 'Status: all');
+}
+
+function readExplorerFilters() {
+  explorerState.filters.search = (document.getElementById('explorer-search')?.value || '').trim().toLowerCase();
+  explorerState.filters.campaign = document.getElementById('explorer-campaign-filter')?.value || '';
+  explorerState.filters.adset = document.getElementById('explorer-adset-filter')?.value || '';
+  explorerState.filters.status = document.getElementById('explorer-status-filter')?.value || '';
+}
+
+function getFilteredExplorerAds() {
+  const f = explorerState.filters;
+  return explorerState.ads.filter(ad => {
+    if (f.search) {
+      const hay = `${ad.name || ''} ${ad.ad_id || ''}`.toLowerCase();
+      if (!hay.includes(f.search)) return false;
+    }
+    if (f.campaign && ad.campaign_name !== f.campaign) return false;
+    if (f.adset && ad.adset_name !== f.adset) return false;
+    if (f.status && ad.status !== f.status) return false;
+    if (f.missingCreative && ad.thumbnail_url) return false;
+    if (f.missingUrl && ad.destination_url) return false;
+    return true;
+  });
+}
+
+function explorerStatusBadge(status) {
+  const s = (status || 'UNKNOWN').toUpperCase();
+  const cls = s === 'ACTIVE' ? 'badge--success' : (s === 'PAUSED' ? 'badge--warning' : 'badge--neutral');
+  return `<span class="badge ${cls}">${escapeHtml(s)}</span>`;
+}
+
+function renderExplorerEmpty() {
+  const grid = document.getElementById('explorer-grid');
+  const empty = document.getElementById('explorer-empty');
+  const count = document.getElementById('explorer-count');
+  if (grid) grid.innerHTML = '';
+  if (count) count.textContent = '';
+  if (empty) empty.classList.remove('hidden');
+}
+
+function renderExplorerGrid() {
+  const grid = document.getElementById('explorer-grid');
+  const empty = document.getElementById('explorer-empty');
+  const count = document.getElementById('explorer-count');
+  if (!grid) return;
+
+  const filtered = getFilteredExplorerAds();
+  const total = explorerState.ads.length;
+
+  if (count) {
+    count.textContent = total === 0
+      ? ''
+      : (filtered.length === total ? `${total} ads found` : `${filtered.length} of ${total} ads`);
+  }
+
+  if (total === 0) {
+    renderExplorerEmpty();
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+
+  grid.innerHTML = filtered.map(ad => {
+    const title = ad.name || ad.ad_id || 'Untitled ad';
+    const media = ad.thumbnail_url
+      ? `<img loading="lazy" src="${escapeHtml(ad.thumbnail_url)}" alt="${escapeHtml(title)}" onerror="this.closest('.explorer-card-media').innerHTML='<span class=&quot;media-placeholder&quot;>&#128444;</span>'">`
+      : '<span class="media-placeholder">&#128444;</span>';
+    const linkBtn = ad.destination_url
+      ? `<a class="btn btn-secondary btn-sm" href="${escapeHtml(ad.destination_url)}" target="_blank" rel="noopener" title="Open destination URL">&#8599;</a>`
+      : '';
+    return `<div class="explorer-card" data-ad-id="${escapeHtml(ad.ad_id)}">
+      <div class="explorer-card-media">
+        ${media}
+        <span class="explorer-card-status">${explorerStatusBadge(ad.status)}</span>
+      </div>
+      <div class="explorer-card-body">
+        <div class="explorer-card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <div class="explorer-card-tags">
+          ${ad.campaign_name ? `<span class="tag-row">&#10003; ${escapeHtml(ad.campaign_name)}</span>` : ''}
+          ${ad.adset_name ? `<span class="tag-row">&#10003; ${escapeHtml(ad.adset_name)}</span>` : ''}
+          <span class="tag-row" style="color: var(--color-text-tertiary);">ID ${escapeHtml(ad.ad_id || '')}</span>
+        </div>
+        <div class="explorer-card-actions">
+          <button class="btn btn-secondary btn-sm" data-explorer-download="${escapeHtml(ad.ad_id)}" ${ad.thumbnail_url ? '' : 'disabled'}>&#8681; Creative</button>
+          ${linkBtn}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<p class="section-subtitle" style="grid-column: 1 / -1; text-align: center; padding: 24px;">No ads match these filters.</p>';
+
+  grid.querySelectorAll('[data-explorer-download]').forEach(btn => {
+    btn.addEventListener('click', () => downloadExplorerCreative(btn.getAttribute('data-explorer-download')));
+  });
+}
+
+function triggerBrowserDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'creative';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function downloadExplorerCreative(adId) {
+  const ad = explorerState.ads.find(a => String(a.ad_id) === String(adId));
+  if (!ad || !ad.thumbnail_url) return;
+  const filename = `meta-ad-${ad.ad_id}.jpg`;
+  try {
+    const res = await fetch(ad.thumbnail_url, { mode: 'cors' });
+    if (!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerBrowserDownload(objectUrl, filename);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+  } catch (err) {
+    // CORS-blocked CDN: fall back to opening the creative in a new tab.
+    window.open(ad.thumbnail_url, '_blank', 'noopener');
+  }
+}
+
+async function downloadAllExplorerCreatives() {
+  const ads = getFilteredExplorerAds().filter(a => a.thumbnail_url);
+  if (!ads.length) {
+    setExplorerMessage('No creatives to download for the current filters.', true);
+    return;
+  }
+  setExplorerMessage(`Downloading ${ads.length} creatives…`, false);
+  for (const ad of ads) {
+    await downloadExplorerCreative(ad.ad_id);
+    await new Promise(r => setTimeout(r, 400));
+  }
+}
+
+function clearExplorerFilters() {
+  const search = document.getElementById('explorer-search');
+  if (search) search.value = '';
+  const campaign = document.getElementById('explorer-campaign-filter');
+  if (campaign) campaign.value = '';
+  const adset = document.getElementById('explorer-adset-filter');
+  if (adset) adset.value = '';
+  const status = document.getElementById('explorer-status-filter');
+  if (status) status.value = '';
+  explorerState.filters.missingCreative = false;
+  explorerState.filters.missingUrl = false;
+  document.getElementById('explorer-chip-missing-creative')?.classList.remove('active');
+  document.getElementById('explorer-chip-missing-url')?.classList.remove('active');
+  readExplorerFilters();
+  renderExplorerGrid();
+}
+
+function setupExplorerEventListeners() {
+  document.getElementById('btn-explorer-sync')?.addEventListener('click', syncExplorerAds);
+  document.getElementById('btn-explorer-download')?.addEventListener('click', downloadAllExplorerCreatives);
+  document.getElementById('explorer-account-select')?.addEventListener('change', () => {
+    refreshExplorerAds().catch(err => setExplorerMessage(err.message, true));
+  });
+  document.getElementById('explorer-search')?.addEventListener('input', () => {
+    readExplorerFilters();
+    renderExplorerGrid();
+  });
+  ['explorer-campaign-filter', 'explorer-adset-filter', 'explorer-status-filter'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      readExplorerFilters();
+      renderExplorerGrid();
+    });
+  });
+  document.getElementById('explorer-chip-missing-creative')?.addEventListener('click', (e) => {
+    explorerState.filters.missingCreative = !explorerState.filters.missingCreative;
+    e.currentTarget.classList.toggle('active', explorerState.filters.missingCreative);
+    renderExplorerGrid();
+  });
+  document.getElementById('explorer-chip-missing-url')?.addEventListener('click', (e) => {
+    explorerState.filters.missingUrl = !explorerState.filters.missingUrl;
+    e.currentTarget.classList.toggle('active', explorerState.filters.missingUrl);
+    renderExplorerGrid();
+  });
+  document.getElementById('explorer-clear-filters')?.addEventListener('click', clearExplorerFilters);
 }

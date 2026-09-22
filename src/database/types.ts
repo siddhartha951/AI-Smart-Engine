@@ -281,6 +281,24 @@ export interface MetaAdsConfig {
   updated_at: Date;
 }
 
+/** Cached ad + creative snapshot for the Ads Explorer dashboard section. */
+export interface MetaAdsExplorerCache {
+  id: string;
+  store_id: string;
+  ad_account_id: string;
+  ad_id: string;
+  name: string | null;
+  status: string | null;
+  campaign_name: string | null;
+  adset_name: string | null;
+  thumbnail_url: string | null;
+  creative_url: string | null;
+  destination_url: string | null;
+  last_synced_at: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface WhatsAppConsent {
   id: string;
   store_id: string;

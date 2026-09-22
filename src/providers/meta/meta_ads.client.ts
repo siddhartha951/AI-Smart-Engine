@@ -130,6 +130,64 @@ export interface MetaInsightsResult {
   accountCurrency: string;
 }
 
+/** One ad with its creative snapshot, as returned by /act_{id}/ads. */
+export interface MetaExplorerAd {
+  adId: string;
+  name: string;
+  /** Meta effective_status (ACTIVE, PAUSED, ARCHIVED, ...). */
+  status: string;
+  campaignName: string | null;
+  adsetName: string | null;
+  /** Best available creative image (image_url, else thumbnail_url). */
+  thumbnailUrl: string | null;
+  /** Full creative asset URL when Meta exposes one (image_url). */
+  creativeUrl: string | null;
+  /** Destination link from object_story_spec.link_data.link. */
+  destinationUrl: string | null;
+}
+
+/** Max pages fetched per explorer sync (100 ads/page => up to 10k ads). */
+export const META_EXPLORER_MAX_PAGES = 100;
+
+function strOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/** Parses one raw ad object from /act_{id}/ads into a MetaExplorerAd. */
+export function parseExplorerAd(raw: Record<string, unknown>): MetaExplorerAd {
+  const creatives =
+    raw.adcreatives && typeof raw.adcreatives === 'object'
+      ? (raw.adcreatives as { data?: Array<Record<string, unknown>> }).data
+      : undefined;
+  const creative = Array.isArray(creatives) && creatives.length > 0 ? creatives[0] : null;
+
+  const linkData =
+    creative && typeof creative.object_story_spec === 'object' && creative.object_story_spec !== null
+      ? ((creative.object_story_spec as Record<string, unknown>).link_data as Record<string, unknown> | undefined)
+      : undefined;
+
+  const imageUrl = creative ? strOrNull(creative.image_url) : null;
+  const thumbnailUrl = creative ? strOrNull(creative.thumbnail_url) : null;
+
+  const campaign =
+    raw.campaign && typeof raw.campaign === 'object'
+      ? (raw.campaign as Record<string, unknown>)
+      : null;
+  const adset =
+    raw.adset && typeof raw.adset === 'object' ? (raw.adset as Record<string, unknown>) : null;
+
+  return {
+    adId: String(raw.id || ''),
+    name: typeof raw.name === 'string' ? raw.name : '',
+    status: typeof raw.effective_status === 'string' ? raw.effective_status : 'UNKNOWN',
+    campaignName: campaign ? strOrNull(campaign.name) : null,
+    adsetName: adset ? strOrNull(adset.name) : null,
+    thumbnailUrl: imageUrl || thumbnailUrl,
+    creativeUrl: imageUrl,
+    destinationUrl: linkData ? strOrNull(linkData.link) : null,
+  };
+}
+
 function isPurchaseAction(actionType: string): boolean {
   const t = actionType.toLowerCase();
   return (
@@ -288,6 +346,80 @@ export class MetaAdsClient {
         timezoneName: typeof a.timezone_name === 'string' ? a.timezone_name : undefined,
       };
     });
+  }
+
+  /** Fetches an absolute Meta Graph URL (used to follow paging.next cursors). Never logs tokens. */
+  private async metaGetAbsolute<T>(absoluteUrl: string): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(absoluteUrl, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok || body.error) {
+        const errBody = (body.error || {}) as MetaApiErrorBody;
+        const message = errBody.message || `Meta API request failed with status ${res.status}`;
+        throw new MetaAdsApiError(message, errBody.code ?? 0, errBody.type || 'Unknown', res.status >= 500 ? 502 : 400);
+      }
+      return body as T;
+    } catch (err) {
+      if (err instanceof MetaAdsApiError) throw err;
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new MetaAdsApiError('Meta API request timed out. Please try again.', 0, 'Timeout', 504);
+      }
+      logger.warn('Meta Graph API request failed', { absolute: true });
+      throw new MetaAdsApiError('Could not reach the Meta API. Please check your connection and try again.', 0, 'NetworkError', 502);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Fetches ads with creatives for an ad account, following pagination.
+   * One paginated pass only; capped at META_EXPLORER_MAX_PAGES pages so a
+   * sync can never run away against Meta rate limits.
+   * @param accountId numeric ad account id WITHOUT the "act_" prefix (prefix added automatically).
+   */
+  async listAdsWithCreatives(accessToken: string, accountId: string): Promise<MetaExplorerAd[]> {
+    const cleanId = accountId.replace(/^act_/, '');
+    if (!/^\d+$/.test(cleanId)) {
+      throw new MetaAdsApiError('Invalid Meta ad account id', 0, 'ValidationError', 400);
+    }
+    if (!accessToken) {
+      throw new MetaAdsApiError('Meta access token is required', 190, 'OAuthException', 400);
+    }
+
+    const ads: MetaExplorerAd[] = [];
+    const params: Record<string, string> = {
+      fields:
+        'id,name,effective_status,campaign{name},adset{name},adcreatives{thumbnail_url,image_url,video_id,object_story_spec{link_data{link}}}',
+      limit: '100',
+      access_token: accessToken,
+    };
+    const url = new URL(`${META_GRAPH_BASE}/act_${cleanId}/ads`);
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, v);
+    }
+
+    let nextUrl: string | null = url.toString();
+    let pages = 0;
+    while (nextUrl && pages < META_EXPLORER_MAX_PAGES) {
+      pages += 1;
+      const body: {
+        data?: Array<Record<string, unknown>>;
+        paging?: { next?: string };
+      } = await this.metaGetAbsolute(nextUrl);
+      const rows = Array.isArray(body.data) ? body.data : [];
+      for (const raw of rows) {
+        const ad = parseExplorerAd(raw);
+        if (ad.adId) ads.push(ad);
+      }
+      nextUrl = body.paging && typeof body.paging.next === 'string' ? body.paging.next : null;
+    }
+    return ads;
   }
 
   /**
