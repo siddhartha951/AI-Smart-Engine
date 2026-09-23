@@ -146,6 +146,25 @@ const sections = {
   'ai-agent': document.getElementById('ai-agent')
 };
 
+const NAV_FEATURE_MAP = {
+  'growth-copilot': 'growth_copilot',
+  'overview': 'overview',
+  'live-analytics': 'live_pulse',
+  'my-agent': 'widget',
+  'leads-optins': 'leads',
+  'support-tickets': 'support_tickets',
+  'widget-settings': 'widget',
+  'shopify-connection': 'catalogue',
+  'ad-creative-studio': 'ad_creative',
+  'whatsapp-growth': 'whatsapp',
+  'email-automation': 'email_automation',
+  'reorder-reminders': 'smart_reorder',
+  'ad-intelligence': 'ad_intelligence',
+  'meta-ads': 'meta_ads',
+  'ads-explorer': 'ads_explorer',
+  'ai-agent': 'ai_agent_chat',
+};
+
 let adStudioState = {
   products: [],
   selectedProduct: null,
@@ -1438,7 +1457,7 @@ async function loadSectionData(section) {
     } 
     else if (section === 'my-agent') {
       if (data.assistant) {
-        document.getElementById('agent-is-active').checked = data.assistant.is_active;
+        document.getElementById('agent-is-active').checked = data.assistant.is_active !== false;
         document.getElementById('agent-name').value = data.assistant.assistant_name || '';
         document.getElementById('agent-welcome').value = data.assistant.welcome_message || '';
         document.getElementById('agent-tone').value = data.assistant.tone || 'friendly and helpful';
@@ -1820,14 +1839,20 @@ function animateValue(id, target, duration = 0.8) {
 function openMobileSidebar() {
   const sidebar = document.getElementById('dashboard-sidebar');
   const backdrop = document.getElementById('sidebar-backdrop');
-  if (sidebar) sidebar.classList.add('mobile-open');
+  if (sidebar) {
+    sidebar.classList.add('mobile-open');
+    sidebar.classList.add('open');
+  }
   if (backdrop) backdrop.classList.add('active');
 }
 
 function closeMobileSidebar() {
   const sidebar = document.getElementById('dashboard-sidebar');
   const backdrop = document.getElementById('sidebar-backdrop');
-  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (sidebar) {
+    sidebar.classList.remove('mobile-open');
+    sidebar.classList.remove('open');
+  }
   if (backdrop) backdrop.classList.remove('active');
 }
 
@@ -4556,25 +4581,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // =========================================================================
 // PHASE 17: AI INTELLIGENCE LAYER & MERCHANT ANALYTICS MODULE
 // =========================================================================
-
-const NAV_FEATURE_MAP = {
-  'growth-copilot': 'growth_copilot',
-  'overview': 'overview',
-  'live-analytics': 'live_pulse',
-  'my-agent': 'widget',
-  'leads-optins': 'leads',
-  'support-tickets': 'support_tickets',
-  'widget-settings': 'widget',
-  'shopify-connection': 'catalogue',
-  'ad-creative-studio': 'ad_creative',
-  'whatsapp-growth': 'whatsapp',
-  'email-automation': 'email_automation',
-  'reorder-reminders': 'smart_reorder',
-  'ad-intelligence': 'ad_intelligence',
-  'meta-ads': 'meta_ads',
-  'ads-explorer': 'ads_explorer',
-  'ai-agent': 'ai_agent_chat',
-};
 
 async function fetchStoreFeatures() {
   if (!state.activeStoreId) return;

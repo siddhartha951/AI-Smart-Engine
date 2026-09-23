@@ -176,7 +176,7 @@ export function createApp(deps: AppDependencies = {}): Express {
                   assistant_name: assistantSettings.assistant_name,
                   privacy_policy_url: assistantSettings.privacy_policy_url,
                   support_contact: assistantSettings.support_contact,
-                  is_active: assistantSettings.is_active,
+                  is_active: assistantSettings.is_active !== false,
                   quick_action_pills: parsedPills,
                 }
               : null,

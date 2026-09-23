@@ -353,11 +353,25 @@
       this.storeId = this.getAttribute('data-store-id') || this.widgetKey;
 
       if (!this.widgetKey && !this.storeId) {
-        const script = document.querySelector('script[data-widget-key]') || document.querySelector('script[data-store-id]');
+        const script = document.querySelector('script[data-widget-key]') || 
+                       document.querySelector('script[data-store-id]') || 
+                       document.querySelector('script[src*="widget.js"]');
         if (script) {
-          this.widgetKey = script.getAttribute('data-widget-key') || '';
-          this.storeId = script.getAttribute('data-store-id') || this.widgetKey;
+          this.widgetKey = script.getAttribute('data-widget-key') || script.getAttribute('data-key') || '';
+          this.storeId = script.getAttribute('data-store-id') || script.getAttribute('data-store') || this.widgetKey;
+          if ((!this.widgetKey || !this.storeId) && script.src) {
+            try {
+              const parsedUrl = new URL(script.src, window.location.href);
+              if (!this.widgetKey) this.widgetKey = parsedUrl.searchParams.get('widget_key') || parsedUrl.searchParams.get('key') || '';
+              if (!this.storeId) this.storeId = parsedUrl.searchParams.get('store_id') || parsedUrl.searchParams.get('storeId') || parsedUrl.searchParams.get('store') || this.widgetKey;
+            } catch (_) {}
+          }
         }
+      }
+
+      if (!this.widgetKey && !this.storeId) {
+        this.widgetKey = window.AI_SMART_ENGINE_KEY || window.__ai_widget_key || '';
+        this.storeId = window.AI_SMART_ENGINE_STORE_ID || window.__ai_store_id || this.widgetKey;
       }
       
       if (!this.widgetKey && !this.storeId) {
@@ -939,6 +953,8 @@
           height: auto !important;
           max-width: 100vw !important;
           box-sizing: border-box !important;
+        }
+
         #widget-container.is-open #launcher,
         #widget-container.is-open .proactive-nudge {
           display: none !important;
@@ -2957,16 +2973,35 @@
                    document.querySelector('script[data-widget-key]') || 
                    document.querySelector('script[data-store-id]') ||
                    document.querySelector('script[src*="widget.js"]');
-    if (!script) return;
-    const widgetKey = script.getAttribute('data-widget-key');
-    const storeId = script.getAttribute('data-store-id');
-    if (widgetKey || storeId) {
-      const el = document.createElement('ai-shopping-assistant');
-      if (widgetKey) el.setAttribute('data-widget-key', widgetKey);
-      if (storeId) el.setAttribute('data-store-id', storeId);
-      // Ensure host element never captures clicks or displaces page layout
-      el.style.cssText = 'position: fixed !important; bottom: 0 !important; right: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; border: none !important; margin: 0 !important; padding: 0 !important; width: 0 !important; height: 0 !important; overflow: visible !important; display: block !important;';
+    
+    let widgetKey = script?.getAttribute('data-widget-key') || script?.getAttribute('data-key') || '';
+    let storeId = script?.getAttribute('data-store-id') || script?.getAttribute('data-store') || '';
+
+    if ((!widgetKey || !storeId) && script?.src) {
+      try {
+        const parsedUrl = new URL(script.src, window.location.href);
+        if (!widgetKey) widgetKey = parsedUrl.searchParams.get('widget_key') || parsedUrl.searchParams.get('key') || '';
+        if (!storeId) storeId = parsedUrl.searchParams.get('store_id') || parsedUrl.searchParams.get('storeId') || parsedUrl.searchParams.get('store') || '';
+      } catch (_) {}
+    }
+
+    if (!widgetKey) widgetKey = window.AI_SMART_ENGINE_KEY || window.__ai_widget_key || '';
+    if (!storeId) storeId = window.AI_SMART_ENGINE_STORE_ID || window.__ai_store_id || '';
+
+    const el = document.createElement('ai-shopping-assistant');
+    if (widgetKey) el.setAttribute('data-widget-key', widgetKey);
+    if (storeId) el.setAttribute('data-store-id', storeId);
+    // Ensure host element never captures clicks or displaces page layout
+    el.style.cssText = 'position: fixed !important; bottom: 0 !important; right: 0 !important; z-index: 2147483647 !important; pointer-events: none !important; border: none !important; margin: 0 !important; padding: 0 !important; width: 0 !important; height: 0 !important; overflow: visible !important; display: block !important;';
+    
+    if (document.body) {
       document.body.appendChild(el);
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        if (!document.querySelector('ai-shopping-assistant') && document.body) {
+          document.body.appendChild(el);
+        }
+      });
     }
   }
 

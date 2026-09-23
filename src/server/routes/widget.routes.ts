@@ -14,9 +14,9 @@ router.get('/bootstrap', (req, res, next) => createStoreAuthMiddleware()(req, re
 
     // Check if agent is active
     const agentRes = await db.query('SELECT is_active, tone, welcome_message, assistant_name FROM assistant_settings WHERE store_id = $1', [storeId]);
-    const agent = agentRes.rows[0] || { is_active: false, assistant_name: 'Mira' };
+    const agent = agentRes.rows[0] || { is_active: true, assistant_name: 'Mira' };
 
-    if (!agent.is_active) {
+    if (agent.is_active === false) {
       res.status(403).json({ error: 'Agent is currently paused' });
       return;
     }

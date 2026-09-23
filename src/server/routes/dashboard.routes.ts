@@ -143,7 +143,7 @@ router.get('/:storeId/overview', enforceStoreAccess, enforceFeature(FeatureKey.O
     res.json({
       success: true,
       data: {
-        agent_active: assistantRes.rows[0]?.is_active ?? false,
+        agent_active: assistantRes.rows[0]?.is_active !== false,
         chats: parseInt(chatRes.rows[0]?.count || '0', 10),
         leads: parseInt(leadsRes.rows[0]?.count || '0', 10),
         opt_ins: parseInt(optInRes.rows[0]?.count || '0', 10),
@@ -183,7 +183,12 @@ router.get('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
     res.json({
       success: true,
       data: {
-        assistant: assistantRes.rows[0] || null,
+        assistant: assistantRes.rows[0] ? {
+          ...assistantRes.rows[0],
+          is_active: assistantRes.rows[0].is_active !== false,
+          tone: assistantRes.rows[0].tone ?? 'friendly and helpful',
+          welcome_message: assistantRes.rows[0].welcome_message ?? 'Hi there! Looking for recommendations today?'
+        } : null,
         policies: policyRes.rows[0] || null
       }
     });

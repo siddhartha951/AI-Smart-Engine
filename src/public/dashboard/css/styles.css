@@ -1671,7 +1671,8 @@ header h2,
     border-bottom: none;
   }
 
-  .sidebar.open {
+  .sidebar.open,
+  .sidebar.mobile-open {
     transform: translateX(280px);
   }
 
