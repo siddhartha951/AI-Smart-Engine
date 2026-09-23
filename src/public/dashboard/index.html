@@ -655,6 +655,14 @@
               </select>
               <small class="form-hint">Quoted by your AI shopping assistant and confirmation receipts when a support ticket is opened.</small>
             </div>
+            <div class="form-group">
+              <label for="agent-apology-code">Apology Discount Code (Support Ticket Macro)</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="agent-apology-code" class="form-control" placeholder="e.g. SORRY10" maxlength="100" style="flex: 1;">
+                <input type="number" id="agent-apology-percent" class="form-control" min="1" max="90" value="10" style="width: 90px;" aria-label="Apology discount percent">
+              </div>
+              <small class="form-hint">Create this code in Shopify Admin → Discounts first. The "Apology + Discount" reply button inserts it; nothing is generated automatically.</small>
+            </div>
 
             <div class="form-group">
               <label for="agent-custom-prompt">Custom Persona & Instructions (Prompt Training)</label>
@@ -1036,6 +1044,16 @@
                 <option value="replied">Replied</option>
                 <option value="resolved">Resolved</option>
               </select>
+              <label for="tickets-category-filter" style="font-size: 13px; font-weight: 600; margin: 0 0 0 8px;">Category:</label>
+              <select id="tickets-category-filter" class="form-select form-select-sm" style="width: 210px;">
+                <option value="all" selected>All Categories</option>
+                <option value="return_refund">🔄 Return &amp; Refund</option>
+                <option value="order_tracking">📦 Order Tracking &amp; Delay</option>
+                <option value="product_inquiry">🧴 Product Recommendation</option>
+                <option value="discount_coupon">🏷️ Discount / Coupon Help</option>
+                <option value="damaged_missing">⚠️ Damaged / Missing Item</option>
+                <option value="general">💬 General Inquiry</option>
+              </select>
             </div>
             <div style="display: flex; align-items: center; gap: 14px;">
               <span id="ticket-sla-badge" style="font-size: 11px; padding: 4px 10px; border-radius: 12px; background: rgba(99, 102, 241, 0.1); color: #6366f1; font-weight: 600; border: 1px solid rgba(99, 102, 241, 0.2);">Response SLA: Within 24 Hours</span>
@@ -1050,15 +1068,17 @@
                 <tr style="border-bottom: 1px solid var(--color-border); background: var(--color-surface-subtle); text-align: left; font-size: 12px; color: var(--color-text-secondary);">
                   <th style="padding: 12px 16px;">Customer Email</th>
                   <th style="padding: 12px 16px;">Subject / Inquiry</th>
+                  <th style="padding: 12px 16px;">Category</th>
                   <th style="padding: 12px 16px;">Priority</th>
                   <th style="padding: 12px 16px;">Status</th>
+                  <th style="padding: 12px 16px;">Reply SLA</th>
                   <th style="padding: 12px 16px;">Created Date</th>
                   <th style="padding: 12px 16px; text-align: right;">Action</th>
                 </tr>
               </thead>
               <tbody id="tickets-table-body">
                 <tr>
-                  <td colspan="6" style="padding: 32px; text-align: center; color: var(--color-text-secondary);">
+                  <td colspan="8" style="padding: 32px; text-align: center; color: var(--color-text-secondary);">
                     Loading support tickets...
                   </td>
                 </tr>
@@ -1093,6 +1113,14 @@
                   <small style="color: var(--color-text-secondary); display: block;">Escalated At:</small>
                   <span id="modal-ticket-date" style="font-size: 12px;">--</span>
                 </div>
+                <div>
+                  <small style="color: var(--color-text-secondary); display: block;">Category &amp; Priority:</small>
+                  <span id="modal-ticket-triage" style="font-size: 12px;">--</span>
+                </div>
+                <div>
+                  <small style="color: var(--color-text-secondary); display: block;">Reply SLA:</small>
+                  <span id="modal-ticket-sla" data-sla-due="" style="font-size: 12px; font-weight: 600;">--</span>
+                </div>
               </div>
 
               <!-- Full Chat Transcript Box -->
@@ -1107,9 +1135,13 @@
               <div style="border-top: 1px solid var(--color-border); padding-top: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <h4 style="font-size: 13px; font-weight: 600; margin: 0; color: var(--color-text-primary);">✍️ Store Resolution & Reply</h4>
-                  <button type="button" id="btn-ai-generate-reply" class="btn btn-outline-primary btn-sm" style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
-                    <span>✨ AI Auto-Generate Reply</span>
-                  </button>
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;">
+                    <button type="button" id="btn-ai-generate-reply" class="btn btn-outline-primary btn-sm" style="display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                      <span>✨ AI Draft Reply</span>
+                    </button>
+                    <button type="button" id="btn-macro-order-status" class="btn btn-secondary btn-sm" style="font-weight: 600;">📦 Order Status</button>
+                    <button type="button" id="btn-macro-apology" class="btn btn-secondary btn-sm" style="font-weight: 600;">🎁 Apology + Discount</button>
+                  </div>
                 </div>
                 <textarea id="modal-reply-text" class="form-control" rows="5" placeholder="Type your support response here or click 'AI Auto-Generate Reply' to generate a response draft from your store's knowledge base..."></textarea>
                 
@@ -1438,6 +1470,40 @@
               <p class="section-subtitle">Configure abandoned cart recovery intervals, UK PECR consent disclosures, and generate AI campaigns.</p>
             </div>
           </header>
+          <!-- Sending identity (what customers see in their inbox) -->
+          <div id="email-sender-panel" class="panel" style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
+              <div>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 600;">Sending identity</h3>
+                <p class="section-subtitle" style="margin-top: 2px;">Who your customers see in their inbox for tickets, receipts and recovery emails.</p>
+              </div>
+              <span id="email-sender-mode-badge" class="badge badge--neutral">Loading…</span>
+            </div>
+            <div id="email-sender-summary" style="font-size: 13px; color: var(--color-text-secondary);">Loading sender settings…</div>
+          </div>
+
+          <!-- Custom sending domain (white-label) -->
+          <div id="email-domain-panel" class="panel" style="margin-bottom: 24px;">
+            <h3 style="margin: 0; font-size: 15px; font-weight: 600;">Custom sending domain (white-label)</h3>
+            <p class="section-subtitle" style="margin: 2px 0 12px 0;">Send every email from your own address, such as help@yourbrand.com, for better inbox placement and a fully branded experience.</p>
+            <form id="email-domain-form" style="display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+              <div class="form-group" style="margin: 0; flex: 1; min-width: 180px;">
+                <label for="email-domain-name" style="font-size: 12px;">Your domain</label>
+                <input type="text" id="email-domain-name" class="form-control" placeholder="getaniwell.com" required>
+              </div>
+              <div class="form-group" style="margin: 0; flex: 1; min-width: 160px;">
+                <label for="email-domain-sender-name" style="font-size: 12px;">Sender name</label>
+                <input type="text" id="email-domain-sender-name" class="form-control" maxlength="120" placeholder="Aniwell Support">
+              </div>
+              <div class="form-group" style="margin: 0; flex: 1; min-width: 180px;">
+                <label for="email-domain-sender-email" style="font-size: 12px;">Sender email</label>
+                <input type="email" id="email-domain-sender-email" class="form-control" maxlength="255" placeholder="help@getaniwell.com">
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">Add domain</button>
+            </form>
+            <div id="email-domain-list"></div>
+          </div>
+
           <form id="email-form" class="panel" style="display: flex; flex-direction: column; gap: 16px;">
             <div class="form-group toggle-group">
               <label for="email-is-enabled">Enable Abandoned Cart Recovery</label>
@@ -2998,6 +3064,6 @@
     }
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
-  <script type="module" src="js/app.js?v=2.2.4"></script>
+  <script type="module" src="js/app.js?v=2.3.0"></script>
 </body>
 </html>

@@ -236,4 +236,70 @@ describe('Support Tickets & Helpdesk Integration', () => {
     expect(flagship).toBeDefined();
     expect(flagship?.price).toBe(29.99);
   });
+
+  it('7. creates a ticket when the storefront widget only knows its widget_key (no session yet)', async () => {
+    const STORE_A_WIDGET_KEY = 'aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa';
+
+    // Mirrors the live widget payload: store_id falls back to the widget key and session_id is null
+    const res = await request(app)
+      .post('/api/v1/widget/tickets')
+      .set('X-Widget-Key', STORE_A_WIDGET_KEY)
+      .send({
+        widget_key: STORE_A_WIDGET_KEY,
+        store_id: STORE_A_WIDGET_KEY,
+        session_id: null,
+        customer_email: 'shopper@test.com',
+        subject: 'Customer requested human support via header button',
+        chat_transcript: [{ role: 'user', content: 'Can I talk to a human about subscriptions?' }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+
+    const listRes = await request(app)
+      .get(`/api/v1/dashboard/${STORE_A_ID}/tickets`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(listRes.body.data.tickets.length).toBe(1);
+    expect(listRes.body.data.tickets[0].customer_email).toBe('shopper@test.com');
+
+    // The ticket must never leak into Store B
+    const listB = await request(app)
+      .get(`/api/v1/dashboard/${STORE_B_ID}/tickets`)
+      .set('Authorization', `Bearer ${tokenB}`);
+    expect(listB.body.data.tickets.length).toBe(0);
+  });
+
+  it('8. rejects tickets for an unknown widget key and ignores a session from another store', async () => {
+    const unknown = await request(app)
+      .post('/api/v1/widget/tickets')
+      .send({
+        widget_key: '99999999-9999-9999-9999-999999999999',
+        customer_email: 'shopper@test.com',
+        subject: 'Help',
+      });
+    expect(unknown.status).toBe(401);
+
+    const sessionB = await db.query(
+      `INSERT INTO visitors (store_id, anonymous_id) VALUES ($1, 'anon-b-ticket') RETURNING id`,
+      [STORE_B_ID]
+    );
+    const chatB = await db.query(
+      `INSERT INTO chat_sessions (store_id, visitor_id, status) VALUES ($1, $2, 'active') RETURNING id`,
+      [STORE_B_ID, sessionB.rows[0].id]
+    );
+
+    const res = await request(app)
+      .post('/api/v1/widget/tickets')
+      .send({
+        widget_key: 'aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa',
+        session_id: chatB.rows[0].id,
+        customer_email: 'shopper@test.com',
+        subject: 'Help',
+      });
+    expect(res.status).toBe(201);
+
+    const ticket = await db.query(`SELECT store_id, session_id FROM support_tickets WHERE id = $1`, [res.body.data.ticket_id]);
+    expect(ticket.rows[0].store_id).toBe(STORE_A_ID);
+    expect(ticket.rows[0].session_id).toBeNull();
+  });
 });

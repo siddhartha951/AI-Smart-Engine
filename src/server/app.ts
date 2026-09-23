@@ -538,6 +538,9 @@ export function createApp(deps: AppDependencies = {}): Express {
               image_url: p.image_url || '',
               product_url: p.product_url || '',
               handle: p.handle || '',
+              // Real Shopify sales ranking so the widget badge never claims popularity it can't back up
+              is_bestseller: Boolean((p as any).is_bestseller),
+              sales_rank: Number((p as any).sales_rank) || 999,
             });
           }
         }

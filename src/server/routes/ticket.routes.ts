@@ -2,6 +2,10 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { SupportTicketRepository } from '../../modules/support_tickets/support-ticket.repository';
 import { SupportTicketService } from '../../modules/support_tickets/support-ticket.service';
+import { MerchantRepository } from '../../modules/merchant/merchant.repository';
+import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
+import { FeatureKey } from '../../modules/entitlements/entitlement.types';
+import { triageTicket, computeSlaDueAt } from '../../modules/support_tickets/ticket-triage';
 import { enforceStoreAccess } from '../middlewares/auth.middleware';
 import { getDatabaseClient } from '../../database/client';
 import { logger } from '../../utils/logger';
@@ -21,11 +25,13 @@ ticketDashboardRouter.get('/', enforceStoreAccess, async (req: Request, res: Res
   try {
     const storeId = req.params.storeId as string;
     const status = req.query.status as string | undefined;
+    const category = req.query.category as string | undefined;
     const db = getDatabaseClient();
 
-    const [tickets, stats, assistantRes] = await Promise.all([
-      repo.listTickets(storeId, status),
+    const [tickets, stats, categoryCounts, assistantRes] = await Promise.all([
+      repo.listTickets(storeId, status, category),
       repo.getTicketStats(storeId),
+      repo.getCategoryCounts(storeId),
       db.query(`SELECT ticket_revert_duration FROM assistant_settings WHERE store_id = $1`, [storeId]),
     ]);
 
@@ -36,7 +42,10 @@ ticketDashboardRouter.get('/', enforceStoreAccess, async (req: Request, res: Res
       data: {
         tickets,
         stats,
+        category_counts: categoryCounts,
         sla,
+        // Lets the dashboard correct for client clock drift in the SLA countdown
+        server_time: new Date().toISOString(),
       },
     });
   } catch (err) {
@@ -55,9 +64,11 @@ ticketDashboardRouter.get('/:ticketId', enforceStoreAccess, async (req: Request,
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
+    const macros = await service.getReplyMacros(storeId, ticket);
+
     res.json({
       success: true,
-      data: ticket,
+      data: { ...ticket, macros },
     });
   } catch (err) {
     next(err);
@@ -109,8 +120,10 @@ ticketDashboardRouter.post('/:ticketId/reply', enforceStoreAccess, async (req: R
 // Public Widget Endpoint
 // ==========================================
 const createWidgetTicketSchema = z.object({
-  store_id: z.string().min(1, 'store_id is required'),
-  session_id: z.string().optional(),
+  // The storefront snippet usually only knows its widget_key, so either identifier is accepted
+  store_id: z.string().optional().nullable(),
+  widget_key: z.string().optional().nullable(),
+  session_id: z.string().optional().nullable(),
   customer_email: z.string().email('Please provide a valid email address'),
   customer_name: z.string().optional(),
   subject: z.string().min(1, 'Subject or question is required'),
@@ -120,26 +133,74 @@ const createWidgetTicketSchema = z.object({
   })).optional(),
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Resolves the real store from a widget_key or store_id (widget_key takes precedence, matching store-auth)
+async function resolveWidgetStoreId(candidates: Array<string | null | undefined>): Promise<string | null> {
+  const merchantRepo = new MerchantRepository();
+  for (const raw of candidates) {
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (!value || !UUID_RE.test(value)) continue;
+    const store = (await merchantRepo.getStoreByWidgetKey(value)) || (await merchantRepo.getStoreById(value));
+    if (store && store.status === 'active') return store.id;
+  }
+  return null;
+}
+
 ticketWidgetRouter.post('/tickets', async (req: Request, res: Response, next) => {
   try {
     const body = createWidgetTicketSchema.parse(req.body);
 
+    const storeId = await resolveWidgetStoreId([
+      body.widget_key,
+      req.headers['x-widget-key'] as string | undefined,
+      body.store_id,
+      req.headers['x-store-id'] as string | undefined,
+    ]);
+    if (!storeId) {
+      return res.status(401).json({ success: false, message: 'Unknown or inactive store. Please refresh and try again.' });
+    }
+
+    if (!(await new EntitlementRepository().isFeatureEnabled(storeId, FeatureKey.SUPPORT_TICKETS))) {
+      return res.status(403).json({ success: false, message: 'Support tickets are not enabled for this store. Please email the store directly.' });
+    }
+
+    // Only link the chat session if it genuinely belongs to this store
+    let sessionId: string | undefined;
+    if (body.session_id && UUID_RE.test(body.session_id)) {
+      const sessionRes = await getDatabaseClient().query(
+        `SELECT id FROM chat_sessions WHERE id = $1 AND store_id = $2`,
+        [body.session_id, storeId]
+      );
+      if (sessionRes.rows[0]) sessionId = body.session_id;
+    }
+
+    const transcript = body.chat_transcript || [];
+    const [triage, slaRes] = await Promise.all([
+      triageTicket(storeId, body.subject, transcript),
+      getDatabaseClient().query(`SELECT ticket_revert_duration FROM assistant_settings WHERE store_id = $1`, [storeId]),
+    ]);
+
     const ticket = await repo.createTicket({
-      storeId: body.store_id,
-      sessionId: body.session_id,
+      storeId,
+      sessionId,
       customerEmail: body.customer_email,
       customerName: body.customer_name,
       subject: body.subject,
-      chatTranscript: body.chat_transcript,
-      priority: 'medium',
+      chatTranscript: transcript,
+      priority: triage.priority,
+      category: triage.category,
+      sentiment: triage.sentiment,
+      slaDueAt: computeSlaDueAt(new Date(), slaRes.rows[0]?.ticket_revert_duration),
     });
 
-    logger.info(`New support ticket created from storefront widget: ${ticket.id} (${ticket.customer_email})`);
+    logger.info(`New support ticket created from storefront widget: ${ticket.id} (${ticket.customer_email}) [${triage.category}/${triage.priority} via ${triage.source}]`);
 
-    // Dispatch instant customer confirmation email with brand support Reply-To
-    await service.sendTicketReceiptEmail(body.store_id, ticket).catch((emailErr) => {
-      logger.warn(`Ticket confirmation receipt email error for ${ticket.id}:`, emailErr);
-    });
+    // Customer receipt and merchant alert are independent; neither failure blocks ticket creation
+    await Promise.all([
+      service.sendTicketReceiptEmail(storeId, ticket),
+      service.sendMerchantTicketAlert(storeId, ticket),
+    ]);
 
     res.status(201).json({
       success: true,

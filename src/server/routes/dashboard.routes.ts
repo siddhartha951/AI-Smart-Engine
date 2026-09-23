@@ -4,8 +4,6 @@ import { getDatabaseClient } from '../../database/client';
 import { encryptString } from '../../utils/crypto';
 import { verifyJwt, requireRole, enforceStoreAccess } from '../middlewares/auth.middleware';
 import { AuditRepository } from '../../modules/merchant/audit.repository';
-import { getEmailProvider, getTestEmailProvider } from '../../providers/email';
-import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
 import { AnalyticsRepository } from '../../modules/analytics/analytics.repository';
 import { AdCreativeService, BudgetExceededError, ProductNotFoundError } from '../../modules/ad_creatives/ad_creative.service';
 import { WhatsAppService } from '../../modules/whatsapp/whatsapp.service';
@@ -24,6 +22,7 @@ import { FeatureKey } from '../../modules/entitlements/entitlement.types';
 import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
 import { ShopifyHealthService } from '../../modules/shopify_health/shopify_health.service';
 import { ticketDashboardRouter } from './ticket.routes';
+import { emailSenderRouter } from './email-sender.routes';
 
 const router = Router();
 
@@ -258,6 +257,20 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
             pillsJson,
             storeId
           ]
+        );
+      }
+      // Apology macro discount (support ticket helpdesk); only touched when the dashboard sends it
+      if (assistant.ticket_apology_discount_code !== undefined || assistant.ticket_apology_discount_percent !== undefined) {
+        const code = assistant.ticket_apology_discount_code !== undefined
+          ? (String(assistant.ticket_apology_discount_code || '').trim().slice(0, 100) || null)
+          : (old.ticket_apology_discount_code ?? null);
+        const parsedPercent = parseInt(String(assistant.ticket_apology_discount_percent ?? ''), 10);
+        const percent = Number.isFinite(parsedPercent) && parsedPercent > 0 && parsedPercent <= 90
+          ? parsedPercent
+          : (old.ticket_apology_discount_percent ?? 10);
+        await db.query(
+          `UPDATE assistant_settings SET ticket_apology_discount_code = $1, ticket_apology_discount_percent = $2 WHERE store_id = $3`,
+          [code, percent, storeId]
         );
       }
       await auditRepo.logAction(req.user!.id, storeId, 'UPDATE_ASSISTANT_SETTINGS', 'assistant_settings', oldAssistant.rows[0] || {}, assistant);
@@ -928,116 +941,8 @@ router.put('/:storeId/email', enforceStoreAccess, async (req: Request, res: Resp
   }
 });
 
-router.post('/:storeId/email/test', enforceStoreAccess, async (req: Request, res: Response, next) => {
-  try {
-    const storeId = req.params.storeId as string;
-    const { email } = req.body;
-    
-    if (!email) {
-      res.status(400).json({ success: false, message: 'Email required' });
-      return;
-    }
-
-    // Phase 7.1 requires fake provider test only
-    const provider = getTestEmailProvider();
-    await provider.sendEmail({
-      to: email as string,
-      subject: 'Test Email from Merchant Dashboard',
-      textBody: 'This is a test email sent from the Merchant Dashboard.',
-      htmlBody: '<p>This is a test email sent from the Merchant Dashboard.</p>',
-      storeId: storeId,
-      campaignType: 'test_email'
-    });
-
-    res.json({ success: true, message: 'Test email sent using fake provider' });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/:storeId/email/domains', enforceStoreAccess, async (req: Request, res: Response, next) => {
-  try {
-    const storeId = req.params.storeId as string;
-    const db = getDatabaseClient();
-    const domainRepo = new SenderDomainRepository(db);
-    const domains = await domainRepo.getDomainsByStore(storeId);
-    res.json({ success: true, data: domains });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/:storeId/email/domains', enforceStoreAccess, async (req: Request, res: Response, next) => {
-  try {
-    const storeId = req.params.storeId as string;
-    const { domain_name, sender_name, sender_email } = req.body;
-    if (!domain_name || typeof domain_name !== 'string') {
-      res.status(400).json({ success: false, error: 'domain_name is required' });
-      return;
-    }
-
-    const db = getDatabaseClient();
-    const domainRepo = new SenderDomainRepository(db);
-    const provider = getEmailProvider();
-
-    const providerRes = await provider.createSenderDomain(domain_name);
-    const domain = await domainRepo.createDomain(
-      storeId,
-      domain_name,
-      providerRes.id,
-      providerRes.records,
-      sender_name,
-      sender_email,
-      providerRes.status
-    );
-
-    res.status(201).json({ success: true, data: domain });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/:storeId/email/domains/:domainId/verify', enforceStoreAccess, async (req: Request, res: Response, next) => {
-  try {
-    const storeId = req.params.storeId as string;
-    const domainId = req.params.domainId as string;
-    const db = getDatabaseClient();
-    const domainRepo = new SenderDomainRepository(db);
-
-    const domain = await domainRepo.getDomainById(storeId, domainId);
-    if (!domain) {
-      res.status(404).json({ success: false, error: 'Domain not found' });
-      return;
-    }
-
-    const provider = getEmailProvider();
-    const providerRes = await provider.verifySenderDomain(domain.provider_domain_id);
-    const updated = await domainRepo.updateDomainStatus(
-      storeId,
-      domainId,
-      providerRes.status,
-      providerRes.records
-    );
-
-    res.json({ success: true, data: updated });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/:storeId/email/domains/:domainId', enforceStoreAccess, async (req: Request, res: Response, next) => {
-  try {
-    const storeId = req.params.storeId as string;
-    const domainId = req.params.domainId as string;
-    const db = getDatabaseClient();
-    const domainRepo = new SenderDomainRepository(db);
-
-    const deleted = await domainRepo.deleteDomain(storeId, domainId);
-    res.json({ success: true, deleted });
-  } catch (err) {
-    next(err);
-  }
-});
+// Sending identity, sender domains (DKIM/SPF/DMARC) and test email live in email-sender.routes.ts
+router.use('/:storeId/email', enforceStoreAccess, emailSenderRouter);
 
 // 6. Live Analytics & Funnel Tracking (Phase 2)
 router.get('/:storeId/analytics/live', enforceStoreAccess, enforceFeature(FeatureKey.LIVE_PULSE), async (req: Request, res: Response, next) => {

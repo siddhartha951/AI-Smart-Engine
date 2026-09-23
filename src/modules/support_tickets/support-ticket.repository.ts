@@ -9,6 +9,9 @@ export interface SupportTicket {
   subject: string;
   status: 'open' | 'replied' | 'resolved';
   priority: 'low' | 'medium' | 'high' | 'urgent';
+  category: string;
+  sentiment: string;
+  sla_due_at: Date | string | null;
   chat_transcript: Array<{ role: string; content: string; timestamp?: string }>;
   admin_reply: string | null;
   replied_at: Date | string | null;
@@ -24,6 +27,9 @@ export interface CreateTicketDto {
   subject: string;
   chatTranscript?: Array<{ role: string; content: string }>;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
+  category?: string;
+  sentiment?: string;
+  slaDueAt?: Date;
 }
 
 export class SupportTicketRepository {
@@ -41,9 +47,9 @@ export class SupportTicketRepository {
     const transcriptJson = JSON.stringify(dto.chatTranscript || []);
     const res = await this.db.query<SupportTicket>(
       `INSERT INTO support_tickets (
-        store_id, session_id, customer_email, customer_name, subject, 
-        priority, status, chat_transcript, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, NOW(), NOW())
+        store_id, session_id, customer_email, customer_name, subject,
+        priority, status, chat_transcript, category, sentiment, sla_due_at, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10, NOW(), NOW())
       RETURNING *`,
       [
         dto.storeId,
@@ -53,13 +59,16 @@ export class SupportTicketRepository {
         dto.subject.trim(),
         dto.priority || 'medium',
         transcriptJson,
+        dto.category || 'general',
+        dto.sentiment || 'neutral',
+        dto.slaDueAt || null,
       ]
     );
 
     return this.mapRow(res.rows[0]);
   }
 
-  async listTickets(storeId: string, statusFilter?: string): Promise<SupportTicket[]> {
+  async listTickets(storeId: string, statusFilter?: string, categoryFilter?: string): Promise<SupportTicket[]> {
     let sql = `SELECT * FROM support_tickets WHERE store_id = $1`;
     const params: any[] = [storeId];
 
@@ -68,7 +77,17 @@ export class SupportTicketRepository {
       sql += ` AND status = $${params.length}`;
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT 100`;
+    if (categoryFilter && categoryFilter !== 'all') {
+      params.push(categoryFilter);
+      sql += ` AND category = $${params.length}`;
+    }
+
+    // Unresolved urgent/high tickets first so angry customers are answered before routine questions
+    sql += ` ORDER BY
+      CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC,
+      CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END ASC,
+      created_at DESC
+      LIMIT 100`;
     const res = await this.db.query<SupportTicket>(sql, params);
     return res.rows.map(r => this.mapRow(r));
   }
@@ -98,6 +117,19 @@ export class SupportTicketRepository {
 
     if (res.rows.length === 0) return null;
     return this.mapRow(res.rows[0]);
+  }
+
+  async getCategoryCounts(storeId: string): Promise<Record<string, number>> {
+    const res = await this.db.query<{ category: string; count: string }>(
+      `SELECT category, COUNT(*)::text as count
+       FROM support_tickets
+       WHERE store_id = $1 AND status <> 'resolved'
+       GROUP BY category`,
+      [storeId]
+    );
+    const counts: Record<string, number> = {};
+    for (const row of res.rows) counts[row.category || 'general'] = parseInt(row.count, 10) || 0;
+    return counts;
   }
 
   async getTicketStats(storeId: string): Promise<{ total: number; open: number; replied: number; resolved: number }> {

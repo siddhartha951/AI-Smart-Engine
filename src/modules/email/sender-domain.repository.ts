@@ -105,6 +105,24 @@ export class SenderDomainRepository {
     return res.rows[0] || null;
   }
 
+  async updateSenderIdentity(
+    storeId: string,
+    domainId: string,
+    senderName: string | null,
+    senderEmail: string | null
+  ): Promise<MerchantSenderDomain | null> {
+    if (!storeId) throw new TenantIsolationError('store_id is required');
+
+    const res = await this.db.query<MerchantSenderDomain>(
+      `UPDATE merchant_sender_domains
+       SET sender_name = $1, sender_email = $2, updated_at = NOW()
+       WHERE store_id = $3 AND id = $4
+       RETURNING *`,
+      [senderName, senderEmail, storeId, domainId]
+    );
+    return res.rows[0] || null;
+  }
+
   async deleteDomain(storeId: string, domainId: string): Promise<boolean> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
 

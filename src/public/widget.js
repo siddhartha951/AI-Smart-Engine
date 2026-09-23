@@ -808,23 +808,24 @@
         return;
       }
 
-      const storeId = this.storeId || (this.state.config && this.state.config.store_id);
-      if (!storeId) {
+      const storeId = (this.state.config && this.state.config.store_id) || this.storeId;
+      if (!storeId && !this.widgetKey) {
         this.showToast('Store configuration error');
         return;
       }
 
       try {
         const transcript = this.state.messages
-          .filter(m => !m.isLoading)
+          .filter(m => !m.isLoading && !m.isTicketPrompt && typeof m.content === 'string' && m.content.trim())
           .map(m => ({ role: m.role, content: m.content }));
 
         const res = await fetch(`${API_BASE_URL}/api/v1/widget/tickets`, {
           method: 'POST',
           headers: this.getHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            store_id: storeId,
-            session_id: this.sessionId,
+            widget_key: this.widgetKey || undefined,
+            store_id: storeId || undefined,
+            session_id: this.sessionId || undefined,
             customer_email: email,
             subject: reason || 'Customer chat escalation',
             chat_transcript: transcript
@@ -1897,6 +1898,21 @@
           box-shadow: 0 2px 4px rgba(0,0,0,0.15);
         }
 
+        .product-badge-popular {
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          background: linear-gradient(135deg, #fbbf24, #d97706);
+          color: #451a03;
+          font-size: 9.5px;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 12px;
+          letter-spacing: 0.3px;
+          box-shadow: 0 2px 6px rgba(217, 119, 6, 0.35);
+          white-space: nowrap;
+        }
+
         .product-badge-out {
           position: absolute;
           top: 8px;
@@ -2442,11 +2458,18 @@
               const trackingUrl = buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId);
               const inStock = r.in_stock !== false;
               const imgUrl = r.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
+              // Badge only reflects real Shopify BEST_SELLING rank from the catalog sync (top 25 are flagged)
+              const salesRank = Number(r.sales_rank) || 999;
+              let popularBadge = '';
+              if (salesRank <= 3) popularBadge = `🔥 Best Seller #${salesRank}`;
+              else if (salesRank <= 10) popularBadge = '🔥 Best Seller';
+              else if (r.is_bestseller) popularBadge = '⭐ Trending';
 
               return `
                 <div class="product-card">
                   <div class="product-card-thumb-wrap">
                     <img src="${imgUrl}" alt="${r.title || 'Product'}" class="product-card-thumb" loading="lazy" />
+                    ${popularBadge ? `<span class="product-badge-popular">${popularBadge}</span>` : ''}
                     <span class="${inStock ? 'product-badge-stock' : 'product-badge-out'}">
                       ${inStock ? 'In Stock' : 'Out of Stock'}
                     </span>

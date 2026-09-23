@@ -1,3 +1,5 @@
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.3.0';
+
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
 // (blocked site data, strict privacy modes). An unguarded access at module
@@ -244,6 +246,14 @@ function setupEventListeners() {
   // Support Tickets & Customer Helpdesk controls
   setupSupportTicketsEventListeners();
 
+  // Email Automation → sending identity & custom sender domain
+  initEmailSenderPanel({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    showToast,
+    escapeHtml,
+  });
+
   // Login submit is handled at module top level (see above) so it can never
   // be skipped by a failure in the feature sections below.
 
@@ -314,6 +324,10 @@ function setupEventListeners() {
         tone: document.getElementById('agent-tone').value,
         support_contact: document.getElementById('agent-support').value,
         ticket_revert_duration: document.getElementById('agent-revert-duration') ? document.getElementById('agent-revert-duration').value : 'within 24 hours',
+        ...(document.getElementById('agent-apology-code') ? {
+          ticket_apology_discount_code: document.getElementById('agent-apology-code').value.trim(),
+          ticket_apology_discount_percent: parseInt(document.getElementById('agent-apology-percent')?.value, 10) || 10,
+        } : {}),
         custom_prompt: document.getElementById('agent-custom-prompt') ? document.getElementById('agent-custom-prompt').value : '',
         knowledge_base: document.getElementById('agent-knowledge-base') ? document.getElementById('agent-knowledge-base').value : '',
         quick_action_pills: quickActionPills
@@ -1465,6 +1479,10 @@ async function loadSectionData(section) {
         if (document.getElementById('agent-revert-duration') && data.assistant.ticket_revert_duration) {
           document.getElementById('agent-revert-duration').value = data.assistant.ticket_revert_duration;
         }
+        if (document.getElementById('agent-apology-code')) {
+          document.getElementById('agent-apology-code').value = data.assistant.ticket_apology_discount_code || '';
+          document.getElementById('agent-apology-percent').value = data.assistant.ticket_apology_discount_percent || 10;
+        }
         if (document.getElementById('agent-custom-prompt')) {
           document.getElementById('agent-custom-prompt').value = data.assistant.custom_prompt || '';
         }
@@ -1654,6 +1672,7 @@ async function loadSectionData(section) {
         document.getElementById('email-max').value = data.settings.max_recovery_emails;
         document.getElementById('email-consent').value = data.settings.consent_wording;
       }
+      loadEmailSenderPanel();
     }
   } catch (err) {
     console.warn(`[Dashboard] Non-critical error loading ${section} data:`, err);
@@ -6116,6 +6135,65 @@ async function loadAiAgentData() {
 
 let currentTicketId = null;
 let currentTicketData = null;
+let ticketClockOffsetMs = 0;
+let ticketSlaTimer = null;
+
+const TICKET_CATEGORY_LABELS = {
+  return_refund: '🔄 Return & Refund',
+  order_tracking: '📦 Order Tracking',
+  product_inquiry: '🧴 Product Inquiry',
+  discount_coupon: '🏷️ Discount / Coupon',
+  damaged_missing: '⚠️ Damaged / Missing',
+  general: '💬 General',
+};
+
+// Returns the SLA countdown label and tone for a ticket; answered tickets have no running clock
+function describeTicketSla(dueAt, status) {
+  if (status === 'resolved') return { text: 'Resolved', tone: 'neutral' };
+  if (status === 'replied') return { text: 'Replied', tone: 'neutral' };
+  if (!dueAt) return { text: '—', tone: 'neutral' };
+
+  const diffMin = Math.round((new Date(dueAt).getTime() - (Date.now() + ticketClockOffsetMs)) / 60000);
+  const fmt = (mins) => {
+    const d = Math.floor(mins / 1440);
+    const h = Math.floor((mins % 1440) / 60);
+    const m = mins % 60;
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h} hr${h === 1 ? '' : 's'} ${m} min${m === 1 ? '' : 's'}`;
+    return `${m} min${m === 1 ? '' : 's'}`;
+  };
+
+  if (diffMin < 0) return { text: `🔴 Overdue by ${fmt(-diffMin)}`, tone: 'danger' };
+  if (diffMin <= 60) return { text: `🟡 ${fmt(diffMin)} remaining`, tone: 'warning' };
+  return { text: `🟢 ${fmt(diffMin)} remaining`, tone: 'success' };
+}
+
+function ticketSlaColor(tone) {
+  if (tone === 'danger') return '#dc2626';
+  if (tone === 'warning') return '#d97706';
+  if (tone === 'success') return '#059669';
+  return 'var(--color-text-secondary)';
+}
+
+function refreshTicketSlaTimers() {
+  document.querySelectorAll('[data-sla-due]').forEach(el => {
+    const due = el.getAttribute('data-sla-due');
+    if (!due) return;
+    const sla = describeTicketSla(due, el.getAttribute('data-ticket-status') || 'open');
+    el.textContent = sla.text;
+    el.style.color = ticketSlaColor(sla.tone);
+  });
+}
+
+function startTicketSlaTimer() {
+  if (ticketSlaTimer) clearInterval(ticketSlaTimer);
+  ticketSlaTimer = setInterval(() => {
+    const section = document.getElementById('support-tickets');
+    const modal = document.getElementById('ticket-modal');
+    const visible = (section && !section.classList.contains('hidden')) || (modal && !modal.classList.contains('hidden'));
+    if (visible) refreshTicketSlaTimers();
+  }, 30000);
+}
 
 function setupSupportTicketsEventListeners() {
   const refreshBtn = document.getElementById('btn-refresh-tickets');
@@ -6123,6 +6201,17 @@ function setupSupportTicketsEventListeners() {
 
   const filterSelect = document.getElementById('tickets-status-filter');
   if (filterSelect) filterSelect.addEventListener('change', (e) => loadSupportTickets(e.target.value));
+
+  const categorySelect = document.getElementById('tickets-category-filter');
+  if (categorySelect) categorySelect.addEventListener('change', () => loadSupportTickets());
+
+  const orderMacroBtn = document.getElementById('btn-macro-order-status');
+  if (orderMacroBtn) orderMacroBtn.addEventListener('click', () => insertTicketMacro('order_status'));
+
+  const apologyMacroBtn = document.getElementById('btn-macro-apology');
+  if (apologyMacroBtn) apologyMacroBtn.addEventListener('click', () => insertTicketMacro('apology_discount'));
+
+  startTicketSlaTimer();
 
   const closeBtn = document.getElementById('btn-close-ticket-modal');
   if (closeBtn) closeBtn.addEventListener('click', closeTicketModal);
@@ -6171,9 +6260,14 @@ async function loadSupportTickets(status = null) {
   const tbody = document.getElementById('tickets-table-body');
   const countInd = document.getElementById('tickets-count-indicator');
   const selectedStatus = status || document.getElementById('tickets-status-filter')?.value || 'all';
+  const selectedCategory = document.getElementById('tickets-category-filter')?.value || 'all';
 
   try {
-    const url = `/api/v1/dashboard/${state.activeStoreId}/tickets${selectedStatus !== 'all' ? `?status=${selectedStatus}` : ''}`;
+    const params = new URLSearchParams();
+    if (selectedStatus !== 'all') params.set('status', selectedStatus);
+    if (selectedCategory !== 'all') params.set('category', selectedCategory);
+    const query = params.toString();
+    const url = `/api/v1/dashboard/${state.activeStoreId}/tickets${query ? `?${query}` : ''}`;
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
@@ -6181,6 +6275,21 @@ async function loadSupportTickets(status = null) {
     const json = await res.json();
     const tickets = json.data?.tickets || [];
     const stats = json.data?.stats || { open: 0, replied: 0, resolved: 0, total: 0 };
+    if (json.data?.server_time) {
+      ticketClockOffsetMs = new Date(json.data.server_time).getTime() - Date.now();
+    }
+
+    // Show unresolved counts next to each category so merchants can triage the biggest bucket first
+    const categorySelect = document.getElementById('tickets-category-filter');
+    const counts = json.data?.category_counts || {};
+    if (categorySelect) {
+      Array.from(categorySelect.options).forEach(opt => {
+        if (opt.value === 'all') return;
+        const base = opt.getAttribute('data-label') || opt.textContent;
+        opt.setAttribute('data-label', base);
+        opt.textContent = counts[opt.value] ? `${base} (${counts[opt.value]})` : base;
+      });
+    }
 
     // Update Top Stat Cards
     const openEl = document.getElementById('stat-open-tickets');
@@ -6213,7 +6322,7 @@ async function loadSupportTickets(status = null) {
     renderTicketsTable(tickets);
   } catch (err) {
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="6" style="padding: 24px; text-align: center; color: var(--color-danger);">Failed to load tickets: ${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--color-danger);">Failed to load tickets: ${escapeHtml(err.message)}</td></tr>`;
     }
     showToast('Failed to load tickets', true);
   }
@@ -6226,7 +6335,7 @@ function renderTicketsTable(tickets) {
   if (!tickets || tickets.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" style="padding: 40px; text-align: center; color: var(--color-text-secondary);">
+        <td colspan="8" style="padding: 40px; text-align: center; color: var(--color-text-secondary);">
           <div style="font-size: 28px; margin-bottom: 8px;">🎉</div>
           <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">No support tickets found</div>
           <p style="font-size: 12px; margin: 0;">Any visitor inquiries escalated from the AI chat widget will appear here.</p>
@@ -6248,9 +6357,16 @@ function renderTicketsTable(tickets) {
     const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
     const escapedEmail = escapeHtml(t.customer_email || 'Anonymous');
     const escapedSubject = escapeHtml(t.subject || 'Customer Inquiry');
+    const categoryText = escapeHtml(TICKET_CATEGORY_LABELS[t.category] || TICKET_CATEGORY_LABELS.general);
+    const moodText = t.sentiment === 'angry' ? ' · 😠 Angry' : (t.sentiment === 'negative' ? ' · 🙁 Upset' : '');
+    const isHot = (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'resolved';
+    const sla = describeTicketSla(t.sla_due_at, t.status);
+    const rowStyle = isHot
+      ? 'border-bottom: 1px solid var(--color-border); font-size: 13px; background: rgba(220, 38, 38, 0.08); box-shadow: inset 3px 0 0 #dc2626;'
+      : 'border-bottom: 1px solid var(--color-border); font-size: 13px;';
 
     return `
-      <tr style="border-bottom: 1px solid var(--color-border); font-size: 13px;">
+      <tr style="${rowStyle}">
         <td style="padding: 12px 16px; font-weight: 500;">
           <div style="color: var(--color-text-primary); font-weight: 600;">${escapedEmail}</div>
           ${t.customer_name ? `<div style="font-size: 11px; color: var(--color-text-secondary);">${escapeHtml(t.customer_name)}</div>` : ''}
@@ -6258,8 +6374,10 @@ function renderTicketsTable(tickets) {
         <td style="padding: 12px 16px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapedSubject}">
           ${escapedSubject}
         </td>
-        <td style="padding: 12px 16px;">${priorityBadge}</td>
+        <td style="padding: 12px 16px; font-size: 12px; white-space: nowrap;">${categoryText}</td>
+        <td style="padding: 12px 16px; white-space: nowrap;">${priorityBadge}<span style="font-size: 11px; color: var(--color-text-secondary);">${moodText}</span></td>
         <td style="padding: 12px 16px;">${statusBadge}</td>
+        <td style="padding: 12px 16px; font-size: 12px; font-weight: 600; white-space: nowrap; color: ${ticketSlaColor(sla.tone)};" data-sla-due="${escapeHtml(t.sla_due_at || '')}" data-ticket-status="${escapeHtml(t.status || 'open')}">${escapeHtml(sla.text)}</td>
         <td style="padding: 12px 16px; color: var(--color-text-secondary); font-size: 12px;">${createdDate}</td>
         <td style="padding: 12px 16px; text-align: right;">
           <button class="btn btn-secondary btn-sm" onclick="openTicketModal('${escapeHtml(t.id)}')" style="font-weight: 600;">
@@ -6298,6 +6416,21 @@ async function openTicketModal(ticketId) {
     const dateEl = document.getElementById('modal-ticket-date');
     if (dateEl) {
       dateEl.textContent = t.created_at ? new Date(t.created_at).toLocaleString() : '—';
+    }
+
+    const triageEl = document.getElementById('modal-ticket-triage');
+    if (triageEl) {
+      const mood = t.sentiment && t.sentiment !== 'neutral' ? ` · ${t.sentiment}` : '';
+      triageEl.textContent = `${TICKET_CATEGORY_LABELS[t.category] || TICKET_CATEGORY_LABELS.general} · ${(t.priority || 'medium').toUpperCase()}${mood}`;
+    }
+
+    const slaEl = document.getElementById('modal-ticket-sla');
+    if (slaEl) {
+      const sla = describeTicketSla(t.sla_due_at, t.status);
+      slaEl.setAttribute('data-sla-due', t.sla_due_at || '');
+      slaEl.setAttribute('data-ticket-status', t.status || 'open');
+      slaEl.textContent = sla.text;
+      slaEl.style.color = ticketSlaColor(sla.tone);
     }
 
     // Render Chat Transcript
@@ -6428,6 +6561,26 @@ async function sendTicketReply() {
       btn.disabled = false;
       btn.textContent = originalText;
     }
+  }
+}
+
+function insertTicketMacro(kind) {
+  const textarea = document.getElementById('modal-reply-text');
+  const macros = currentTicketData && currentTicketData.macros;
+  if (!textarea || !macros || !macros[kind]) {
+    showToast('Reply templates are not available for this ticket. Please reopen it.', true);
+    return;
+  }
+
+  if (textarea.value.trim() && !confirm('Replace the current reply text with this template?')) return;
+
+  textarea.value = macros[kind];
+  textarea.focus();
+
+  if (kind === 'apology_discount' && !macros.apology_discount_code) {
+    showToast('No apology discount code set. Add one in My Agent → Apology Discount Code, or replace [ADD-YOUR-DISCOUNT-CODE] before sending.', true);
+  } else {
+    showToast('Template inserted. Review and personalise before sending.');
   }
 }
 
