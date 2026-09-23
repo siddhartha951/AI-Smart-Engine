@@ -142,6 +142,12 @@
       .replace(/'/g, '&#39;');
   }
 
+  // Shared by every view (welcome pills, ticket cards). It used to live inside the welcome
+  // view only, so rendering a ticket card threw a ReferenceError and froze the whole chat.
+  function escapeAttr(value) {
+    return escapeHtml(value == null ? '' : String(value));
+  }
+
   function formatChatContent(rawText) {
     if (!rawText) return '';
 
@@ -2332,7 +2338,6 @@
           ];
         }
 
-        const escapeAttr = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const isPillEnabled = (p) => p && p.enabled !== false && p.enabled !== 'false' && p.enabled !== 0 && p.enabled !== '0';
         const enabledPills = pills.filter(isPillEnabled);
         const supportPills = enabledPills.filter(p => p.group === 'support' || ['track_order', 'return_policy', 'shipping_delivery', 'whatsapp_support'].includes(p.id));
@@ -2421,6 +2426,9 @@
       }
       
       if (this.state.view === 'chat') {
+        // The ticket card uses the brand colours; they are defined in render(), not in this method
+        const primaryColor = this.state.config?.widget?.primary_colour || '#4f46e5';
+        const secondaryColor = this.state.config?.widget?.secondary_colour || '#ffffff';
         const messagesHtml = this.state.messages.map((m, mIdx) => {
           let recs = Array.isArray(m.recommendations) ? [...m.recommendations] : [];
           let displayText = m.content || '';
