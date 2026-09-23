@@ -1624,10 +1624,10 @@ router.use('/:storeId/growth', enforceStoreAccess, enforceFeature(FeatureKey.GRO
 router.use('/:storeId/ai', enforceStoreAccess, aiRouter);
 
 // 14. Meta Ads Integration (live ads + performance from Meta Marketing API)
-router.use('/:storeId/meta-ads', enforceStoreAccess, enforceFeature(FeatureKey.AD_INTELLIGENCE), metaAdsRouter);
+router.use('/:storeId/meta-ads', enforceStoreAccess, enforceFeature(FeatureKey.META_ADS), metaAdsRouter);
 
 // 15. Merchant AI Agent (in-dashboard chat assistant + document verdicts)
-router.use('/:storeId/ai-agent', enforceStoreAccess, enforceFeature(FeatureKey.GROWTH_COPILOT), aiAgentRouter);
+router.use('/:storeId/ai-agent', enforceStoreAccess, enforceFeature(FeatureKey.AI_AGENT_CHAT), aiAgentRouter);
 
 export default router;
 

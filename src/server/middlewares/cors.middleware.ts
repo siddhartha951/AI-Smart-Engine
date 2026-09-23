@@ -59,8 +59,14 @@ export function validateStoreOrigin(req: Request, res: Response, next: NextFunct
       }
     }
 
-    // 3. Match any myshopify store subdomain if the store is a myshopify store
-    if (originHostname.endsWith('.myshopify.com')) {
+    // 3. Match any Shopify-related domain (live stores, preview links, admin, dev tunnels)
+    const shopifyDomains = [
+      '.myshopify.com',          // Live store: store-name.myshopify.com
+      '.shopifypreview.com',     // Theme preview: *.shopifypreview.com
+      '.shopify.com',            // Admin preview & embeds: admin.shopify.com
+      '.trycloudflare.com',      // Shopify dev tunnel proxy
+    ];
+    if (shopifyDomains.some(d => originHostname.endsWith(d))) {
       return allowOrigin(origin, res, next);
     }
   }

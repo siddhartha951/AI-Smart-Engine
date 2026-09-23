@@ -4490,9 +4490,9 @@ const NAV_FEATURE_MAP = {
   'email-automation': 'email_automation',
   'reorder-reminders': 'smart_reorder',
   'ad-intelligence': 'ad_intelligence',
-  'meta-ads': 'ad_intelligence',
-  'ads-explorer': 'ad_intelligence',
-  'ai-agent': 'growth_copilot',
+  'meta-ads': 'meta_ads',
+  'ads-explorer': 'ads_explorer',
+  'ai-agent': 'ai_agent_chat',
 };
 
 async function fetchStoreFeatures() {

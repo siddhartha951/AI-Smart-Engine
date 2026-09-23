@@ -10,7 +10,10 @@ export const FeatureKey = {
   EMAIL_AUTOMATION: 'email_automation',
   SMART_REORDER: 'smart_reorder',
   AD_INTELLIGENCE: 'ad_intelligence',
+  META_ADS: 'meta_ads',
+  ADS_EXPLORER: 'ads_explorer',
   GROWTH_COPILOT: 'growth_copilot',
+  AI_AGENT_CHAT: 'ai_agent_chat',
   AI_STORE_ANALYSIS: 'ai_store_analysis',
 } as const;
 
@@ -36,7 +39,10 @@ export const ALL_FEATURE_KEYS: FeatureKey[] = [
   'email_automation',
   'smart_reorder',
   'ad_intelligence',
+  'meta_ads',
+  'ads_explorer',
   'growth_copilot',
+  'ai_agent_chat',
   'ai_store_analysis',
 ];
 
@@ -118,11 +124,32 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureMetadata> = {
     description: 'Multi-touch attribution models, ROAS calculation, and ad insights.',
     defaultEnabled: true,
   },
+  meta_ads: {
+    key: 'meta_ads',
+    name: 'Meta Ads Manager',
+    category: 'intelligence',
+    description: 'Live Meta Marketing API campaign performance, spend tracking, and ROAS dashboards.',
+    defaultEnabled: true,
+  },
+  ads_explorer: {
+    key: 'ads_explorer',
+    name: 'Ads Explorer',
+    category: 'intelligence',
+    description: 'Visual creative explorer for Meta ad campaigns with filtering and cached previews.',
+    defaultEnabled: true,
+  },
   growth_copilot: {
     key: 'growth_copilot',
     name: 'AI Merchant Growth Copilot',
     category: 'intelligence',
     description: 'Data-grounded AI advisor with actionable growth recommendations.',
+    defaultEnabled: true,
+  },
+  ai_agent_chat: {
+    key: 'ai_agent_chat',
+    name: 'AI Agent Chat',
+    category: 'intelligence',
+    description: 'In-dashboard AI chat assistant for merchants with document upload and store-grounded answers.',
     defaultEnabled: true,
   },
   ai_store_analysis: {
