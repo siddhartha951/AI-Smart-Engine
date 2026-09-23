@@ -54,7 +54,12 @@ export class Migrator {
       }
 
       const filePath = path.join(this.migrationsDir, file);
-      const sqlContent = fs.readFileSync(filePath, 'utf-8');
+      let sqlContent = fs.readFileSync(filePath, 'utf-8');
+      // Strip UTF-8 BOM if present
+      if (sqlContent.charCodeAt(0) === 0xFEFF) {
+        sqlContent = sqlContent.slice(1);
+      }
+      sqlContent = sqlContent.trim();
 
       logger.info(`Applying migration: ${file}`);
       // Split or run the whole SQL script

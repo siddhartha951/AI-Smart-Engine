@@ -1,4 +1,4 @@
-﻿-- Migration 031: Product Knowledge, Tags and Best-Seller Intelligence
+-- Migration 031: Product Knowledge, Tags and Best-Seller Intelligence
 ALTER TABLE products 
 ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '',
 ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}',
