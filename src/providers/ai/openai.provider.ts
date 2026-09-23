@@ -55,6 +55,8 @@ export class OpenAiProvider implements IAiProvider {
       key_benefits_or_description: p.description ? p.description.slice(0, 350) : '',
     }));
 
+    const revertDuration = context.assistantSettings.ticket_revert_duration || 'within 24 hours';
+
     const systemPrompt = `
 You are "${context.assistantSettings.assistant_name}", an AI shopping assistant for a Shopify store.
 Your goal is to help customers find products, answer questions about the store, and provide a great shopping experience.
@@ -71,6 +73,12 @@ Strict Rules:
    - Returns: ${context.storePolicies.returns_policy}
    - FAQ: ${context.storePolicies.faq_content}
 6. If the shopper asks about order tracking, returns, shipping, size guides, or human support, provide a concise, warm answer and share the exact store action link from the "Store Quick Navigation & Action Links" above.
+7. SUPPORT TICKETING & HUMAN ESCALATION:
+   - You have an integrated customer support ticketing system.
+   - If the customer asks to open/create a support ticket, asks for human support, or has an inquiry requiring staff assistance (such as order cancellation, refund dispute, or complex issue):
+     a. NEVER say "I am unable to create tickets directly" or "I don't have access to create tickets".
+     b. Reassure the customer warmly: "I will open a support ticket for you right away. Our team will review this chat transcript and revert to your email ${revertDuration}."
+     c. Call the 'escalate_support_ticket' function tool.
 
 CRITICAL DISPLAY & FORMATTING GUIDELINES:
 1. STRUCTURE YOUR ANSWER BEAUTIFULLY:
@@ -126,6 +134,31 @@ ${JSON.stringify(catalogSummary, null, 2)}
               },
             },
           },
+          {
+            type: 'function',
+            function: {
+              name: 'escalate_support_ticket',
+              description: 'Call this when customer needs human support, asks to create a support ticket, has an unresolved issue, refund dispute, or asks for team help. Informs customer that a ticket is opened and support will revert within the configured duration.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  message: {
+                    type: 'string',
+                    description: 'The conversational response assuring the customer that a support ticket is created and support will revert within the timeframe.',
+                  },
+                  subject: {
+                    type: 'string',
+                    description: 'Brief, clear subject of the support ticket',
+                  },
+                  reason: {
+                    type: 'string',
+                    description: 'The root reason or customer issue requiring support intervention',
+                  },
+                },
+                required: ['message', 'subject', 'reason'],
+              },
+            },
+          },
         ],
         tool_choice: 'auto',
       });
@@ -135,6 +168,9 @@ ${JSON.stringify(catalogSummary, null, 2)}
 
       let finalContent = choice.message.content || '';
       let recommendedIds: string[] = [];
+      let shouldEscalateTicket = false;
+      let ticketSubject: string | undefined;
+      let ticketReason: string | undefined;
 
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
         const toolCall = choice.message.tool_calls[0];
@@ -145,6 +181,12 @@ ${JSON.stringify(catalogSummary, null, 2)}
           // Ensure recommended IDs actually exist in the subset
           const validIds = context.catalogSubset.map(p => p.id);
           recommendedIds = (args.product_ids || []).filter((id: string) => validIds.includes(id));
+        } else if (toolCall.type === 'function' && toolCall.function.name === 'escalate_support_ticket') {
+          const args = JSON.parse(toolCall.function.arguments);
+          finalContent = args.message;
+          shouldEscalateTicket = true;
+          ticketSubject = args.subject;
+          ticketReason = args.reason;
         }
       }
 
@@ -193,7 +235,16 @@ ${JSON.stringify(catalogSummary, null, 2)}
         }
       }
 
-      // Rough estimated cost calculation for tracking (e.g., gpt-4o-mini is ~$0.15/1M input, $0.60/1M output)
+      // Safety fallback: if model indicated in plain text that it will create a ticket
+      if (!shouldEscalateTicket) {
+        const ticketPhrases = /(open(ing)? a ticket|creat(e|ing) a ticket|support ticket for you|escalat(e|ing) this to our team)/i;
+        if (ticketPhrases.test(finalContent)) {
+          shouldEscalateTicket = true;
+          ticketSubject = 'Customer Support Ticket Request';
+          ticketReason = 'Customer requested support ticket in chat';
+        }
+      }
+
       const inputTokens = usage?.prompt_tokens || 0;
       const outputTokens = usage?.completion_tokens || 0;
       const costUsd = (inputTokens * 0.15 / 1000000) + (outputTokens * 0.60 / 1000000);
@@ -204,6 +255,9 @@ ${JSON.stringify(catalogSummary, null, 2)}
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         estimated_cost_usd: costUsd,
+        should_escalate_ticket: shouldEscalateTicket,
+        ticket_subject: ticketSubject,
+        ticket_reason: ticketReason,
       };
     } catch (err: any) {
       if (

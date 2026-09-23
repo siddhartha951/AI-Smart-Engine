@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { SupportTicketRepository } from '../../modules/support_tickets/support-ticket.repository';
 import { SupportTicketService } from '../../modules/support_tickets/support-ticket.service';
 import { enforceStoreAccess } from '../middlewares/auth.middleware';
+import { getDatabaseClient } from '../../database/client';
 import { logger } from '../../utils/logger';
 
 export const ticketDashboardRouter = Router({ mergeParams: true });
@@ -20,17 +21,22 @@ ticketDashboardRouter.get('/', enforceStoreAccess, async (req: Request, res: Res
   try {
     const storeId = req.params.storeId as string;
     const status = req.query.status as string | undefined;
+    const db = getDatabaseClient();
 
-    const [tickets, stats] = await Promise.all([
+    const [tickets, stats, assistantRes] = await Promise.all([
       repo.listTickets(storeId, status),
       repo.getTicketStats(storeId),
+      db.query(`SELECT ticket_revert_duration FROM assistant_settings WHERE store_id = $1`, [storeId]),
     ]);
+
+    const sla = assistantRes.rows[0]?.ticket_revert_duration || 'within 24 hours';
 
     res.json({
       success: true,
       data: {
         tickets,
         stats,
+        sla,
       },
     });
   } catch (err) {
@@ -129,6 +135,11 @@ ticketWidgetRouter.post('/tickets', async (req: Request, res: Response, next) =>
     });
 
     logger.info(`New support ticket created from storefront widget: ${ticket.id} (${ticket.customer_email})`);
+
+    // Dispatch instant customer confirmation email with brand support Reply-To
+    await service.sendTicketReceiptEmail(body.store_id, ticket).catch((emailErr) => {
+      logger.warn(`Ticket confirmation receipt email error for ${ticket.id}:`, emailErr);
+    });
 
     res.status(201).json({
       success: true,

@@ -54,6 +54,9 @@ export class ResendEmailProvider implements IEmailProvider {
       if (params.idempotencyKey) {
         headers['Idempotency-Key'] = params.idempotencyKey;
       }
+      if (params.replyTo) {
+        headers['Reply-To'] = params.replyTo;
+      }
 
       const tags = [
         ...(params.tags || []),
@@ -64,7 +67,7 @@ export class ResendEmailProvider implements IEmailProvider {
       const fromAddress =
         params.from || `${env.EMAIL_FROM_NAME} <${env.EMAIL_FROM_ADDRESS}>`;
 
-      const response = await client.emails.send({
+      const sendOptions: any = {
         from: fromAddress,
         to: [recipient],
         subject: params.subject,
@@ -72,7 +75,13 @@ export class ResendEmailProvider implements IEmailProvider {
         html: params.htmlBody,
         headers,
         tags
-      });
+      };
+
+      if (params.replyTo) {
+        sendOptions.reply_to = params.replyTo;
+      }
+
+      const response = await client.emails.send(sendOptions);
 
       if (response.error) {
         logger.error('[ResendEmailProvider] Failed to send email:', response.error);

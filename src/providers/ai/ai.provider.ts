@@ -11,6 +11,9 @@ export interface AiResponse {
   input_tokens: number;
   output_tokens: number;
   estimated_cost_usd: number;
+  should_escalate_ticket?: boolean;
+  ticket_subject?: string;
+  ticket_reason?: string;
 }
 
 export interface AiRequestContext {
@@ -28,6 +31,7 @@ export interface AiRequestContext {
     custom_prompt?: string;
     knowledge_base?: string;
     support_contact?: string;
+    ticket_revert_duration?: string;
     quick_action_pills?: Array<{
       id: string;
       label: string;

@@ -294,6 +294,7 @@ function setupEventListeners() {
         welcome_message: document.getElementById('agent-welcome').value,
         tone: document.getElementById('agent-tone').value,
         support_contact: document.getElementById('agent-support').value,
+        ticket_revert_duration: document.getElementById('agent-revert-duration') ? document.getElementById('agent-revert-duration').value : 'within 24 hours',
         custom_prompt: document.getElementById('agent-custom-prompt') ? document.getElementById('agent-custom-prompt').value : '',
         knowledge_base: document.getElementById('agent-knowledge-base') ? document.getElementById('agent-knowledge-base').value : '',
         quick_action_pills: quickActionPills
@@ -1442,6 +1443,9 @@ async function loadSectionData(section) {
         document.getElementById('agent-welcome').value = data.assistant.welcome_message || '';
         document.getElementById('agent-tone').value = data.assistant.tone || 'friendly and helpful';
         document.getElementById('agent-support').value = data.assistant.support_contact || '';
+        if (document.getElementById('agent-revert-duration') && data.assistant.ticket_revert_duration) {
+          document.getElementById('agent-revert-duration').value = data.assistant.ticket_revert_duration;
+        }
         if (document.getElementById('agent-custom-prompt')) {
           document.getElementById('agent-custom-prompt').value = data.assistant.custom_prompt || '';
         }
@@ -6193,6 +6197,11 @@ async function loadSupportTickets(status = null) {
 
     if (countInd) {
       countInd.textContent = `Showing ${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
+    }
+
+    const slaBadge = document.getElementById('ticket-sla-badge');
+    if (slaBadge && json.data?.sla) {
+      slaBadge.textContent = `Response SLA: ${json.data.sla}`;
     }
 
     renderTicketsTable(tickets);

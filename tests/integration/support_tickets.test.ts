@@ -168,4 +168,72 @@ describe('Support Tickets & Helpdesk Integration', () => {
     expect(statsRes.body.data.stats.open).toBe(0);
     expect(statsRes.body.data.stats.resolved).toBe(1);
   });
+
+  it('5. quotes configured support SLA duration and sends confirmation receipt with brand reply-to', async () => {
+    const { getTestEmailProvider } = await import('../../src/providers/email');
+    const fakeEmail = getTestEmailProvider();
+    fakeEmail.sentEmails = [];
+
+    // Configure support_contact and ticket_revert_duration for Store A
+    await db.query(
+      `UPDATE assistant_settings SET support_contact = 'help@getaniwell.com', ticket_revert_duration = 'within 4 hours' WHERE store_id = $1`,
+      [STORE_A_ID]
+    );
+
+    // Verify dashboard returns configured SLA
+    const dashRes = await request(app)
+      .get(`/api/v1/dashboard/${STORE_A_ID}/tickets`)
+      .set('Authorization', `Bearer ${tokenA}`);
+
+    expect(dashRes.status).toBe(200);
+    expect(dashRes.body.data.sla).toBe('within 4 hours');
+
+    // Create ticket from widget
+    const res = await request(app)
+      .post('/api/v1/widget/tickets')
+      .send({
+        store_id: STORE_A_ID,
+        customer_email: 'shopper@domain.com',
+        customer_name: 'Amit Patel',
+        subject: 'Need help with dog allergic reaction',
+        chat_transcript: [{ role: 'user', content: 'My dog has an allergy' }]
+      });
+
+    expect(res.status).toBe(201);
+
+    // Verify confirmation receipt email was dispatched
+    const receipt = fakeEmail.sentEmails.find(e => e.campaignType === 'ticket_confirmation_receipt');
+    expect(receipt).toBeDefined();
+    expect(receipt?.to).toBe('shopper@domain.com');
+    expect(receipt?.replyTo).toBe('help@getaniwell.com');
+    expect(receipt?.subject).toContain('Support Request Received');
+    expect(receipt?.textBody).toContain('within 4 hours');
+  });
+
+  it('6. excludes zero-dollar products from bestseller searches', async () => {
+    // Insert a $0 free sample and a real flagship product
+    await db.query(`
+      INSERT INTO products (id, store_id, shopify_id, title, handle, price, in_stock, is_bestseller, sales_rank)
+      VALUES 
+        ('prod-zero', $1, 'shopify-zero-sample', 'Aniwell Dog Wipes (Free Sample)', 'free-wipes', 0.00, true, false, 999),
+        ('prod-flagship', $1, 'shopify-flagship-1', 'Aniwell Skin & Coat Formula', 'skin-coat', 29.99, true, true, 1)
+    `, [STORE_A_ID]);
+
+    const { LiveShopifyAdapter } = await import('../../src/providers/shopify/live.shopify.adapter');
+    const adapter = new LiveShopifyAdapter();
+
+    const results = await adapter.searchProducts(STORE_A_ID, {
+      bestseller_only: true,
+      keywords: []
+    });
+
+    expect(results.length).toBeGreaterThan(0);
+    // Zero dollar product must NOT be returned!
+    const hasZero = results.some(p => p.price <= 0 || p.title.includes('Free Sample'));
+    expect(hasZero).toBe(false);
+
+    const flagship = results.find(p => p.title === 'Aniwell Skin & Coat Formula');
+    expect(flagship).toBeDefined();
+    expect(flagship?.price).toBe(29.99);
+  });
 });

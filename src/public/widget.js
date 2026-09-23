@@ -702,15 +702,22 @@
 
         this.setState({ messages: updatedMessages });
 
-        // Auto-offer human ticket if customer asks for human/complaint or AI fails/indicates support contact
-        const isHumanQuery = /(human|agent|real person|customer care|talk to someone|support ticket|complaint|representative|executive)/i.test(text);
+        // Auto-offer human ticket if customer asks for human/ticket/complaint or backend flagged escalation
+        const isHumanQuery = /(human|agent|real person|customer care|talk to someone|support ticket|complaint|representative|executive|create ticket|raise ticket|open ticket)/i.test(text);
         const replyText = json.success ? (json.data?.message || '') : '';
         const isAiUnsure = !json.success || /(contact (our )?support|reach out to (our )?support|support team|unable to assist|can't help with this)/i.test(replyText);
+        const shouldEscalate = Boolean(json.data?.should_escalate_ticket) || isHumanQuery || isAiUnsure;
 
-        if (isHumanQuery || isAiUnsure) {
+        if (json.data?.ticket_revert_duration) {
+          this.ticketRevertDuration = json.data.ticket_revert_duration;
+        }
+
+        if (shouldEscalate) {
+          const subject = json.data?.ticket_subject || (isHumanQuery ? 'Customer requested support ticket' : 'Inquiry requires store support');
+          const revertDur = json.data?.ticket_revert_duration || this.ticketRevertDuration || 'within 24 hours';
           setTimeout(() => {
-            this.openTicketEscalationPrompt(isHumanQuery ? 'Customer requested human support' : 'Inquiry requires store support');
-          }, 400);
+            this.openTicketEscalationPrompt(subject, revertDur);
+          }, 350);
         }
       } catch (err) {
         console.error('Chat error', err);
@@ -754,22 +761,34 @@
       }
     }
 
-    openTicketEscalationPrompt(reason = '') {
+    async openTicketEscalationPrompt(reason = '', revertDuration = '') {
+      const duration = revertDuration || this.ticketRevertDuration || 'within 24 hours';
+      this.ticketRevertDuration = duration;
       const email = this.visitorEmail || this.readStored('ai_visitor_email') || '';
+
       const promptMessage = {
         role: 'assistant',
-        content: "I'd be glad to connect you with our store support team! Please confirm your email below, and I'll generate a support ticket with our complete chat transcript so an agent can follow up with you directly.",
+        content: `I will open a support ticket for you right away. Our team will review this full chat transcript and revert to your email ${duration}.`,
         isTicketPrompt: true,
         ticketEmail: email,
-        ticketSubject: reason || 'Customer inquiry via storefront chat'
+        ticketSubject: reason || 'Customer inquiry via storefront chat',
+        revertDuration: duration
       };
+
+      const newMessages = [...this.state.messages, promptMessage];
       this.setState({
         view: 'chat',
-        messages: [...this.state.messages, promptMessage]
+        messages: newMessages
       });
+
+      // If customer email is already known, auto-submit the ticket instantly for a 1-tap seamless experience
+      if (email && email.includes('@')) {
+        const msgIdx = newMessages.length - 1;
+        await this.submitSupportTicket(email, reason || 'Customer inquiry via storefront chat', msgIdx, duration);
+      }
     }
 
-    async submitSupportTicket(email, reason, msgIndex) {
+    async submitSupportTicket(email, reason, msgIndex, revertDuration) {
       if (!email || !email.includes('@')) {
         this.showToast('Please enter a valid email address');
         return;
@@ -808,13 +827,16 @@
           this.writeStored('ai_visitor_email', email);
         } catch (_) {}
 
+        const duration = revertDuration || this.ticketRevertDuration || 'within 24 hours';
         const msgs = [...this.state.messages];
-        if (msgs[msgIndex]) {
-          msgs[msgIndex] = {
-            ...msgs[msgIndex],
+        const targetIdx = (msgIndex !== undefined && msgs[msgIndex]) ? msgIndex : (msgs.length - 1);
+        if (msgs[targetIdx]) {
+          msgs[targetIdx] = {
+            ...msgs[targetIdx],
             isTicketSubmitted: true,
             submittedTicketId: json.data?.ticket_id,
-            submittedEmail: email
+            submittedEmail: email,
+            revertDuration: duration
           };
           this.setState({ messages: msgs });
         }
@@ -1276,6 +1298,68 @@
 
         .header-icon-btn:active {
           transform: scale(0.95);
+        }
+
+        .btn-need-help-header {
+          background: rgba(255, 255, 255, 0.22);
+          border: 1px solid rgba(255, 255, 255, 0.45);
+          color: ${secondaryColor};
+          cursor: pointer;
+          height: 28px;
+          padding: 0 10px;
+          border-radius: 14px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          font-weight: 600;
+          white-space: nowrap;
+          transition: all 0.2s ease;
+          outline: none;
+          backdrop-filter: blur(4px);
+        }
+
+        .btn-need-help-header:hover {
+          background: rgba(255, 255, 255, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .btn-need-help-header:active {
+          transform: scale(0.96);
+        }
+
+        .chat-action-pills-bar {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 14px;
+          background: #ffffff;
+          border-top: 1px solid #f1f5f9;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+        .chat-action-pills-bar::-webkit-scrollbar {
+          display: none;
+        }
+
+        .btn-need-help-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: rgba(99, 102, 241, 0.08);
+          color: #4f46e5;
+          border: 1px solid rgba(99, 102, 241, 0.25);
+          border-radius: 14px;
+          padding: 4px 10px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: all 0.15s ease;
+        }
+        .btn-need-help-chip:hover {
+          background: rgba(99, 102, 241, 0.16);
+          border-color: #4f46e5;
         }
         
         .content {
@@ -2143,7 +2227,7 @@
               </div>
               <div class="header-actions">
                 ${this.state.view === 'chat' ? `
-                  <button type="button" class="header-icon-btn btn-human-ticket" aria-label="Human Helpdesk" title="Need Human Support? Open Ticket" style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 3px 8px; border-radius: 12px; background: rgba(255,255,255,0.18); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; margin-right: 4px; font-weight: 500;">
+                  <button type="button" class="btn-need-help-header btn-human-ticket" aria-label="Human Helpdesk" title="Need Human Support? Open Ticket">
                     <span>🛎️ Need Help?</span>
                   </button>
                 ` : ''}
@@ -2415,20 +2499,21 @@
           if (m.isTicketPrompt) {
             if (m.isTicketSubmitted) {
               ticketCardHtml = `
-                <div style="margin-top: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; padding: 10px; color: #10b981; font-size: 12px;">
-                  <strong style="color: #059669;">✅ Support Ticket Created (#${escapeAttr(m.submittedTicketId || '').substring(0, 8).toUpperCase()})</strong><br/>
-                  <span style="font-size: 11px; color: #64748b; display: block; margin-top: 4px;">Our store support team has received your chat transcript and will email a resolution to <strong>${escapeAttr(m.submittedEmail || '')}</strong> shortly.</span>
+                <div style="margin-top: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; padding: 12px; color: #10b981; font-size: 12px;">
+                  <strong style="color: #059669; font-size: 13px;">✅ Support Ticket Created (#${escapeAttr(m.submittedTicketId || '').substring(0, 8).toUpperCase()})</strong><br/>
+                  <span style="font-size: 12px; color: #334155; display: block; margin-top: 6px; line-height: 1.5;">Our store support team has received your chat transcript and will email a resolution to <strong>${escapeAttr(m.submittedEmail || '')}</strong> ${escapeAttr(m.revertDuration || 'within 24 hours')}.</span>
                 </div>
               `;
             } else {
               const defaultEmail = m.ticketEmail || this.visitorEmail || this.readStored('ai_visitor_email') || '';
+              const revertDur = m.revertDuration || this.ticketRevertDuration || 'within 24 hours';
               ticketCardHtml = `
                 <div class="ticket-escalation-card" style="margin-top: 8px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
                   <div style="font-weight: 600; font-size: 12px; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
                     <span>🛎️ Open Support Ticket</span>
                   </div>
                   <p style="font-size: 11px; color: #64748b; margin: 0 0 8px 0; line-height: 1.4;">
-                    Please confirm your email so our human support team can inspect this chat and email you a full solution.
+                    Please confirm your email so our human support team can inspect this chat and email you a full solution <strong>${escapeAttr(revertDur)}</strong>.
                   </p>
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <input type="email" class="input-escalation-email" data-msg-idx="${mIdx}" placeholder="Enter your email address" value="${escapeAttr(defaultEmail)}" style="width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; background: #f8fafc;" />
@@ -2456,6 +2541,11 @@
           <div class="chat-area">
             <div class="chat-messages" style="overflow-y: auto;">
               ${messagesHtml}
+            </div>
+            <div class="chat-action-pills-bar">
+              <button type="button" class="btn-need-help-chip" id="btn-quick-need-help" title="Need Human Support? Open Ticket">
+                <span>🛎️ Need Human Help? Open Ticket</span>
+              </button>
             </div>
             <form class="chat-input" id="chat-form">
               <input type="text" id="chat-input-text" placeholder="Type a message..." ${isWaiting ? 'disabled' : ''} autocomplete="off" />
@@ -2524,6 +2614,15 @@
         btnHumanTicket.addEventListener('click', (e) => {
           e.preventDefault();
           this.openTicketEscalationPrompt('Customer requested human support via header button');
+        });
+      }
+
+      // In-Chat Quick Action Chip
+      const btnQuickNeedHelp = this.shadowRoot.getElementById('btn-quick-need-help');
+      if (btnQuickNeedHelp) {
+        btnQuickNeedHelp.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.openTicketEscalationPrompt('Customer requested human support via in-chat action chip');
         });
       }
 

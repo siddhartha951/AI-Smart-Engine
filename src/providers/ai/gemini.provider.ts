@@ -74,6 +74,8 @@ export class GeminiAiProvider implements IAiProvider {
       key_benefits_or_description: p.description ? p.description.slice(0, 350) : '',
     }));
 
+    const revertDuration = context.assistantSettings.ticket_revert_duration || 'within 24 hours';
+
     const systemPrompt = `
 You are "${context.assistantSettings.assistant_name}", an intelligent shopping assistant for this Shopify store.
 Your goal is to help customers find products, answer questions, and provide a delightful shopping experience.
@@ -90,6 +92,12 @@ Strict Guidelines:
    - Returns: ${context.storePolicies.returns_policy}
    - FAQ: ${context.storePolicies.faq_content}
 6. If the customer asks about order tracking, returns, shipping, size guides, or human support, provide a helpful answer and share the exact store action link from "Store Quick Navigation & Action Links".
+7. SUPPORT TICKETING & HUMAN ESCALATION:
+   - You have an integrated customer support ticketing system.
+   - If the customer asks to open/create a support ticket, asks for human support, or has an inquiry requiring staff assistance (such as order cancellation, refund dispute, or complex issue):
+     a. NEVER say "I am unable to create tickets directly" or "I don't have access to create tickets".
+     b. Reassure the customer warmly: "I will open a support ticket for you right away. Our team will review this chat transcript and revert to your email ${revertDuration}."
+     c. Set "should_escalate_ticket": true, "ticket_subject": "<brief subject>", "ticket_reason": "<issue reason>".
 
 CRITICAL DISPLAY & FORMATTING GUIDELINES:
 1. STRUCTURE YOUR ANSWER BEAUTIFULLY:
@@ -102,10 +110,13 @@ CRITICAL DISPLAY & FORMATTING GUIDELINES:
    - DO NOT output raw markdown image tags or markdown links.
 3. BESTSELLERS:
    - If the shopper asks general questions like "what are your best products?" or "recommend something", prioritize items marked with \`is_bestseller: true\`.
-4. Respond in JSON format with two fields:
+4. Respond in JSON format with fields:
   {
     "message": "Your structured, warm answer here",
-    "recommended_product_ids": ["product-id-1", "product-id-2"]
+    "recommended_product_ids": ["product-id-1", "product-id-2"],
+    "should_escalate_ticket": false,
+    "ticket_subject": "Brief subject of customer inquiry (if escalating ticket)",
+    "ticket_reason": "Specific issue summary (if escalating ticket)"
   }
   If no specific products are recommended, provide an empty array [].
 
@@ -145,14 +156,36 @@ ${JSON.stringify(catalogSummary, null, 2)}
 
       let finalContent = '';
       let recommendedIds: string[] = [];
+      let shouldEscalateTicket = false;
+      let ticketSubject: string | undefined;
+      let ticketReason: string | undefined;
 
       try {
-        const parsed = extractAndParseJson<{ message?: string; recommended_product_ids?: string[] }>(rawText);
+        const parsed = extractAndParseJson<{
+          message?: string;
+          recommended_product_ids?: string[];
+          should_escalate_ticket?: boolean;
+          ticket_subject?: string;
+          ticket_reason?: string;
+        }>(rawText);
         finalContent = parsed.message || rawText;
         const validIds = new Set(context.catalogSubset.map((p) => p.id));
         recommendedIds = (parsed.recommended_product_ids || []).filter((id) => validIds.has(id));
+        shouldEscalateTicket = Boolean(parsed.should_escalate_ticket);
+        ticketSubject = parsed.ticket_subject;
+        ticketReason = parsed.ticket_reason;
       } catch (_parseErr) {
         finalContent = rawText;
+      }
+
+      // Safety check: if model indicated in plain text that it will create a ticket
+      if (!shouldEscalateTicket) {
+        const ticketPhrases = /(open(ing)? a ticket|creat(e|ing) a ticket|support ticket for you|escalat(e|ing) this to our team)/i;
+        if (ticketPhrases.test(finalContent)) {
+          shouldEscalateTicket = true;
+          ticketSubject = 'Customer Support Ticket Request';
+          ticketReason = 'Customer requested support ticket in chat';
+        }
       }
 
       const inputTokens = usage?.promptTokenCount || 100;
@@ -165,6 +198,9 @@ ${JSON.stringify(catalogSummary, null, 2)}
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         estimated_cost_usd: costUsd,
+        should_escalate_ticket: shouldEscalateTicket,
+        ticket_subject: ticketSubject,
+        ticket_reason: ticketReason,
       };
     } catch (err: any) {
       logger.warn('GeminiAiProvider.generateResponse failed, attempting OpenAI fallback:', { error: err.message });

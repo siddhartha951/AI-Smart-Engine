@@ -62,6 +62,7 @@ export interface AssistantSettings {
   knowledge_base?: string;
   allowed_topics: string[];
   support_contact: string;
+  ticket_revert_duration?: string;
   privacy_policy_url: string;
   created_at: Date;
   updated_at: Date;

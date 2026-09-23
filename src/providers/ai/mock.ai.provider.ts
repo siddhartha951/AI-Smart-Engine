@@ -56,7 +56,22 @@ export class MockAiProvider implements IAiProvider {
       return { content, recommended_product_ids: [], input_tokens: 50, output_tokens: 30, estimated_cost_usd: 0.0001 };
     }
 
-    if (userText.includes('whatsapp') || userText.includes('human') || userText.includes('talk to human')) {
+    const revertDuration = context.assistantSettings.ticket_revert_duration || 'within 24 hours';
+    if (userText.includes('ticket') || userText.includes('human') || userText.includes('agent') || userText.includes('support team')) {
+      content = `I will open a support ticket for you right away. Our team will review this chat transcript and revert to your email ${revertDuration}.`;
+      return {
+        content,
+        recommended_product_ids: [],
+        input_tokens: 50,
+        output_tokens: 30,
+        estimated_cost_usd: 0.0001,
+        should_escalate_ticket: true,
+        ticket_subject: 'Customer Support Request',
+        ticket_reason: 'Customer requested support ticket or human help',
+      };
+    }
+
+    if (userText.includes('whatsapp')) {
       if (whatsappPill?.url) {
         content += `You can reach our team directly on WhatsApp here: ${whatsappPill.url}. We are here to assist you!`;
       } else {

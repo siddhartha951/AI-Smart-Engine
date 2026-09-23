@@ -18,8 +18,10 @@ export interface ShopifyProduct {
 
 export interface ProductSearchQuery {
   budget_max?: number;
+  min_price?: number;
   category?: string;
   keywords?: string[];
+  bestseller_only?: boolean;
 }
 
 export interface IShopifyCatalogAdapter {

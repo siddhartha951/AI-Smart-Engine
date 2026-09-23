@@ -6,6 +6,7 @@ export interface SendEmailParams {
   storeId: string;
   campaignType: string;
   from?: string;
+  replyTo?: string;
   idempotencyKey?: string;
   headers?: Record<string, string>;
   tags?: Array<{ name: string; value: string }>;

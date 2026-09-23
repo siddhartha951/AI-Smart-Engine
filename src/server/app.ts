@@ -348,13 +348,17 @@ export function createApp(deps: AppDependencies = {}): Express {
           'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'with', 'would',
           'you', 'your', 'yours', 'yourself', 'yourselves',
           // Common shopping & chatter noise words
-          'hi', 'hello', 'hey', 'please', 'help', 'show', 'suggest', 'recommend', 'looking', 'want', 'need', 'give', 'take', 'buy', 'product', 'products', 'item', 'items', 'good', 'best',
+          'hi', 'hello', 'hey', 'please', 'help', 'show', 'suggest', 'recommend', 'looking', 'want', 'need', 'give', 'take', 'buy', 'product', 'products', 'item', 'items', 'good', 'best', 'seller', 'sellers', 'bestseller', 'bestsellers', 'top', 'popular', 'trending',
           // Common Hinglish stop words
           'hai', 'hain', 'ho', 'mera', 'meri', 'mere', 'kya', 'kaun', 'kaunsa', 'kaunsi', 'ko', 'ke', 'ki', 'liye', 'karo', 'kare', 'mujhe', 'hum', 'chahiye', 'batao', 'dikhaye', 'dikhao'
         ]);
 
         const cleanMsg = message.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
         const extractedKeywords = cleanMsg.split(/\s+/).filter(t => t.length > 2 && !stopWords.has(t));
+
+        // Detect explicit bestsellers / popular products intent
+        const isBestsellerQuery = /\b(best[\s_-]*seller|top[\s_-]*seller|bestseller|popular|trending|most[\s_-]*popular)\b/i.test(message);
+        const searchKeywords = isBestsellerQuery ? extractedKeywords.filter(k => !['seller', 'sellers', 'bestseller', 'bestsellers'].includes(k)) : extractedKeywords;
 
         // Simple intent extraction for budget filtering
         const maxBudgetMatch = message.match(/under\s*\$?(\d+)/i);
@@ -367,7 +371,8 @@ export function createApp(deps: AppDependencies = {}): Express {
           const adapter = getShopifyAdapter();
           catalogSubset = await adapter.searchProducts(storeId, {
             budget_max: budgetMax,
-            keywords: extractedKeywords,
+            keywords: searchKeywords,
+            bestseller_only: isBestsellerQuery,
           });
         } catch (catalogErr) {
           console.warn(`[WidgetChat] Catalog lookup failed for store ${storeId}, continuing without products:`, catalogErr);
@@ -386,6 +391,7 @@ export function createApp(deps: AppDependencies = {}): Express {
             custom_prompt: (settings as any)?.custom_prompt || '',
             knowledge_base: (settings as any)?.knowledge_base || '',
             support_contact: settings?.support_contact || '',
+            ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
             quick_action_pills: (settings as any)?.quick_action_pills || [],
           }
         });
@@ -425,7 +431,7 @@ export function createApp(deps: AppDependencies = {}): Express {
               if (cleanWords.length > 0) {
                 const searchClauses = cleanWords.map((_, i) => `(LOWER(title) LIKE $${i + 2} OR array_to_string(tags, ' ') ILIKE $${i + 2})`);
                 const dbRes = await db.query(
-                  `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND (${searchClauses.join(' OR ')}) LIMIT 4`,
+                  `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND price > 0 AND (${searchClauses.join(' OR ')}) LIMIT 4`,
                   [storeId, ...cleanWords.map(w => `%${w}%`)]
                 );
                 for (const row of dbRes.rows) {
@@ -547,7 +553,11 @@ export function createApp(deps: AppDependencies = {}): Express {
           success: true,
           data: {
             message: cleanMessage,
-            recommendations
+            recommendations,
+            should_escalate_ticket: Boolean(aiRes.should_escalate_ticket),
+            ticket_subject: aiRes.ticket_subject,
+            ticket_reason: aiRes.ticket_reason,
+            ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
           }
         });
       } catch (err) {

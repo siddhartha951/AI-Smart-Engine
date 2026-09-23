@@ -121,8 +121,17 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
       // 1. Check local synced products catalog in DB first (fast & reliable)
       try {
-        let sql = 'SELECT * FROM products WHERE store_id = $1 AND in_stock = true';
+        let sql = 'SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND price > 0';
         const params: any[] = [storeId];
+
+        if (query.bestseller_only) {
+          sql += ' AND is_bestseller = true';
+        }
+
+        if (query.min_price) {
+          params.push(query.min_price);
+          sql += ` AND price >= $${params.length}`;
+        }
 
         if (query.budget_max) {
           params.push(query.budget_max);
@@ -148,7 +157,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           sql += ` AND (${kwClauses.join(' OR ')})`;
         }
 
-        sql += ' ORDER BY is_bestseller DESC, sales_rank ASC, price ASC LIMIT 20';
+        sql += ' ORDER BY is_bestseller DESC, (CASE WHEN sales_rank < 999 THEN sales_rank ELSE 9999 END) ASC, (CASE WHEN price >= 5 THEN 0 ELSE 1 END), price DESC LIMIT 20';
         const dbRes = await db.query(sql, params);
         if (dbRes.rows.length > 0) {
           return dbRes.rows.map((r: any) => ({
@@ -170,10 +179,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           }));
         }
 
-        // Fallback: If keyword search yielded 0 items, load store's bestsellers so AI always has relevant catalog context
+        // Fallback: If keyword search yielded 0 items, load store's bestsellers (strictly price > 0)
         if (query.keywords && query.keywords.length > 0) {
           const fallbackRes = await db.query(
-            `SELECT * FROM products WHERE store_id = $1 AND in_stock = true ORDER BY is_bestseller DESC, sales_rank ASC, price ASC LIMIT 10`,
+            `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND price > 0 ORDER BY is_bestseller DESC, (CASE WHEN sales_rank < 999 THEN sales_rank ELSE 9999 END) ASC, (CASE WHEN price >= 5 THEN 0 ELSE 1 END), price DESC LIMIT 10`,
             [storeId]
           );
           if (fallbackRes.rows.length > 0) {
@@ -277,6 +286,13 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         };
       });
 
+      // Strictly exclude $0 free samples / drafts from recommendations
+      products = products.filter(p => p.price > 0);
+
+      if (query.min_price) {
+        products = products.filter(p => p.price >= query.min_price!);
+      }
+
       if (query.budget_max) {
         products = products.filter(p => p.price <= query.budget_max!);
       }
@@ -284,6 +300,14 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       if (query.category) {
         products = products.filter(p => p.category.toLowerCase() === query.category!.toLowerCase());
       }
+
+      // Prioritize flagship products over sample sachets/wipes
+      products.sort((a, b) => {
+        const aFlagship = a.price >= 5 ? 0 : 1;
+        const bFlagship = b.price >= 5 ? 0 : 1;
+        if (aFlagship !== bFlagship) return aFlagship - bFlagship;
+        return b.price - a.price;
+      });
 
       return products;
     } catch (err) {

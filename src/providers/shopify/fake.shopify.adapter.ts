@@ -76,7 +76,11 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
       throw new TenantIsolationError(`FakeShopifyAdapter: Store ${storeId} not found`);
     }
 
-    let results = this.products[storeId].filter(p => p.in_stock);
+    let results = this.products[storeId].filter(p => p.in_stock && p.price > 0);
+
+    if (query.min_price) {
+      results = results.filter(p => p.price >= query.min_price!);
+    }
 
     if (query.budget_max) {
       results = results.filter(p => p.price <= query.budget_max!);

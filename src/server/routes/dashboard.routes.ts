@@ -210,8 +210,8 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
       if (oldAssistant.rows.length === 0) {
         await db.query(
           `INSERT INTO assistant_settings (
-            store_id, is_active, assistant_name, welcome_message, tone, support_contact, custom_prompt, knowledge_base, quick_action_pills, allowed_topics, privacy_policy_url
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)`,
+            store_id, is_active, assistant_name, welcome_message, tone, support_contact, ticket_revert_duration, custom_prompt, knowledge_base, quick_action_pills, allowed_topics, privacy_policy_url
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)`,
           [
             storeId,
             assistant.is_active ?? true,
@@ -219,6 +219,7 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
             assistant.welcome_message ?? 'Hi there!',
             assistant.tone ?? 'friendly and helpful',
             assistant.support_contact ?? 'support@store.com',
+            assistant.ticket_revert_duration ?? 'within 24 hours',
             assistant.custom_prompt ?? '',
             assistant.knowledge_base ?? '',
             pillsJson,
@@ -234,17 +235,19 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
             welcome_message = $3,
             tone = $4,
             support_contact = $5,
-            custom_prompt = $6,
-            knowledge_base = $7,
-            quick_action_pills = $8::jsonb,
+            ticket_revert_duration = $6,
+            custom_prompt = $7,
+            knowledge_base = $8,
+            quick_action_pills = $9::jsonb,
             updated_at = NOW()
-           WHERE store_id = $9`,
+           WHERE store_id = $10`,
           [
             assistant.is_active !== undefined ? assistant.is_active : (old.is_active ?? true),
             assistant.assistant_name !== undefined ? assistant.assistant_name : (old.assistant_name ?? 'Assistant'),
             assistant.welcome_message !== undefined ? assistant.welcome_message : (old.welcome_message ?? 'Hi there!'),
             assistant.tone !== undefined ? assistant.tone : (old.tone ?? 'friendly and helpful'),
             assistant.support_contact !== undefined ? assistant.support_contact : (old.support_contact ?? 'support@store.com'),
+            assistant.ticket_revert_duration !== undefined ? assistant.ticket_revert_duration : (old.ticket_revert_duration ?? 'within 24 hours'),
             assistant.custom_prompt !== undefined ? assistant.custom_prompt : (old.custom_prompt ?? ''),
             assistant.knowledge_base !== undefined ? assistant.knowledge_base : (old.knowledge_base ?? ''),
             pillsJson,
