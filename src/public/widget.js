@@ -132,6 +132,77 @@
     return { cleanText, cards };
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function formatChatContent(rawText) {
+    if (!rawText) return '';
+
+    // Normalize line endings
+    let text = String(rawText).replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+    // If an inline sentence had something like:
+    // "skin. Here's more information: - Aniwell..." or "skin: • Soothes..."
+    // split the bullet to a new line cleanly
+    text = text.replace(/([.:!?])\s*[-•]\s+/g, '$1\n• ');
+
+    // Escape HTML first for security
+    text = escapeHtml(text);
+
+    // Convert bold: **text** or __text__
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+    // Convert italic: *text* or _text_
+    text = text.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+    text = text.replace(/_([^_\n]+?)_/g, '<em>$1</em>');
+
+    // Parse lines into clean paragraphs and bullet lists
+    const lines = text.split('\n');
+    let outputHtml = '';
+    let inList = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) {
+        if (inList) {
+          outputHtml += '</ul>';
+          inList = false;
+        }
+        continue;
+      }
+
+      // Check if line is a bullet item (starts with •, -, *, or 1.)
+      const bulletMatch = line.match(/^[-*•]\s+(.*)$/) || line.match(/^\d+\.\s+(.*)$/);
+      if (bulletMatch) {
+        if (!inList) {
+          outputHtml += '<ul class="chat-bullet-list">';
+          inList = true;
+        }
+        outputHtml += `<li>${bulletMatch[1]}</li>`;
+      } else {
+        if (inList) {
+          outputHtml += '</ul>';
+          inList = false;
+        }
+        outputHtml += `<p class="chat-p">${line}</p>`;
+      }
+    }
+
+    if (inList) {
+      outputHtml += '</ul>';
+    }
+
+    return outputHtml;
+  }
+
   class ShoppingAssistantWidget extends HTMLElement {
     constructor() {
       super();
@@ -1374,10 +1445,10 @@
         }
         
         .msg {
-          padding: 11px 15px;
+          padding: 12px 15px;
           border-radius: 14px;
           font-size: 13.5px;
-          line-height: 1.45;
+          line-height: 1.5;
           max-width: 86%;
           word-break: break-word;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
@@ -1396,6 +1467,39 @@
           color: ${secondaryColor};
           align-self: flex-end;
           border-bottom-right-radius: 3px;
+        }
+
+        .msg-text {
+          font-size: 13.5px;
+          line-height: 1.55;
+          word-break: break-word;
+        }
+        .msg-text p.chat-p {
+          margin: 0 0 8px 0;
+          line-height: 1.55;
+        }
+        .msg-text p.chat-p:last-child {
+          margin-bottom: 0;
+        }
+        .msg-text strong {
+          font-weight: 600;
+          color: inherit;
+        }
+        .msg.assistant .msg-text strong {
+          color: #0f172a;
+        }
+        .msg-text ul.chat-bullet-list {
+          margin: 6px 0 8px 0;
+          padding-left: 20px;
+          list-style-type: disc;
+        }
+        .msg-text ul.chat-bullet-list li {
+          margin-bottom: 4px;
+          line-height: 1.45;
+          color: inherit;
+        }
+        .msg-text ul.chat-bullet-list li:last-child {
+          margin-bottom: 0;
         }
         
         .chat-input {
@@ -2207,7 +2311,7 @@
 
           return `
             <div class="msg ${m.role}">
-              <div class="msg-text">${displayText}</div>
+              <div class="msg-text">${formatChatContent(displayText)}</div>
               ${recsHtml}
             </div>
           `;

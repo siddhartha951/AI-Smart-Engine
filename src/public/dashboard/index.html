@@ -647,6 +647,24 @@
               <small class="form-hint">Upload product catalog sheets, brand story, or FAQs to train your agent automatically.</small>
             </div>
 
+            <div class="form-group" style="background: rgba(99, 102, 241, 0.05); border: 1px dashed rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div>
+                  <strong style="color: #6366f1; display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                    <span>🌐 Auto-Scan & Learn Website</span>
+                    <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px;">AI Learning</span>
+                  </strong>
+                  <small style="color: var(--color-text-secondary); display: block; margin-top: 4px; line-height: 1.4;">
+                    Crawls your store homepage, About Us, policies & FAQs to train the AI on your brand voice, policies, and products.
+                  </small>
+                </div>
+                <button type="button" id="btn-scan-website" class="btn btn-outline-primary" style="display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap;">
+                  <span>🚀 Scan & Learn Website</span>
+                </button>
+              </div>
+              <div id="scan-website-status" style="font-size: 12.5px; margin-top: 10px; display: none; padding: 8px 12px; border-radius: 6px;"></div>
+            </div>
+
             <div class="form-group">
               <label for="agent-knowledge-base">Knowledge Base & Reference Data</label>
               <textarea id="agent-knowledge-base" class="form-control" rows="5" placeholder="Document guidelines, product details, or catalog text extracted for the AI to reference..."></textarea>

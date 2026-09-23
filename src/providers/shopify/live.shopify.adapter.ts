@@ -137,12 +137,18 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         if (query.keywords && query.keywords.length > 0) {
           const kwClauses = query.keywords.map((kw) => {
             params.push(`%${kw.toLowerCase()}%`);
-            return `(LOWER(title) LIKE $${params.length} OR LOWER(category) LIKE $${params.length})`;
+            const pIdx = params.length;
+            return `(
+              LOWER(title) LIKE $${pIdx} 
+              OR LOWER(category) LIKE $${pIdx} 
+              OR LOWER(COALESCE(description, '')) LIKE $${pIdx}
+              OR array_to_string(tags, ' ') ILIKE $${pIdx}
+            )`;
           });
           sql += ` AND (${kwClauses.join(' OR ')})`;
         }
 
-        sql += ' ORDER BY price ASC LIMIT 20';
+        sql += ' ORDER BY is_bestseller DESC, sales_rank ASC, price ASC LIMIT 20';
         const dbRes = await db.query(sql, params);
         if (dbRes.rows.length > 0) {
           return dbRes.rows.map((r: any) => ({
@@ -150,6 +156,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             variant_id: r.variant_id || '',
             title: r.title,
             handle: r.handle,
+            description: r.description || '',
+            tags: r.tags || [],
+            is_bestseller: r.is_bestseller || false,
+            sales_rank: r.sales_rank || 999,
             price: parseFloat(r.price || '0'),
             compare_at_price: parseFloat(r.compare_at_price || '0'),
             currency: r.currency || 'INR',
@@ -159,8 +169,35 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             product_url: r.product_url,
           }));
         }
+
+        // Fallback: If keyword search yielded 0 items, load store's bestsellers so AI always has relevant catalog context
+        if (query.keywords && query.keywords.length > 0) {
+          const fallbackRes = await db.query(
+            `SELECT * FROM products WHERE store_id = $1 AND in_stock = true ORDER BY is_bestseller DESC, sales_rank ASC, price ASC LIMIT 10`,
+            [storeId]
+          );
+          if (fallbackRes.rows.length > 0) {
+            return fallbackRes.rows.map((r: any) => ({
+              id: r.shopify_id || r.id,
+              variant_id: r.variant_id || '',
+              title: r.title,
+              handle: r.handle,
+              description: r.description || '',
+              tags: r.tags || [],
+              is_bestseller: r.is_bestseller || false,
+              sales_rank: r.sales_rank || 999,
+              price: parseFloat(r.price || '0'),
+              compare_at_price: parseFloat(r.compare_at_price || '0'),
+              currency: r.currency || 'INR',
+              in_stock: r.in_stock,
+              category: r.category,
+              image_url: r.image_url,
+              product_url: r.product_url,
+            }));
+          }
+        }
       } catch (dbErr) {
-        // Table may not exist in non-migrated tests, continue to live API
+        // Table may not exist or missing columns in test mocks, continue to live API
       }
 
       // 2. Fallback to live Storefront API search
@@ -255,15 +292,55 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     }
   }
 
+  private async fetchBestsellerIds(shopDomain: string, adminToken: string): Promise<Map<string, number>> {
+    const rankMap = new Map<string, number>();
+    try {
+      const graphqlQuery = `
+        {
+          products(first: 25, sortKey: BEST_SELLING) {
+            edges {
+              node {
+                id
+              }
+            }
+          }
+        }
+      `;
+      const response = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': adminToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: graphqlQuery }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        const edges = data.data?.products?.edges || [];
+        edges.forEach((edge: any, index: number) => {
+          const rawId = edge.node?.id || '';
+          const numericId = rawId.split('/').pop() || rawId;
+          rankMap.set(rawId, index + 1);
+          rankMap.set(numericId, index + 1);
+        });
+        logger.info(`Shopify identified ${edges.length} bestsellers for ${shopDomain}`);
+      }
+    } catch (err) {
+      logger.warn(`Could not fetch bestsellers from Shopify for ${shopDomain}: ${err}`);
+    }
+    return rankMap;
+  }
+
   async syncAllProducts(storeId: string): Promise<{ count: number; products: ShopifyProduct[] }> {
     try {
       const { adminToken, storefrontToken, shopDomain } = await this.getCredentials(storeId);
       let allProducts: ShopifyProduct[] = [];
+      const bestsellerRankMap = adminToken ? await this.fetchBestsellerIds(shopDomain, adminToken) : new Map<string, number>();
 
       // 1. Primary: Shopify Admin GraphQL API (uses adminToken)
       if (adminToken) {
         try {
-          allProducts = await this.syncViaAdminGraphQL(shopDomain, adminToken);
+          allProducts = await this.syncViaAdminGraphQL(shopDomain, adminToken, bestsellerRankMap);
           logger.info(`Admin GraphQL synced ${allProducts.length} products for ${shopDomain}`);
         } catch (err) {
           logger.warn(`Admin GraphQL sync failed for ${shopDomain}, trying Admin REST: ${err}`);
@@ -272,7 +349,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         // 2. Fallback: Shopify Admin REST API
         if (allProducts.length === 0) {
           try {
-            allProducts = await this.syncViaAdminREST(shopDomain, adminToken);
+            allProducts = await this.syncViaAdminREST(shopDomain, adminToken, bestsellerRankMap);
             logger.info(`Admin REST synced ${allProducts.length} products for ${shopDomain}`);
           } catch (err) {
             logger.warn(`Admin REST sync failed for ${shopDomain}: ${err}`);
@@ -299,13 +376,17 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             const compositeId = `${storeId}_${rawId}`;
             await db.query(`
               INSERT INTO products (
-                id, store_id, shopify_id, variant_id, title, handle, price, compare_at_price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
+                id, store_id, shopify_id, variant_id, title, handle, description, tags, is_bestseller, sales_rank, price, compare_at_price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
               ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()
               )
               ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 handle = EXCLUDED.handle,
+                description = CASE WHEN EXCLUDED.description IS NOT NULL AND EXCLUDED.description != '' THEN EXCLUDED.description ELSE products.description END,
+                tags = EXCLUDED.tags,
+                is_bestseller = EXCLUDED.is_bestseller,
+                sales_rank = EXCLUDED.sales_rank,
                 price = EXCLUDED.price,
                 compare_at_price = EXCLUDED.compare_at_price,
                 currency = EXCLUDED.currency,
@@ -322,6 +403,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
               p.variant_id || '',
               p.title,
               p.handle || (p.title ? p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
+              p.description || '',
+              p.tags || [],
+              p.is_bestseller ?? false,
+              p.sales_rank ?? 999,
               p.price || 0,
               p.compare_at_price || 0,
               p.currency || 'INR',
@@ -346,7 +431,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     }
   }
 
-  private async syncViaAdminGraphQL(shopDomain: string, adminToken: string): Promise<ShopifyProduct[]> {
+  private async syncViaAdminGraphQL(shopDomain: string, adminToken: string, bestsellerRankMap: Map<string, number> = new Map()): Promise<ShopifyProduct[]> {
     const products: ShopifyProduct[] = [];
     let hasNextPage = true;
     let cursor: string | null = null;
@@ -372,6 +457,8 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 title
                 handle
                 productType
+                description
+                tags
                 status
                 featuredImage {
                   url
@@ -428,12 +515,23 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         const numericId = rawId.split('/').pop() || rawId;
         const rawVarId = variant?.id || '';
         const numericVarId = rawVarId.split('/').pop() || rawVarId;
+        const salesRank = bestsellerRankMap.get(rawId) || bestsellerRankMap.get(numericId) || 999;
+        const isBestseller = bestsellerRankMap.has(rawId) || bestsellerRankMap.has(numericId);
+
+        const cleanDesc = (node.description || '')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
 
         products.push({
           id: rawId,
           variant_id: numericVarId,
           title: node.title || '',
           handle: node.handle || '',
+          description: cleanDesc,
+          tags: Array.isArray(node.tags) ? node.tags : (typeof node.tags === 'string' ? node.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
+          is_bestseller: isBestseller,
+          sales_rank: salesRank,
           price: parseFloat(variant?.price || '0'),
           compare_at_price: parseFloat(variant?.compareAtPrice || '0'),
           currency: shopCurrency,
@@ -451,7 +549,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     return products;
   }
 
-  private async syncViaAdminREST(shopDomain: string, adminToken: string): Promise<ShopifyProduct[]> {
+  private async syncViaAdminREST(shopDomain: string, adminToken: string, bestsellerRankMap: Map<string, number> = new Map()): Promise<ShopifyProduct[]> {
     const products: ShopifyProduct[] = [];
     let shopCurrency = 'INR';
 
@@ -488,14 +586,29 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       const imgUrl = p.image?.src || p.image?.url || p.images?.[0]?.src || p.images?.[0]?.url || (typeof p.featured_image === 'string' ? p.featured_image : p.featured_image?.src) || '';
       const rawVarId = variant ? String(variant.id) : '';
       const numericVarId = rawVarId.split('/').pop() || rawVarId;
+      const salesRank = bestsellerRankMap.get(String(p.id)) || 999;
+      const isBestseller = bestsellerRankMap.has(String(p.id));
+
+      const cleanDesc = (p.body_html || p.description || '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const tags = typeof p.tags === 'string' 
+        ? p.tags.split(',').map((t: string) => t.trim()).filter(Boolean) 
+        : (Array.isArray(p.tags) ? p.tags : []);
 
       products.push({
         id: String(p.id),
         variant_id: numericVarId,
         title: p.title || '',
         handle: p.handle || '',
+        description: cleanDesc,
+        tags,
+        is_bestseller: isBestseller,
+        sales_rank: salesRank,
         price: parseFloat(variant?.price || '0'),
-        compare_at_price: parseFloat(variant?.compare_at_price || '0'),
+        compare_at_price: parseFloat(variant?.compareAtPrice || '0'),
         currency: shopCurrency,
         in_stock: variant?.available ?? (p.status === 'active'),
         category: p.product_type || '',
@@ -529,6 +642,8 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 id
                 title
                 productType
+                description
+                tags
                 variants(first: 1) {
                   edges {
                     node {
@@ -580,10 +695,17 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         const variant = node.variants?.edges[0]?.node;
         const rawVarId = variant?.id || '';
         const numericVarId = rawVarId.split('/').pop() || rawVarId;
+        const cleanDesc = (node.description || '')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
         products.push({
           id: node.id,
           variant_id: numericVarId,
           title: node.title,
+          description: cleanDesc,
+          tags: Array.isArray(node.tags) ? node.tags : [],
           price: parseFloat(variant?.price?.amount || '0'),
           compare_at_price: parseFloat(variant?.compareAtPrice?.amount || '0'),
           currency: variant?.price?.currencyCode || 'INR',

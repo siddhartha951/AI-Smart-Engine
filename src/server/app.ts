@@ -331,7 +331,31 @@ export function createApp(deps: AppDependencies = {}): Express {
           });
         }
 
-        // Simple intent extraction (mock implementation) for budget filtering
+        // Intelligent keyword and intent extraction with stop-word removal
+        const stopWords = new Set([
+          'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at',
+          'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by',
+          'can', 'could', 'did', 'do', 'does', 'doing', 'down', 'during',
+          'each', 'few', 'for', 'from', 'further',
+          'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how',
+          'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself',
+          'just', 'me', 'more', 'most', 'my', 'myself',
+          'no', 'nor', 'not', 'now', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own',
+          'same', 'she', 'should', 'so', 'some', 'such',
+          'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too',
+          'under', 'until', 'up', 'very',
+          'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'with', 'would',
+          'you', 'your', 'yours', 'yourself', 'yourselves',
+          // Common shopping & chatter noise words
+          'hi', 'hello', 'hey', 'please', 'help', 'show', 'suggest', 'recommend', 'looking', 'want', 'need', 'give', 'take', 'buy', 'product', 'products', 'item', 'items', 'good', 'best',
+          // Common Hinglish stop words
+          'hai', 'hain', 'ho', 'mera', 'meri', 'mere', 'kya', 'kaun', 'kaunsa', 'kaunsi', 'ko', 'ke', 'ki', 'liye', 'karo', 'kare', 'mujhe', 'hum', 'chahiye', 'batao', 'dikhaye', 'dikhao'
+        ]);
+
+        const cleanMsg = message.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+        const extractedKeywords = cleanMsg.split(/\s+/).filter(t => t.length > 2 && !stopWords.has(t));
+
+        // Simple intent extraction for budget filtering
         const maxBudgetMatch = message.match(/under\s*\$?(\d+)/i);
         const budgetMax = maxBudgetMatch ? parseInt(maxBudgetMatch[1], 10) : undefined;
 
@@ -342,7 +366,7 @@ export function createApp(deps: AppDependencies = {}): Express {
           const adapter = getShopifyAdapter();
           catalogSubset = await adapter.searchProducts(storeId, {
             budget_max: budgetMax,
-            keywords: message.split(' '),
+            keywords: extractedKeywords,
           });
         } catch (catalogErr) {
           console.warn(`[WidgetChat] Catalog lookup failed for store ${storeId}, continuing without products:`, catalogErr);
@@ -389,15 +413,29 @@ export function createApp(deps: AppDependencies = {}): Express {
         let targetProductIds = aiRes.recommended_product_ids || [];
         if (targetProductIds.length === 0 && catalogSubset.length > 0) {
           const lowerContent = aiRes.content.toLowerCase();
-          const lowerMsg = message.toLowerCase();
-          const matched = catalogSubset.filter(p => 
-            lowerContent.includes(p.title.toLowerCase()) || 
-            (p.handle && lowerContent.includes(p.handle.toLowerCase())) ||
-            lowerMsg.includes(p.title.toLowerCase()) ||
-            (p.category && lowerMsg.includes(p.category.toLowerCase()))
-          );
-          if (matched.length > 0) {
-            targetProductIds = matched.slice(0, 4).map(p => p.id);
+          
+          // Priority 1: Match by product title or short title (e.g. "Aniwell DermaPrex" before subtitles)
+          const matchedByTitle = catalogSubset.filter(p => {
+            const fullTitle = p.title.toLowerCase();
+            const shortTitle = fullTitle.split(/[:\-|–]/)[0].trim();
+            return (
+              (shortTitle.length > 3 && lowerContent.includes(shortTitle)) ||
+              (fullTitle.length > 3 && lowerContent.includes(fullTitle)) ||
+              (p.handle && p.handle.length > 3 && lowerContent.includes(p.handle.toLowerCase()))
+            );
+          });
+
+          if (matchedByTitle.length > 0) {
+            targetProductIds = matchedByTitle.slice(0, 4).map(p => p.id);
+          } else if (extractedKeywords.length > 0) {
+            // Priority 2: Match by user query keywords in product title
+            const matchedByKeywords = catalogSubset.filter(p => {
+              const fullTitle = p.title.toLowerCase();
+              return extractedKeywords.some(kw => fullTitle.includes(kw));
+            });
+            if (matchedByKeywords.length > 0) {
+              targetProductIds = matchedByKeywords.slice(0, 4).map(p => p.id);
+            }
           }
         }
 

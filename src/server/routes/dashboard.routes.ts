@@ -306,6 +306,33 @@ router.post('/:storeId/agent/upload-knowledge', enforceStoreAccess, async (req: 
   }
 });
 
+// 2b. Auto-Scan Storefront Website for Deep Knowledge
+router.post('/:storeId/website/scan', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const storeId = req.params.storeId as string;
+    const { websiteScraperService } = await import('../../modules/knowledge/website-scraper.service');
+    const result = await websiteScraperService.scanStoreWebsite(storeId);
+
+    const db = getDatabaseClient();
+    const kbRes = await db.query('SELECT knowledge_base FROM assistant_settings WHERE store_id = $1', [storeId]);
+
+    res.json({
+      success: true,
+      message: result.summary,
+      data: {
+        ...result,
+        knowledge_base: kbRes.rows[0]?.knowledge_base || '',
+      }
+    });
+  } catch (err: any) {
+    logger.error(`Website scan failed for store ${req.params.storeId}:`, err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Website scan failed',
+    });
+  }
+});
+
 // 3. Widget Settings
 router.get('/:storeId/widget', enforceStoreAccess, async (req: Request, res: Response, next) => {
   try {

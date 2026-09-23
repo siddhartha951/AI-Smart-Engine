@@ -3,6 +3,10 @@ export interface ShopifyProduct {
   variant_id: string;
   title: string;
   handle?: string;
+  description?: string;
+  tags?: string[];
+  is_bestseller?: boolean;
+  sales_rank?: number;
   price: number;
   compare_at_price?: number;
   currency: string;

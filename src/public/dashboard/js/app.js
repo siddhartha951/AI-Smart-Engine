@@ -354,6 +354,56 @@ function setupEventListeners() {
     });
   }
 
+  // 1b. Auto-Scan & Learn Storefront Website
+  const btnScanWebsite = document.getElementById('btn-scan-website');
+  if (btnScanWebsite) {
+    btnScanWebsite.addEventListener('click', async () => {
+      const statusEl = document.getElementById('scan-website-status');
+      const origText = btnScanWebsite.innerHTML;
+      try {
+        btnScanWebsite.disabled = true;
+        btnScanWebsite.innerHTML = '<span>⏳ Scanning Website...</span>';
+        if (statusEl) {
+          statusEl.style.display = 'block';
+          statusEl.style.background = 'rgba(99, 102, 241, 0.1)';
+          statusEl.style.color = '#818cf8';
+          statusEl.textContent = 'Crawling store homepage, About Us, policies & FAQs... Please wait.';
+        }
+
+        const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/website/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const json = await res.json();
+        if (json.success) {
+          const kbEl = document.getElementById('agent-knowledge-base');
+          if (kbEl && json.data?.knowledge_base) {
+            kbEl.value = json.data.knowledge_base;
+          }
+          if (statusEl) {
+            statusEl.style.background = 'rgba(16, 185, 129, 0.1)';
+            statusEl.style.color = '#34d399';
+            statusEl.textContent = `✅ ${json.message}`;
+          }
+          showToast('Website scanned and AI knowledge base updated successfully!');
+        } else {
+          throw new Error(json.message || 'Website scan failed');
+        }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+          statusEl.style.color = '#f87171';
+          statusEl.textContent = `❌ Error: ${err.message}`;
+        }
+        showToast(`Scan failed: ${err.message}`);
+      } finally {
+        btnScanWebsite.disabled = false;
+        btnScanWebsite.innerHTML = origText;
+      }
+    });
+  }
+
   // 2. Widget Settings Save
   document.getElementById('widget-form').addEventListener('submit', async (e) => {
     e.preventDefault();
