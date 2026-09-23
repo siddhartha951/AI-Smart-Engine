@@ -362,21 +362,24 @@ function setupEventListeners() {
       const origText = btnScanWebsite.innerHTML;
       try {
         btnScanWebsite.disabled = true;
-        btnScanWebsite.innerHTML = '<span>⏳ Scanning Website...</span>';
+        btnScanWebsite.innerHTML = '<span>⚡ AI Scanning & Learning...</span>';
         if (statusEl) {
           statusEl.style.display = 'block';
           statusEl.style.background = 'rgba(99, 102, 241, 0.1)';
           statusEl.style.color = '#818cf8';
-          statusEl.textContent = 'Crawling store homepage, About Us, policies & FAQs... Please wait.';
+          statusEl.textContent = 'AI is crawling storefront pages, analyzing catalog & synthesizing knowledge base... Please wait.';
         }
 
         const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/website/scan`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.token}`
+          },
         });
 
-        const json = await res.json();
-        if (json.success) {
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.success) {
           const kbEl = document.getElementById('agent-knowledge-base');
           if (kbEl && json.data?.knowledge_base) {
             kbEl.value = json.data.knowledge_base;
@@ -388,7 +391,7 @@ function setupEventListeners() {
           }
           showToast('Website scanned and AI knowledge base updated successfully!');
         } else {
-          throw new Error(json.message || 'Website scan failed');
+          throw new Error(json.message || json.error || 'Website scan failed');
         }
       } catch (err) {
         if (statusEl) {
