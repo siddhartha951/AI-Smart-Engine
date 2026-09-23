@@ -15,6 +15,7 @@ export const FeatureKey = {
   GROWTH_COPILOT: 'growth_copilot',
   AI_AGENT_CHAT: 'ai_agent_chat',
   AI_STORE_ANALYSIS: 'ai_store_analysis',
+  SUPPORT_TICKETS: 'support_tickets',
 } as const;
 
 export type FeatureKey = (typeof FeatureKey)[keyof typeof FeatureKey];
@@ -44,6 +45,7 @@ export const ALL_FEATURE_KEYS: FeatureKey[] = [
   'growth_copilot',
   'ai_agent_chat',
   'ai_store_analysis',
+  'support_tickets',
 ];
 
 export const FEATURE_CATALOG: Record<FeatureKey, FeatureMetadata> = {
@@ -157,6 +159,13 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureMetadata> = {
     name: 'AI Store Deep Audit',
     category: 'intelligence',
     description: 'Comprehensive store health score and revenue growth audit.',
+    defaultEnabled: true,
+  },
+  support_tickets: {
+    key: 'support_tickets',
+    name: 'Support Tickets & Helpdesk',
+    category: 'core',
+    description: 'Customer helpdesk tickets and human escalation with AI-generated replies.',
     defaultEnabled: true,
   },
 };

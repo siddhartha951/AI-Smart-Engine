@@ -81,9 +81,10 @@ CRITICAL DISPLAY & FORMATTING GUIDELINES:
    - DO NOT repeat the entire product title or long product subtitle inside the text (the full title and direct purchase card appear below automatically!).
    - Use clean spacing and line breaks between your greeting, bullet points, and closing.
    - DO NOT output raw markdown image tags or markdown links.
-3. TOOL CALL & BESTSELLERS:
-   - ALWAYS call the \`recommend_products\` function with the corresponding product ID(s) from the subset.
-   - If the shopper asks general questions like "what are your best products?" or "recommend something", prioritize items marked with \`is_bestseller: true\`.
+3. TOOL CALL & PRODUCT RECOMMENDATION ALIGNMENT:
+   - When you recommend or mention a specific product (e.g. **Aniwell Itch Relief Formula**), you MUST pass the EXACT product_id for that specific product in the recommend_products tool call.
+   - NEVER pass an unrelated product ID (such as a chew toy, treat, or accessory) if you are recommending a health, allergy, or skin care item.
+   - If the shopper asks general questions like "what are your best products?" or "recommend something", prioritize items marked with is_bestseller: true.
 
 Available Catalog Subset (JSON):
 ${JSON.stringify(catalogSummary, null, 2)}
@@ -154,21 +155,41 @@ ${JSON.stringify(catalogSummary, null, 2)}
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 
-      // If function was not called or recommendedIds is empty, check if finalContent or user query matches catalog items
+      // If function was not called or recommendedIds is empty, match products mentioned in text
       if (recommendedIds.length === 0 && context.catalogSubset.length > 0) {
-        const lastUserMsg = [...chatHistory].reverse().find(m => m.role === 'user')?.content.toLowerCase() || '';
-        const found = context.catalogSubset.filter(p => {
+        const boldMatches = Array.from(finalContent.matchAll(/\*\*([^*]+)\*\*/g)).map(m => m[1].toLowerCase().trim());
+        const lowerContent = finalContent.toLowerCase();
+
+        // 1. High precision: Bold title match or token overlap with bold recommendations
+        const scoredProducts = context.catalogSubset.map(p => {
           const title = p.title.toLowerCase();
-          const handle = (p.handle || '').toLowerCase();
-          const cat = (p.category || '').toLowerCase();
-          return (
-            (title && finalContent.toLowerCase().includes(title)) ||
-            (handle && finalContent.toLowerCase().includes(handle)) ||
-            (cat && lastUserMsg.includes(cat))
-          );
+          const shortTitle = title.split(/[:\-|–]/)[0].trim();
+          let score = 0;
+
+          for (const bold of boldMatches) {
+            if (bold.length > 3 && (title.includes(bold) || bold.includes(shortTitle))) {
+              score += 100;
+            } else {
+              // Word token overlap with bold text
+              const boldTokens = bold.split(/\s+/).filter(w => w.length > 2);
+              const titleTokens = title.split(/\s+/).filter(w => w.length > 2);
+              const overlap = boldTokens.filter(bt => titleTokens.some(tt => tt.includes(bt) || bt.includes(tt)));
+              if (overlap.length >= 2) {
+                score += overlap.length * 25;
+              }
+            }
+          }
+
+          if (score === 0 && (lowerContent.includes(shortTitle) || lowerContent.includes(title))) {
+            score += 50;
+          }
+
+          return { product: p, score };
         });
-        if (found.length > 0) {
-          recommendedIds = found.slice(0, 4).map(p => p.id);
+
+        const matched = scoredProducts.filter(sp => sp.score > 0).sort((a, b) => b.score - a.score);
+        if (matched.length > 0) {
+          recommendedIds = matched.slice(0, 4).map(m => m.product.id);
         }
       }
 

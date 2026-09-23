@@ -316,11 +316,11 @@ Format cleanly in Markdown. Do not include triple backtick code blocks around th
 
     let summary = '';
     if (scannedPages.length > 0 && products.length > 0) {
-      summary = `AI ne successfully ${scannedPages.length} pages (${scannedPages.slice(0, 4).join(', ')}) aur ${products.length} products ko analyze karke smart Knowledge Base prepare kar diya!`;
+      summary = `Successfully scanned ${scannedPages.length} website pages (${scannedPages.slice(0, 4).join(', ')}) and analyzed ${products.length} products to build the AI Knowledge Base!`;
     } else if (products.length > 0) {
-      summary = `AI ne store catalog ke ${products.length} products aur bestsellers ko analyze karke structured Knowledge Base create kar diya!`;
+      summary = `Successfully analyzed ${products.length} store catalog products and bestsellers into the structured AI Knowledge Base!`;
     } else if (scannedPages.length > 0) {
-      summary = `AI ne website ke ${scannedPages.length} pages scan karke Knowledge Base generate kar diya!`;
+      summary = `Successfully crawled ${scannedPages.length} store website pages into the AI Knowledge Base!`;
     } else {
       summary = `AI Knowledge Base successfully synthesized and saved for ${name}!`;
     }

@@ -133,6 +133,7 @@ const sections = {
   'live-analytics': document.getElementById('live-analytics'),
   'my-agent': document.getElementById('my-agent'),
   'leads-optins': document.getElementById('leads-optins'),
+  'support-tickets': document.getElementById('support-tickets'),
   'widget-settings': document.getElementById('widget-settings'),
   'shopify-connection': document.getElementById('shopify-connection'),
   'ad-creative-studio': document.getElementById('ad-creative-studio'),
@@ -220,6 +221,9 @@ function setupEventListeners() {
 
   // Multi-Touch Ad Intelligence controls (Phase 15)
   setupAdIntelligenceEventListeners();
+
+  // Support Tickets & Customer Helpdesk controls
+  setupSupportTicketsEventListeners();
 
   // Login submit is handled at module top level (see above) so it can never
   // be skipped by a failure in the feature sections below.
@@ -1003,14 +1007,27 @@ function updateLivePreview() {
     }
   }
 
-  // 4. Offer Badge Preview
+  // 4. Offer Badge Preview & Dynamic Currency in Preview
+  const sym = getCurrencySymbol(state.activeStoreCurrency);
+  const previewPriceSale = document.getElementById('preview-price-sale');
+  const previewPriceCompare = document.getElementById('preview-price-compare');
+  const sampleSalePrice = state.activeStoreCurrency === 'INR' ? 1760 : (state.activeStoreCurrency === 'USD' ? 18 : 15);
+  const sampleBasePrice = state.activeStoreCurrency === 'INR' ? 2200 : (state.activeStoreCurrency === 'USD' ? 22 : 18);
+  const discPercent = parseFloat(offerPercent) || 10;
+  const sampleDiscounted = state.activeStoreCurrency === 'INR'
+    ? Math.round(sampleSalePrice * (1 - (discPercent / 100)))
+    : (sampleSalePrice * (1 - (discPercent / 100))).toFixed(2).replace(/\.00$/, '');
+
+  if (previewPriceSale) previewPriceSale.textContent = `${sym}${sampleSalePrice}`;
+  if (previewPriceCompare) previewPriceCompare.textContent = `${sym}${sampleBasePrice}`;
+
   const offerBadgeEl = document.getElementById('preview-offer-badge');
   const offerTextEl = document.getElementById('preview-offer-text-el');
   if (offerBadgeEl && offerTextEl) {
     if (offerCode) {
       offerBadgeEl.style.display = 'flex';
       const label = offerText || `AI Special ${offerPercent ? offerPercent + '% OFF' : ''}`.trim();
-      offerTextEl.innerHTML = `🏷️ ${label}: ₹1,584 (Code: <strong>${offerCode}</strong>)`;
+      offerTextEl.innerHTML = `🏷️ ${label}: ${sym}${sampleDiscounted} (Code: <strong>${offerCode}</strong>)`;
     } else {
       offerBadgeEl.style.display = 'none';
     }
@@ -1358,6 +1375,11 @@ async function loadSectionData(section) {
       return;
     }
 
+    if (section === 'support-tickets') {
+      await loadSupportTickets();
+      return;
+    }
+
     const endpoints = {
       'overview': 'overview',
       'my-agent': 'agent',
@@ -1379,6 +1401,7 @@ async function loadSectionData(section) {
 
     if (section === 'overview') {
       loadLiveShoppersPill();
+      loadSupportTicketsNavBadge();
       animateValue('stat-chats', data.chats);
       animateValue('stat-leads', data.leads);
       animateValue('stat-optins', data.opt_ins);
@@ -1723,7 +1746,7 @@ async function loadProductsTable(search = '') {
 
     tbody.innerHTML = products.map(p => {
       const price = parseFloat(p.price || 0).toFixed(2);
-      const currencySymbol = p.currency === 'INR' ? '₹' : (p.currency === 'USD' ? '$' : (p.currency === 'GBP' ? '£' : p.currency));
+      const currencySymbol = getCurrencySymbol(p.currency || state.activeStoreCurrency);
       const stockBadge = p.in_stock
         ? `<span class="badge success">In Stock</span>`
         : `<span class="badge danger">Out of Stock</span>`;
@@ -2124,7 +2147,7 @@ async function loadProductPerformance() {
         </div>
       `;
 
-      const currencySymbol = p.currency === 'GBP' ? '£' : (p.currency === 'USD' ? '$' : '₹');
+      const currencySymbol = getCurrencySymbol(p.currency || state.activeStoreCurrency);
       const convBadgeColor = p.conversion_rate > 10 ? '#10b981' : (p.conversion_rate > 0 ? '#3b82f6' : '#94a3b8');
 
       return `
@@ -2368,7 +2391,7 @@ async function loadAdStudioProducts() {
       '<option value="">-- Choose a product from catalogue --</option>',
       ...adStudioState.products.map(p => {
         const price = parseFloat(p.price || 0).toFixed(2);
-        const currency = p.currency === 'INR' ? '₹' : (p.currency === 'USD' ? '$' : '£');
+        const currency = getCurrencySymbol(p.currency || state.activeStoreCurrency);
         return `<option value="${escapeHtml(p.id)}">${escapeHtml(p.title)} (${currency}${price})</option>`;
       })
     ];
@@ -2422,7 +2445,7 @@ function updateSelectedProductPreview(product) {
   const noThumbEl = document.getElementById('ad-prod-no-thumb');
 
   const price = parseFloat(product.price || 0).toFixed(2);
-  const currency = product.currency === 'INR' ? '₹' : (product.currency === 'USD' ? '$' : '£');
+  const currency = getCurrencySymbol(product.currency || state.activeStoreCurrency);
 
   if (titleEl) titleEl.textContent = product.title;
   if (priceEl) priceEl.textContent = `${currency}${price}`;
@@ -3929,8 +3952,8 @@ async function loadAttributionOverview() {
     if (!res.ok) return;
     const { data } = await res.json();
 
-    const curr = data.currency || 'GBP';
-    const sym = curr === 'GBP' ? '£' : (curr === 'USD' ? '$' : (curr === 'INR' ? '₹' : curr + ' '));
+    const curr = data.currency || state.activeStoreCurrency;
+    const sym = getCurrencySymbol(curr);
 
     const spendEl = document.getElementById('attr-stat-spend');
     const revEl = document.getElementById('attr-stat-revenue');
@@ -4536,6 +4559,7 @@ const NAV_FEATURE_MAP = {
   'live-analytics': 'live_pulse',
   'my-agent': 'widget',
   'leads-optins': 'leads',
+  'support-tickets': 'support_tickets',
   'widget-settings': 'widget',
   'shopify-connection': 'catalogue',
   'ad-creative-studio': 'ad_creative',
@@ -6075,3 +6099,322 @@ async function loadAiAgentData() {
     }
   }
 }
+
+// =========================================================================
+// CUSTOMER HELPDESK & SUPPORT TICKETS CONTROLLER
+// =========================================================================
+
+let currentTicketId = null;
+let currentTicketData = null;
+
+function setupSupportTicketsEventListeners() {
+  const refreshBtn = document.getElementById('btn-refresh-tickets');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => loadSupportTickets());
+
+  const filterSelect = document.getElementById('tickets-status-filter');
+  if (filterSelect) filterSelect.addEventListener('change', (e) => loadSupportTickets(e.target.value));
+
+  const closeBtn = document.getElementById('btn-close-ticket-modal');
+  if (closeBtn) closeBtn.addEventListener('click', closeTicketModal);
+
+  const cancelBtn = document.getElementById('btn-cancel-ticket-modal');
+  if (cancelBtn) cancelBtn.addEventListener('click', closeTicketModal);
+
+  const modal = document.getElementById('ticket-modal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeTicketModal();
+    });
+  }
+
+  const aiReplyBtn = document.getElementById('btn-ai-generate-reply');
+  if (aiReplyBtn) aiReplyBtn.addEventListener('click', generateAiTicketReply);
+
+  const sendReplyBtn = document.getElementById('btn-send-ticket-reply');
+  if (sendReplyBtn) sendReplyBtn.addEventListener('click', sendTicketReply);
+}
+
+async function loadSupportTicketsNavBadge() {
+  if (!state.activeStoreId) return;
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/tickets?status=open`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const openCount = json.data?.stats?.open || 0;
+      const badgeNav = document.getElementById('badge-open-tickets-nav');
+      if (badgeNav) {
+        if (openCount > 0) {
+          badgeNav.textContent = openCount;
+          badgeNav.classList.remove('hidden');
+        } else {
+          badgeNav.classList.add('hidden');
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+async function loadSupportTickets(status = null) {
+  if (!state.activeStoreId) return;
+  const tbody = document.getElementById('tickets-table-body');
+  const countInd = document.getElementById('tickets-count-indicator');
+  const selectedStatus = status || document.getElementById('tickets-status-filter')?.value || 'all';
+
+  try {
+    const url = `/api/v1/dashboard/${state.activeStoreId}/tickets${selectedStatus !== 'all' ? `?status=${selectedStatus}` : ''}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Failed to load support tickets');
+    const json = await res.json();
+    const tickets = json.data?.tickets || [];
+    const stats = json.data?.stats || { open: 0, replied: 0, resolved: 0, total: 0 };
+
+    // Update Top Stat Cards
+    const openEl = document.getElementById('stat-open-tickets');
+    const resEl = document.getElementById('stat-resolved-tickets');
+    const totEl = document.getElementById('stat-total-tickets');
+    const badgeNav = document.getElementById('badge-open-tickets-nav');
+
+    if (openEl) openEl.textContent = stats.open || 0;
+    if (resEl) resEl.textContent = stats.resolved || 0;
+    if (totEl) totEl.textContent = stats.total || 0;
+
+    if (badgeNav) {
+      if (stats.open > 0) {
+        badgeNav.textContent = stats.open;
+        badgeNav.classList.remove('hidden');
+      } else {
+        badgeNav.classList.add('hidden');
+      }
+    }
+
+    if (countInd) {
+      countInd.textContent = `Showing ${tickets.length} ticket${tickets.length === 1 ? '' : 's'}`;
+    }
+
+    renderTicketsTable(tickets);
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="6" style="padding: 24px; text-align: center; color: var(--color-danger);">Failed to load tickets: ${escapeHtml(err.message)}</td></tr>`;
+    }
+    showToast('Failed to load tickets', true);
+  }
+}
+
+function renderTicketsTable(tickets) {
+  const tbody = document.getElementById('tickets-table-body');
+  if (!tbody) return;
+
+  if (!tickets || tickets.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="padding: 40px; text-align: center; color: var(--color-text-secondary);">
+          <div style="font-size: 28px; margin-bottom: 8px;">🎉</div>
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">No support tickets found</div>
+          <p style="font-size: 12px; margin: 0;">Any visitor inquiries escalated from the AI chat widget will appear here.</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = tickets.map(t => {
+    let statusBadge = '<span class="badge badge--warning">Open</span>';
+    if (t.status === 'replied') statusBadge = '<span class="badge badge--info" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">Replied</span>';
+    if (t.status === 'resolved') statusBadge = '<span class="badge badge--success">Resolved</span>';
+
+    let priorityBadge = '<span class="badge badge--neutral">Medium</span>';
+    if (t.priority === 'urgent' || t.priority === 'high') priorityBadge = '<span class="badge badge--danger">' + escapeHtml(t.priority.toUpperCase()) + '</span>';
+    else if (t.priority === 'low') priorityBadge = '<span class="badge badge--neutral">Low</span>';
+
+    const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const escapedEmail = escapeHtml(t.customer_email || 'Anonymous');
+    const escapedSubject = escapeHtml(t.subject || 'Customer Inquiry');
+
+    return `
+      <tr style="border-bottom: 1px solid var(--color-border); font-size: 13px;">
+        <td style="padding: 12px 16px; font-weight: 500;">
+          <div style="color: var(--color-text-primary); font-weight: 600;">${escapedEmail}</div>
+          ${t.customer_name ? `<div style="font-size: 11px; color: var(--color-text-secondary);">${escapeHtml(t.customer_name)}</div>` : ''}
+        </td>
+        <td style="padding: 12px 16px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapedSubject}">
+          ${escapedSubject}
+        </td>
+        <td style="padding: 12px 16px;">${priorityBadge}</td>
+        <td style="padding: 12px 16px;">${statusBadge}</td>
+        <td style="padding: 12px 16px; color: var(--color-text-secondary); font-size: 12px;">${createdDate}</td>
+        <td style="padding: 12px 16px; text-align: right;">
+          <button class="btn btn-secondary btn-sm" onclick="openTicketModal('${escapeHtml(t.id)}')" style="font-weight: 600;">
+            View & Reply
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function openTicketModal(ticketId) {
+  currentTicketId = ticketId;
+  const modal = document.getElementById('ticket-modal');
+  if (!modal) return;
+
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/tickets/${ticketId}`, {
+      headers: { 'Authorization': `Bearer ${state.token}` }
+    });
+    if (!res.ok) throw new Error('Could not fetch ticket details');
+    const json = await res.json();
+    const t = json.data;
+    currentTicketData = t;
+
+    document.getElementById('modal-ticket-title').textContent = `Ticket #${t.id.substring(0, 8).toUpperCase()}`;
+    document.getElementById('modal-ticket-meta').textContent = t.subject || 'Customer inquiry';
+    document.getElementById('modal-customer-email').textContent = t.customer_email || '—';
+    
+    const statusBadge = document.getElementById('modal-ticket-status-badge');
+    if (statusBadge) {
+      statusBadge.textContent = (t.status || 'open').toUpperCase();
+      statusBadge.className = t.status === 'resolved' ? 'badge badge--success' : (t.status === 'replied' ? 'badge badge--info' : 'badge badge--danger');
+    }
+
+    const dateEl = document.getElementById('modal-ticket-date');
+    if (dateEl) {
+      dateEl.textContent = t.created_at ? new Date(t.created_at).toLocaleString() : '—';
+    }
+
+    // Render Chat Transcript
+    const transcriptEl = document.getElementById('modal-chat-transcript');
+    if (transcriptEl) {
+      const messages = Array.isArray(t.chat_transcript) ? t.chat_transcript : [];
+      if (messages.length === 0) {
+        transcriptEl.innerHTML = '<span style="font-size: 12px; color: var(--color-text-secondary);">No prior chat messages in transcript.</span>';
+      } else {
+        transcriptEl.innerHTML = messages.map(m => {
+          const isUser = m.role === 'user';
+          return `
+            <div style="display: flex; flex-direction: column; align-items: ${isUser ? 'flex-end' : 'flex-start'}; margin-bottom: 8px;">
+              <span style="font-size: 10px; color: var(--color-text-muted); margin-bottom: 2px;">${isUser ? 'Customer' : 'AI Assistant'}</span>
+              <div style="max-width: 85%; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.4; ${isUser ? 'background: #2563eb; color: #ffffff;' : 'background: rgba(255,255,255,0.06); color: var(--color-text-primary); border: 1px solid var(--color-border);'}">
+                ${escapeHtml(m.content || '')}
+              </div>
+            </div>
+          `;
+        }).join('');
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      }
+    }
+
+    // Populate existing reply if any
+    const replyTextarea = document.getElementById('modal-reply-text');
+    if (replyTextarea) {
+      replyTextarea.value = t.admin_reply || '';
+    }
+
+    modal.style.display = 'flex';
+    modal.classList.remove('hidden');
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
+function closeTicketModal() {
+  const modal = document.getElementById('ticket-modal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.add('hidden');
+  }
+  currentTicketId = null;
+  currentTicketData = null;
+}
+
+async function generateAiTicketReply() {
+  if (!currentTicketId || !state.activeStoreId) return;
+  const btn = document.getElementById('btn-ai-generate-reply');
+  const textarea = document.getElementById('modal-reply-text');
+  const originalHtml = btn ? btn.innerHTML : '';
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span>⚡ Drafting AI Reply...</span>';
+    }
+
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/tickets/${currentTicketId}/generate-reply`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      }
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.message || 'Failed to generate AI reply');
+
+    if (textarea) {
+      textarea.value = json.data?.generated_reply || '';
+      textarea.focus();
+    }
+    showToast('AI response draft generated from store knowledge base!');
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function sendTicketReply() {
+  if (!currentTicketId || !state.activeStoreId) return;
+  const textarea = document.getElementById('modal-reply-text');
+  const markResolved = document.getElementById('modal-mark-resolved')?.checked ?? true;
+  const replyText = textarea ? textarea.value.trim() : '';
+
+  if (!replyText) {
+    showToast('Please type a reply message or generate an AI draft before sending.', true);
+    return;
+  }
+
+  const btn = document.getElementById('btn-send-ticket-reply');
+  const originalText = btn ? btn.textContent : 'Send Reply';
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+    }
+
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/tickets/${currentTicketId}/reply`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.token}`
+      },
+      body: JSON.stringify({
+        replyText,
+        markResolved
+      })
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send reply');
+
+    showToast(json.message || 'Reply sent successfully!');
+    closeTicketModal();
+    loadSupportTickets();
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+}
+
+window.openTicketModal = openTicketModal;
+

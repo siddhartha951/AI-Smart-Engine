@@ -26,6 +26,7 @@ import resendWebhookRoutes from './routes/resend-webhook.routes';
 import whatsappWebhookRoutes from './routes/whatsapp-webhook.routes';
 import { reorderClickRouter } from './routes/replenishment.routes';
 import { publicAttributionRouter } from './routes/attribution.routes';
+import { ticketWidgetRouter } from './routes/ticket.routes';
 
 export interface AppDependencies {
   db?: IDatabaseClient;
@@ -409,32 +410,97 @@ export function createApp(deps: AppDependencies = {}): Express {
           aiRes.estimated_cost_usd
         );
 
-        // Save recommendations if any
+        // Save recommendations if any with high-precision text alignment
         let targetProductIds = aiRes.recommended_product_ids || [];
-        if (targetProductIds.length === 0 && catalogSubset.length > 0) {
+        const boldMatches = Array.from(aiRes.content.matchAll(/\*\*([^*]+)\*\*/g))
+          .map(m => m[1].toLowerCase().trim())
+          .filter(t => t.length > 3 && !t.includes('http') && !t.includes('key ingredient') && !t.includes('specific benefit'));
+
+        // If the AI explicitly emphasized/recommended specific products in text, search DB if not in subset
+        if (boldMatches.length > 0) {
+          try {
+            const db = getDatabaseClient();
+            for (const bold of boldMatches) {
+              const cleanWords = bold.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+              if (cleanWords.length > 0) {
+                const searchClauses = cleanWords.map((_, i) => `(LOWER(title) LIKE $${i + 2} OR array_to_string(tags, ' ') ILIKE $${i + 2})`);
+                const dbRes = await db.query(
+                  `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND (${searchClauses.join(' OR ')}) LIMIT 4`,
+                  [storeId, ...cleanWords.map(w => `%${w}%`)]
+                );
+                for (const row of dbRes.rows) {
+                  const prodId = row.shopify_id || row.id;
+                  if (!catalogSubset.some(p => p.id === prodId)) {
+                    catalogSubset.push({
+                      id: prodId,
+                      variant_id: row.variant_id || '',
+                      title: row.title,
+                      handle: row.handle,
+                      description: row.description || '',
+                      tags: row.tags || [],
+                      is_bestseller: row.is_bestseller || false,
+                      sales_rank: row.sales_rank || 999,
+                      price: parseFloat(row.price || '0'),
+                      compare_at_price: parseFloat(row.compare_at_price || '0'),
+                      currency: row.currency || 'INR',
+                      in_stock: row.in_stock,
+                      category: row.category,
+                      image_url: row.image_url,
+                      product_url: row.product_url,
+                    });
+                  }
+                }
+              }
+            }
+          } catch (dbErr) {
+            console.warn('[WidgetChat] Supplemental product lookup warning:', dbErr);
+          }
+        }
+
+        // Score products against the AI's actual generated answer
+        if (catalogSubset.length > 0) {
           const lowerContent = aiRes.content.toLowerCase();
-          
-          // Priority 1: Match by product title or short title (e.g. "Aniwell DermaPrex" before subtitles)
-          const matchedByTitle = catalogSubset.filter(p => {
+          const scored = catalogSubset.map(p => {
             const fullTitle = p.title.toLowerCase();
             const shortTitle = fullTitle.split(/[:\-|–]/)[0].trim();
-            return (
-              (shortTitle.length > 3 && lowerContent.includes(shortTitle)) ||
-              (fullTitle.length > 3 && lowerContent.includes(fullTitle)) ||
-              (p.handle && p.handle.length > 3 && lowerContent.includes(p.handle.toLowerCase()))
-            );
+            const titleTokens = fullTitle.split(/[^a-z0-9]+/).filter(w => w.length > 2 && !stopWords.has(w));
+            let score = 0;
+
+            // 1. Direct bold title match (highest confidence)
+            for (const bold of boldMatches) {
+              if (fullTitle.includes(bold) || bold.includes(shortTitle) || shortTitle.includes(bold)) {
+                score += 150;
+              } else {
+                const boldTokens = bold.split(/[^a-z0-9]+/).filter(w => w.length > 2 && !stopWords.has(w));
+                const overlap = boldTokens.filter(bt => titleTokens.some(tt => tt.includes(bt) || bt.includes(tt)));
+                if (overlap.length >= 2) {
+                  score += overlap.length * 30;
+                }
+              }
+            }
+
+            // 2. Exact title or short title mentioned in assistant text
+            if (lowerContent.includes(fullTitle)) score += 80;
+            else if (shortTitle.length > 3 && lowerContent.includes(shortTitle)) score += 60;
+
+            // 3. Token overlap with assistant text
+            const textOverlap = titleTokens.filter(tt => lowerContent.includes(tt));
+            score += textOverlap.length * 10;
+
+            return { product: p, score };
           });
 
-          if (matchedByTitle.length > 0) {
-            targetProductIds = matchedByTitle.slice(0, 4).map(p => p.id);
-          } else if (extractedKeywords.length > 0) {
-            // Priority 2: Match by user query keywords in product title
-            const matchedByKeywords = catalogSubset.filter(p => {
+          const highlyRanked = scored.filter(sp => sp.score >= 40).sort((a, b) => b.score - a.score);
+          if (highlyRanked.length > 0) {
+            targetProductIds = highlyRanked.slice(0, 4).map(sp => sp.product.id);
+          } else if (targetProductIds.length === 0 && extractedKeywords.length > 0) {
+            // Fallback: match by specific user keywords
+            const kwMatches = catalogSubset.filter(p => {
               const fullTitle = p.title.toLowerCase();
               return extractedKeywords.some(kw => fullTitle.includes(kw));
             });
-            if (matchedByKeywords.length > 0) {
-              targetProductIds = matchedByKeywords.slice(0, 4).map(p => p.id);
+            if (kwMatches.length > 0) {
+              targetProductIds = kwMatches.slice(0, 4).map(p => p.id);
             }
           }
         }
@@ -578,6 +644,7 @@ export function createApp(deps: AppDependencies = {}): Express {
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/onboarding', onboardingRoutes);
   app.use('/api/v1/widget', widgetRoutes);
+  app.use('/api/v1/widget', ticketWidgetRouter);
   app.use('/api/v1/shopify', shopifyRoutes);
   app.use('/api/v1/webhooks/resend', resendWebhookRoutes);
   app.use('/api/v1/webhooks/whatsapp', whatsappWebhookRoutes);

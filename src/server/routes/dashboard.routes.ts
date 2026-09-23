@@ -23,6 +23,7 @@ import { enforceFeature } from '../middlewares/entitlement.middleware';
 import { FeatureKey } from '../../modules/entitlements/entitlement.types';
 import { EntitlementRepository } from '../../modules/entitlements/entitlement.repository';
 import { ShopifyHealthService } from '../../modules/shopify_health/shopify_health.service';
+import { ticketDashboardRouter } from './ticket.routes';
 
 const router = Router();
 
@@ -1655,6 +1656,9 @@ router.use('/:storeId/meta-ads', enforceStoreAccess, enforceFeature(FeatureKey.M
 
 // 15. Merchant AI Agent (in-dashboard chat assistant + document verdicts)
 router.use('/:storeId/ai-agent', enforceStoreAccess, enforceFeature(FeatureKey.AI_AGENT_CHAT), aiAgentRouter);
+
+// 16. Customer Support Tickets & Human Escalation Desk
+router.use('/:storeId/tickets', enforceStoreAccess, enforceFeature(FeatureKey.SUPPORT_TICKETS), ticketDashboardRouter);
 
 export default router;
 

@@ -220,6 +220,7 @@
         messages: [],
         pendingPill: null
       };
+      this.visitorEmail = null;
       this.nudgeTimer = null;
       this.nudgeDismissTimer = null;
       this._toastTimeout = null;
@@ -371,6 +372,7 @@
         const savedVid = this.readStored('ai_visitor_id');
         if (savedSid) this.sessionId = savedSid;
         if (savedVid) this.visitorId = savedVid;
+        this.visitorEmail = this.readStored('ai_visitor_email') || null;
 
         const savedMsgs = this.readStored('ai_chat_messages');
         const savedView = this.readStored('ai_widget_view');
@@ -609,6 +611,10 @@
         });
         const json = await res.json();
         if (json.success) {
+          this.visitorEmail = email;
+          try {
+            this.writeStored('ai_visitor_email', email);
+          } catch (_) {}
           if (marketingOptedIn) {
             this.trackEvent('marketing_opted_in');
           }
@@ -621,10 +627,14 @@
             messages: [{ role: 'assistant', content: greeting }] 
           });
 
-          // If visitor clicked a quick action pill prior to consent, ask AI now
+          // If visitor clicked a quick action pill prior to consent, ask AI or open ticket
           if (pending && pending.label) {
             setTimeout(() => {
-              this.sendMessage(pending.label);
+              if (pending.id === 'whatsapp_support') {
+                this.openTicketEscalationPrompt('Customer requested WhatsApp / Human Support');
+              } else {
+                this.sendMessage(pending.label);
+              }
             }, 300);
           }
         } else {
@@ -691,6 +701,17 @@
         };
 
         this.setState({ messages: updatedMessages });
+
+        // Auto-offer human ticket if customer asks for human/complaint or AI fails/indicates support contact
+        const isHumanQuery = /(human|agent|real person|customer care|talk to someone|support ticket|complaint|representative|executive)/i.test(text);
+        const replyText = json.success ? (json.data?.message || '') : '';
+        const isAiUnsure = !json.success || /(contact (our )?support|reach out to (our )?support|support team|unable to assist|can't help with this)/i.test(replyText);
+
+        if (isHumanQuery || isAiUnsure) {
+          setTimeout(() => {
+            this.openTicketEscalationPrompt(isHumanQuery ? 'Customer requested human support' : 'Inquiry requires store support');
+          }, 400);
+        }
       } catch (err) {
         console.error('Chat error', err);
         const updatedMessages = [...this.state.messages];
@@ -730,6 +751,77 @@
           const chatMessages = this.shadowRoot.querySelector('.chat-messages');
           if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
         }, 50);
+      }
+    }
+
+    openTicketEscalationPrompt(reason = '') {
+      const email = this.visitorEmail || this.readStored('ai_visitor_email') || '';
+      const promptMessage = {
+        role: 'assistant',
+        content: "I'd be glad to connect you with our store support team! Please confirm your email below, and I'll generate a support ticket with our complete chat transcript so an agent can follow up with you directly.",
+        isTicketPrompt: true,
+        ticketEmail: email,
+        ticketSubject: reason || 'Customer inquiry via storefront chat'
+      };
+      this.setState({
+        view: 'chat',
+        messages: [...this.state.messages, promptMessage]
+      });
+    }
+
+    async submitSupportTicket(email, reason, msgIndex) {
+      if (!email || !email.includes('@')) {
+        this.showToast('Please enter a valid email address');
+        return;
+      }
+
+      const storeId = this.storeId || (this.state.config && this.state.config.store_id);
+      if (!storeId) {
+        this.showToast('Store configuration error');
+        return;
+      }
+
+      try {
+        const transcript = this.state.messages
+          .filter(m => !m.isLoading)
+          .map(m => ({ role: m.role, content: m.content }));
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/widget/tickets`, {
+          method: 'POST',
+          headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            store_id: storeId,
+            session_id: this.sessionId,
+            customer_email: email,
+            subject: reason || 'Customer chat escalation',
+            chat_transcript: transcript
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.message || (json.error && json.error.message) || 'Failed to submit ticket');
+        }
+
+        this.visitorEmail = email;
+        try {
+          this.writeStored('ai_visitor_email', email);
+        } catch (_) {}
+
+        const msgs = [...this.state.messages];
+        if (msgs[msgIndex]) {
+          msgs[msgIndex] = {
+            ...msgs[msgIndex],
+            isTicketSubmitted: true,
+            submittedTicketId: json.data?.ticket_id,
+            submittedEmail: email
+          };
+          this.setState({ messages: msgs });
+        }
+
+        this.showToast('Support ticket submitted successfully!');
+      } catch (err) {
+        this.showToast(err.message || 'Error submitting ticket', true);
       }
     }
 
@@ -1464,10 +1556,15 @@
         
         .msg.user {
           background-color: ${primaryColor};
-          color: ${secondaryColor};
+          color: #ffffff !important;
           align-self: flex-end;
           border-bottom-right-radius: 3px;
         }
+        .msg.user .msg-text,
+        .msg.user * {
+          color: #ffffff !important;
+        }
+
 
         .msg-text {
           font-size: 13.5px;
@@ -2045,6 +2142,11 @@
                 </div>
               </div>
               <div class="header-actions">
+                ${this.state.view === 'chat' ? `
+                  <button type="button" class="header-icon-btn btn-human-ticket" aria-label="Human Helpdesk" title="Need Human Support? Open Ticket" style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; padding: 3px 8px; border-radius: 12px; background: rgba(255,255,255,0.18); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; margin-right: 4px; font-weight: 500;">
+                    <span>🛎️ Need Help?</span>
+                  </button>
+                ` : ''}
                 <button class="header-icon-btn btn-minimize" aria-label="Minimize Assistant" title="Minimize">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
@@ -2309,10 +2411,41 @@
             `;
           }
 
+          let ticketCardHtml = '';
+          if (m.isTicketPrompt) {
+            if (m.isTicketSubmitted) {
+              ticketCardHtml = `
+                <div style="margin-top: 8px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; padding: 10px; color: #10b981; font-size: 12px;">
+                  <strong style="color: #059669;">✅ Support Ticket Created (#${escapeAttr(m.submittedTicketId || '').substring(0, 8).toUpperCase()})</strong><br/>
+                  <span style="font-size: 11px; color: #64748b; display: block; margin-top: 4px;">Our store support team has received your chat transcript and will email a resolution to <strong>${escapeAttr(m.submittedEmail || '')}</strong> shortly.</span>
+                </div>
+              `;
+            } else {
+              const defaultEmail = m.ticketEmail || this.visitorEmail || this.readStored('ai_visitor_email') || '';
+              ticketCardHtml = `
+                <div class="ticket-escalation-card" style="margin-top: 8px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06);">
+                  <div style="font-weight: 600; font-size: 12px; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <span>🛎️ Open Support Ticket</span>
+                  </div>
+                  <p style="font-size: 11px; color: #64748b; margin: 0 0 8px 0; line-height: 1.4;">
+                    Please confirm your email so our human support team can inspect this chat and email you a full solution.
+                  </p>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <input type="email" class="input-escalation-email" data-msg-idx="${mIdx}" placeholder="Enter your email address" value="${escapeAttr(defaultEmail)}" style="width: 100%; box-sizing: border-box; padding: 7px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; background: #f8fafc;" />
+                    <button type="button" class="btn-submit-ticket" data-msg-idx="${mIdx}" style="background: ${primaryColor}; color: ${secondaryColor}; border: none; border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s;">
+                      Submit Ticket to Support Team
+                    </button>
+                  </div>
+                </div>
+              `;
+            }
+          }
+
           return `
             <div class="msg ${m.role}">
               <div class="msg-text">${formatChatContent(displayText)}</div>
               ${recsHtml}
+              ${ticketCardHtml}
             </div>
           `;
         }).join('');
@@ -2385,6 +2518,35 @@
       if (btnClose) btnClose.addEventListener('click', handleClose);
       if (closeLegacyBtn) closeLegacyBtn.addEventListener('click', handleClose);
 
+      // Header Human Support Ticket Button
+      const btnHumanTicket = this.shadowRoot.querySelector('.btn-human-ticket');
+      if (btnHumanTicket) {
+        btnHumanTicket.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.openTicketEscalationPrompt('Customer requested human support via header button');
+        });
+      }
+
+      // Inline Ticket Submit Buttons
+      this.shadowRoot.querySelectorAll('.btn-submit-ticket').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          const idx = parseInt(btn.getAttribute('data-msg-idx'), 10);
+          const card = btn.closest('.ticket-escalation-card');
+          const emailInput = card ? card.querySelector('.input-escalation-email') : null;
+          const email = emailInput ? emailInput.value.trim() : '';
+          const originalText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = 'Submitting Ticket...';
+          try {
+            await this.submitSupportTicket(email, 'Customer inquiry escalation', idx);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }
+        });
+      });
+
       const btnStart = this.shadowRoot.getElementById('btn-start');
       if (btnStart) {
         btnStart.addEventListener('click', async () => {
@@ -2408,6 +2570,26 @@
           if (!this.sessionId) {
             const anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9);
             await this.startSession(anonymousId);
+          }
+
+          // If visitor already consented earlier, directly go to chat and trigger action
+          const existingEmail = this.visitorEmail || this.readStored('ai_visitor_email');
+          if (existingEmail) {
+            const greeting = this.state.config?.widget?.greeting || 'Hello! How can I help you today?';
+            const initMessages = this.state.messages.length > 0 ? this.state.messages : [{ role: 'assistant', content: greeting }];
+            this.setState({
+              view: 'chat',
+              pendingPill: null,
+              messages: initMessages
+            });
+            setTimeout(() => {
+              if (pillId === 'whatsapp_support') {
+                this.openTicketEscalationPrompt('Customer requested WhatsApp / Human Support');
+              } else {
+                this.sendMessage(pillLabel);
+              }
+            }, 300);
+            return;
           }
 
           // Gated by consent: Store pending pill and prompt for email/phone
