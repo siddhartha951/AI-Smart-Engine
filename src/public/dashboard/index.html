@@ -1018,21 +1018,26 @@
           </header>
 
           <!-- Top Stats Cards -->
-          <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-            <div class="kpi-card panel">
-              <div class="kpi-label">Open Tickets</div>
-              <div class="kpi-value" id="stat-open-tickets" style="color: #ef4444;">0</div>
-              <p class="kpi-subtext">Awaiting store resolution</p>
+          <div class="tk-stats">
+            <div class="tk-stat tk-stat--open">
+              <div class="tk-stat-label">Open</div>
+              <div class="tk-stat-value" id="stat-open-tickets">0</div>
+              <div class="tk-stat-sub">Waiting for your reply</div>
             </div>
-            <div class="kpi-card panel">
-              <div class="kpi-label">Replied & Resolved</div>
-              <div class="kpi-value" id="stat-resolved-tickets" style="color: #10b981;">0</div>
-              <p class="kpi-subtext">Successfully answered</p>
+            <div class="tk-stat tk-stat--urgent">
+              <div class="tk-stat-label">Urgent / High</div>
+              <div class="tk-stat-value" id="stat-urgent-tickets">0</div>
+              <div class="tk-stat-sub">Open tickets to handle first</div>
             </div>
-            <div class="kpi-card panel">
-              <div class="kpi-label">Total Escalations</div>
-              <div class="kpi-value" id="stat-total-tickets">0</div>
-              <p class="kpi-subtext">All time inquiries</p>
+            <div class="tk-stat tk-stat--overdue">
+              <div class="tk-stat-label">Past SLA</div>
+              <div class="tk-stat-value" id="stat-overdue-tickets">0</div>
+              <div class="tk-stat-sub">Open beyond the reply time</div>
+            </div>
+            <div class="tk-stat tk-stat--done">
+              <div class="tk-stat-label">Replied &amp; Resolved</div>
+              <div class="tk-stat-value" id="stat-resolved-tickets">0</div>
+              <div class="tk-stat-sub"><span id="stat-total-tickets">0</span> tickets all time</div>
             </div>
           </div>
 
@@ -1064,25 +1069,20 @@
           </div>
 
           <!-- Tickets Table -->
-          <div class="panel table-responsive" style="padding: 0; overflow: hidden;">
-            <table class="data-table" style="width: 100%; border-collapse: collapse;">
+          <div class="panel tk-table-wrap">
+            <table class="tk-table">
               <thead>
-                <tr style="border-bottom: 1px solid var(--color-border); background: var(--color-surface-subtle); text-align: left; font-size: 12px; color: var(--color-text-secondary);">
-                  <th style="padding: 12px 16px;">Customer Email</th>
-                  <th style="padding: 12px 16px;">Subject / Inquiry</th>
-                  <th style="padding: 12px 16px;">Category</th>
-                  <th style="padding: 12px 16px;">Priority</th>
-                  <th style="padding: 12px 16px;">Status</th>
-                  <th style="padding: 12px 16px;">Reply SLA</th>
-                  <th style="padding: 12px 16px;">Created Date</th>
-                  <th style="padding: 12px 16px; text-align: right;">Action</th>
+                <tr>
+                  <th>Customer &amp; inquiry</th>
+                  <th>Category &amp; priority</th>
+                  <th>Status &amp; SLA</th>
+                  <th>Created</th>
+                  <th class="tk-col-action"><span class="sr-only">Action</span></th>
                 </tr>
               </thead>
               <tbody id="tickets-table-body">
                 <tr>
-                  <td colspan="8" style="padding: 32px; text-align: center; color: var(--color-text-secondary);">
-                    Loading support tickets...
-                  </td>
+                  <td colspan="5" class="tk-empty">Loading support tickets...</td>
                 </tr>
               </tbody>
             </table>
@@ -1102,7 +1102,7 @@
             
             <div style="padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px;">
               <!-- Customer Info Row -->
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--color-border);">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; background: var(--color-surface); padding: 14px 16px; border-radius: 10px; border: 1px solid var(--color-border-default);">
                 <div>
                   <small style="color: var(--color-text-secondary); display: block;">Customer Email:</small>
                   <strong id="modal-customer-email" style="font-size: 13px;">--</strong>
@@ -1128,7 +1128,7 @@
               <!-- Full Chat Transcript Box -->
               <div>
                 <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--color-text-primary);">💬 Chat Conversation Leading to Escalation</h4>
-                <div id="modal-chat-transcript" style="max-height: 240px; overflow-y: auto; background: rgba(0,0,0,0.25); border: 1px solid var(--color-border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+                <div id="modal-chat-transcript" style="max-height: 260px; overflow-y: auto; background: var(--color-surface-subtle); border: 1px solid var(--color-border-default); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
                   <span style="font-size: 12px; color: var(--color-text-secondary);">No prior chat messages.</span>
                 </div>
               </div>
@@ -1145,7 +1145,7 @@
                     <button type="button" id="btn-macro-apology" class="btn btn-secondary btn-sm" style="font-weight: 600;">🎁 Apology + Discount</button>
                   </div>
                 </div>
-                <textarea id="modal-reply-text" class="form-control" rows="5" placeholder="Type your support response here or click 'AI Auto-Generate Reply' to generate a response draft from your store's knowledge base..."></textarea>
+                <textarea id="modal-reply-text" class="form-control" rows="6" style="min-height: 140px; resize: vertical; line-height: 1.5;" placeholder="Write your reply to the customer, or click 'AI Draft Reply' to draft one from this conversation and your store knowledge. It is emailed to the customer from your store."></textarea>
                 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 10px;">
                   <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; margin: 0;">
@@ -2644,7 +2644,7 @@
               <button id="btn-agent-send" class="btn btn-primary btn-sm" type="button">Send</button>
             </div>
             <div id="ai-agent-hint" class="agent-hint">
-              Try: &ldquo;Aaj kitni sale hui?&rdquo; &middot; &ldquo;Which campaign has the best ROAS?&rdquo; &middot; &ldquo;Show my top products this month&rdquo;
+              Try: &ldquo;How much did I sell today?&rdquo; &middot; &ldquo;Which campaign has the best ROAS?&rdquo; &middot; &ldquo;Show my top products this month&rdquo;
             </div>
           </div>
         </section>
@@ -3066,6 +3066,6 @@
     }
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
-  <script type="module" src="js/app.js?v=2.5.0"></script>
+  <script type="module" src="js/app.js?v=2.6.0"></script>
 </body>
 </html>

@@ -132,7 +132,9 @@ export class SupportTicketRepository {
     return counts;
   }
 
-  async getTicketStats(storeId: string): Promise<{ total: number; open: number; replied: number; resolved: number }> {
+  async getTicketStats(storeId: string): Promise<{
+    total: number; open: number; replied: number; resolved: number; urgent_open: number; overdue: number;
+  }> {
     const res = await this.db.query<{ status: string; count: string }>(
       `SELECT status, COUNT(*)::text as count
        FROM support_tickets
@@ -154,7 +156,19 @@ export class SupportTicketRepository {
       else if (row.status === 'resolved') resolved += c;
     }
 
-    return { total, open, replied, resolved };
+    // Open tickets that need attention first: high/urgent priority, and past their reply SLA
+    const attention = await this.db.query<{ urgent_open: string; overdue: string }>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN priority IN ('high', 'urgent') THEN 1 ELSE 0 END), 0)::text AS urgent_open,
+         COALESCE(SUM(CASE WHEN sla_due_at IS NOT NULL AND sla_due_at < NOW() THEN 1 ELSE 0 END), 0)::text AS overdue
+       FROM support_tickets
+       WHERE store_id = $1 AND status = 'open'`,
+      [storeId]
+    );
+    const urgent_open = parseInt(attention.rows[0]?.urgent_open || '0', 10) || 0;
+    const overdue = parseInt(attention.rows[0]?.overdue || '0', 10) || 0;
+
+    return { total, open, replied, resolved, urgent_open, overdue };
   }
 
   private mapRow(row: any): SupportTicket {

@@ -1,5 +1,5 @@
-import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.5.0';
-import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.5.0';
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.6.0';
+import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.6.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -6305,8 +6305,12 @@ async function loadSupportTickets(status = null) {
     const badgeNav = document.getElementById('badge-open-tickets-nav');
 
     if (openEl) openEl.textContent = stats.open || 0;
-    if (resEl) resEl.textContent = stats.resolved || 0;
+    if (resEl) resEl.textContent = (stats.replied || 0) + (stats.resolved || 0);
     if (totEl) totEl.textContent = stats.total || 0;
+    const urgentEl = document.getElementById('stat-urgent-tickets');
+    const overdueEl = document.getElementById('stat-overdue-tickets');
+    if (urgentEl) urgentEl.textContent = stats.urgent_open || 0;
+    if (overdueEl) overdueEl.textContent = stats.overdue || 0;
 
     if (badgeNav) {
       if (stats.open > 0) {
@@ -6329,67 +6333,107 @@ async function loadSupportTickets(status = null) {
     renderTicketsTable(tickets);
   } catch (err) {
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--color-danger);">Failed to load tickets: ${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="tk-empty" style="color: var(--color-danger);">We couldn't load your tickets. Please refresh and try again.</td></tr>`;
     }
     showToast('Failed to load tickets', true);
   }
+}
+
+function ticketRelativeTime(value) {
+  if (!value) return '';
+  const diffMin = Math.round((Date.now() + ticketClockOffsetMs - new Date(value).getTime()) / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const hours = Math.round(diffMin / 60);
+  if (hours < 24) return `${hours} hr${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return days < 30 ? `${days} day${days === 1 ? '' : 's'} ago` : '';
 }
 
 function renderTicketsTable(tickets) {
   const tbody = document.getElementById('tickets-table-body');
   if (!tbody) return;
 
+  // One delegated handler: the whole row (or its button) opens the ticket, by mouse or keyboard
+  if (!tbody.dataset.bound) {
+    tbody.dataset.bound = '1';
+    const openFromEvent = (e) => {
+      const row = e.target.closest('tr[data-ticket-id]');
+      if (row) openTicketModal(row.getAttribute('data-ticket-id'));
+    };
+    tbody.addEventListener('click', openFromEvent);
+    tbody.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-ticket-id]')) {
+        e.preventDefault();
+        openFromEvent(e);
+      }
+    });
+  }
+
   if (!tickets || tickets.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="padding: 40px; text-align: center; color: var(--color-text-secondary);">
+        <td colspan="5" class="tk-empty">
           <div style="font-size: 28px; margin-bottom: 8px;">🎉</div>
-          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">No support tickets found</div>
-          <p style="font-size: 12px; margin: 0;">Any visitor inquiries escalated from the AI chat widget will appear here.</p>
+          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; color: var(--color-text-primary);">No support tickets found</div>
+          <p style="font-size: 12px; margin: 0;">Inquiries escalated from the AI chat widget will appear here.</p>
         </td>
       </tr>
     `;
     return;
   }
 
+  const STATUS_LABELS = { open: 'Open', replied: 'Replied', resolved: 'Resolved' };
+  const PRIORITY_LABELS = { urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low' };
+
   tbody.innerHTML = tickets.map(t => {
-    let statusBadge = '<span class="badge badge--warning">Open</span>';
-    if (t.status === 'replied') statusBadge = '<span class="badge badge--info" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">Replied</span>';
-    if (t.status === 'resolved') statusBadge = '<span class="badge badge--success">Resolved</span>';
-
-    let priorityBadge = '<span class="badge badge--neutral">Medium</span>';
-    if (t.priority === 'urgent' || t.priority === 'high') priorityBadge = '<span class="badge badge--danger">' + escapeHtml(t.priority.toUpperCase()) + '</span>';
-    else if (t.priority === 'low') priorityBadge = '<span class="badge badge--neutral">Low</span>';
-
-    const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-    const escapedEmail = escapeHtml(t.customer_email || 'Anonymous');
-    const escapedSubject = escapeHtml(t.subject || 'Customer Inquiry');
+    const status = STATUS_LABELS[t.status] ? t.status : 'open';
+    const priority = PRIORITY_LABELS[t.priority] ? t.priority : 'medium';
+    const email = t.customer_email || 'Anonymous';
+    const initial = escapeHtml((t.customer_name || email).trim().charAt(0).toUpperCase() || '?');
+    const subject = escapeHtml(t.subject || 'Customer inquiry');
     const categoryText = escapeHtml(TICKET_CATEGORY_LABELS[t.category] || TICKET_CATEGORY_LABELS.general);
-    const moodText = t.sentiment === 'angry' ? ' · 😠 Angry' : (t.sentiment === 'negative' ? ' · 🙁 Upset' : '');
-    const isHot = (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'resolved';
-    const sla = describeTicketSla(t.sla_due_at, t.status);
-    const rowStyle = isHot
-      ? 'border-bottom: 1px solid var(--color-border); font-size: 13px; background: rgba(220, 38, 38, 0.08); box-shadow: inset 3px 0 0 #dc2626;'
-      : 'border-bottom: 1px solid var(--color-border); font-size: 13px;';
+    const moodText = t.sentiment === 'angry' ? '😠 Angry' : (t.sentiment === 'negative' ? '🙁 Upset' : '');
+    const isHot = (priority === 'urgent' || priority === 'high') && status !== 'resolved';
+    const sla = describeTicketSla(t.sla_due_at, status);
+    const created = t.created_at ? new Date(t.created_at) : null;
+    const createdFull = created ? created.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const createdRel = created ? ticketRelativeTime(created) : '';
+    const shortId = escapeHtml(String(t.id || '').substring(0, 8).toUpperCase());
 
     return `
-      <tr style="${rowStyle}">
-        <td style="padding: 12px 16px; font-weight: 500;">
-          <div style="color: var(--color-text-primary); font-weight: 600;">${escapedEmail}</div>
-          ${t.customer_name ? `<div style="font-size: 11px; color: var(--color-text-secondary);">${escapeHtml(t.customer_name)}</div>` : ''}
+      <tr class="tk-row${isHot ? ' tk-row--hot' : ''}" data-ticket-id="${escapeHtml(t.id)}" tabindex="0" aria-label="Open ticket from ${escapeHtml(email)}">
+        <td>
+          <div class="tk-customer">
+            <span class="tk-avatar" aria-hidden="true">${initial}</span>
+            <div class="tk-customer-text">
+              <div class="tk-email" title="${escapeHtml(email)}">${escapeHtml(email)}${t.customer_name ? ` <span style="font-weight: 400; color: var(--color-text-secondary);">· ${escapeHtml(t.customer_name)}</span>` : ''}</div>
+              <div class="tk-subject" title="${subject}">${subject}</div>
+              <div class="tk-id">#${shortId}</div>
+            </div>
+          </div>
         </td>
-        <td style="padding: 12px 16px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapedSubject}">
-          ${escapedSubject}
+        <td>
+          <div class="tk-stack">
+            <span class="tk-category">${categoryText}</span>
+            <span>
+              <span class="tk-pill tk-pill--${priority}">${PRIORITY_LABELS[priority]}</span>
+              ${moodText ? `<span class="tk-mood">${moodText}</span>` : ''}
+            </span>
+          </div>
         </td>
-        <td style="padding: 12px 16px; font-size: 12px; white-space: nowrap;">${categoryText}</td>
-        <td style="padding: 12px 16px; white-space: nowrap;">${priorityBadge}<span style="font-size: 11px; color: var(--color-text-secondary);">${moodText}</span></td>
-        <td style="padding: 12px 16px;">${statusBadge}</td>
-        <td style="padding: 12px 16px; font-size: 12px; font-weight: 600; white-space: nowrap; color: ${ticketSlaColor(sla.tone)};" data-sla-due="${escapeHtml(t.sla_due_at || '')}" data-ticket-status="${escapeHtml(t.status || 'open')}">${escapeHtml(sla.text)}</td>
-        <td style="padding: 12px 16px; color: var(--color-text-secondary); font-size: 12px;">${createdDate}</td>
-        <td style="padding: 12px 16px; text-align: right;">
-          <button class="btn btn-secondary btn-sm" onclick="openTicketModal('${escapeHtml(t.id)}')" style="font-weight: 600;">
-            View & Reply
-          </button>
+        <td>
+          <div class="tk-stack">
+            <span class="tk-pill tk-pill--${status}">${STATUS_LABELS[status]}</span>
+            ${status === 'open' ? `<span class="tk-sla" style="color: ${ticketSlaColor(sla.tone)};" data-sla-due="${escapeHtml(t.sla_due_at || '')}" data-ticket-status="${escapeHtml(status)}">${escapeHtml(sla.text)}</span>` : ''}
+          </div>
+        </td>
+        <td class="tk-created" title="${escapeHtml(createdFull)}">
+          ${createdRel ? `<span class="tk-created-rel">${escapeHtml(createdRel)}</span>` : ''}
+          ${escapeHtml(createdFull)}
+        </td>
+        <td class="tk-col-action">
+          <button type="button" class="btn btn-primary btn-sm tk-open-btn" tabindex="-1">${status === 'open' ? 'Reply' : 'View'} →</button>
         </td>
       </tr>
     `;
@@ -6427,8 +6471,11 @@ async function openTicketModal(ticketId) {
 
     const triageEl = document.getElementById('modal-ticket-triage');
     if (triageEl) {
-      const mood = t.sentiment && t.sentiment !== 'neutral' ? ` · ${t.sentiment}` : '';
-      triageEl.textContent = `${TICKET_CATEGORY_LABELS[t.category] || TICKET_CATEGORY_LABELS.general} · ${(t.priority || 'medium').toUpperCase()}${mood}`;
+      const priority = ['urgent', 'high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium';
+      const moodLabels = { angry: '😠 Angry', negative: '🙁 Upset', positive: '🙂 Happy' };
+      const mood = moodLabels[t.sentiment] ? ` <span class="tk-mood">${moodLabels[t.sentiment]}</span>` : '';
+      triageEl.innerHTML = `${escapeHtml(TICKET_CATEGORY_LABELS[t.category] || TICKET_CATEGORY_LABELS.general)}
+        <span class="tk-pill tk-pill--${priority}" style="margin-left: 6px;">${priority.charAt(0).toUpperCase() + priority.slice(1)}</span>${mood}`;
     }
 
     const slaEl = document.getElementById('modal-ticket-sla');
