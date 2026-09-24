@@ -1,0 +1,4 @@
+# NODE_ENV=production makes `npm ci` skip devDependencies, but the build needs
+# them (typescript, rimraf). Install them explicitly for the build step.
+[phases.install]
+cmds = ["npm ci --include=dev"]
