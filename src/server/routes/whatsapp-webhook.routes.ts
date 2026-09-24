@@ -3,6 +3,7 @@ import { getDatabaseClient } from '../../database/client';
 import { getWhatsAppProvider } from '../../providers/whatsapp';
 import { WhatsAppService } from '../../modules/whatsapp/whatsapp.service';
 import { WhatsAppRepository } from '../../modules/whatsapp/whatsapp.repository';
+import { timingSafeEqualStr, verifyMetaSignature } from '../../utils/webhook-signature';
 
 const router = Router();
 
@@ -55,6 +56,24 @@ router.post('/', async (req: Request, res: Response) => {
 
     const events = provider.parseWebhook(req.body);
 
+    // X-Hub-Signature-256 check with the platform app secret, or the store's own app
+    // secret. Stores that never saved one keep working unsigned, as before.
+    const repo = new WhatsAppRepository(db);
+    const phoneIds = [...new Set(events.map(e => e.phoneNumberId).filter(Boolean) as string[])];
+    const secrets = process.env.WHATSAPP_APP_SECRET
+      ? [process.env.WHATSAPP_APP_SECRET]
+      : (await Promise.all(phoneIds.map(id => repo.findConfigByPhoneNumberId(id))))
+          .map(c => c?.app_secret || '')
+          .filter(Boolean);
+    if (secrets.length > 0) {
+      const signature = req.header('x-hub-signature-256');
+      const raw = (req as any).rawBody || JSON.stringify(req.body || {});
+      if (!secrets.some(secret => verifyMetaSignature(raw, signature, secret))) {
+        res.status(401).json({ error: 'Invalid webhook signature' });
+        return;
+      }
+    }
+
     for (const evt of events) {
       if (evt.message && evt.phoneNumberId) {
         await service.handleIncomingMessage({
@@ -101,7 +120,7 @@ router.post('/wati/:storeId', async (req: Request, res: Response) => {
 
   // Verify webhook token if configured
   if (config.webhook_verify_token) {
-    if (!token || token !== config.webhook_verify_token) {
+    if (!token || !timingSafeEqualStr(token, config.webhook_verify_token)) {
       res.status(403).json({ error: 'Forbidden: Invalid WATI webhook token' });
       return;
     }

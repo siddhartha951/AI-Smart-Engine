@@ -52,7 +52,9 @@ export class WebhookService {
       // 3. We need to tie the order to a visitor.
       let visitorId: string | null = null;
 
-      if (noteVisitorId) {
+      // The id comes from cart attributes / landing URL (shopper-controlled); a non-UUID
+      // would make Postgres throw and Shopify would retry the order webhook forever.
+      if (noteVisitorId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(noteVisitorId)) {
         const visCheck = await db.query(
           'SELECT id FROM visitors WHERE store_id = $1 AND id = $2',
           [storeId, noteVisitorId]

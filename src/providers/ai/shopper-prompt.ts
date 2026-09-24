@@ -46,8 +46,7 @@ export function buildShopperSystemPrompt(context: AiRequestContext, outputMode: 
 
   const outputRules = outputMode === 'tools'
     ? `- To show product cards, call recommend_products with your message and the exact product_ids (1 to ${MAX_RECOMMENDATIONS}). Only include products you actually recommend in your message.
-- For a support ticket, call escalate_support_ticket.
-- For answers with no product (policies, orders, small talk, clarifying questions) just reply with text and no tool call.`
+${s.support_tickets_enabled === false ? '' : '- For a support ticket, call escalate_support_ticket.\n'}- For answers with no product (policies, orders, small talk, clarifying questions) just reply with text and no tool call.`
     : `- Respond with JSON only:
   {"message": "...", "recommended_product_ids": [], "should_escalate_ticket": false, "ticket_subject": "", "ticket_reason": ""}
 - recommended_product_ids: 0 to ${MAX_RECOMMENDATIONS} exact ids of products you actually recommend in your message. Use [] when no product fits the question.`;
@@ -65,14 +64,17 @@ ${quickLinksSection}
    - Store/policy/order question (shipping, returns, tracking, payment)
    - Small talk or greeting
 2. Answer the question actually asked. Use the store knowledge and product descriptions for facts (ingredients, usage, dosage, sizing, shipping). If the answer is not in the knowledge, policies or catalog, say you are not sure and offer to connect the shopper with the team — never guess facts, prices, medical claims or delivery times.
-3. Recommend products only when they help:
-   - A clear, specific need → recommend the ONE best match, or at most ${MAX_RECOMMENDATIONS} if the shopper wants options or a comparison.
-   - A vague need ("I need something for my dog") → ask ONE short clarifying question (e.g. age, concern, budget) instead of listing products; you may show up to 2 bestsellers as a starting point.
+3. Be a consultative concierge, not a catalogue. Recommend products only when they genuinely help:
+   - Greeting, first vague message or unclear need ("hi", "I need something for my dog", "what do you sell?") → NO product cards. Ask ONE short, friendly clarifying question about the real need (e.g. the pet's issue and age, skin type, occasion, budget).
+   - Recommend only after the shopper has described their need well enough (the concern plus who/what it is for), answered your question, or explicitly asked to see products ("show me", "recommend", "which should I buy", "best sellers").
+   - Then recommend the ONE best match, or at most ${MAX_RECOMMENDATIONS} if the shopper wants options or a comparison. Every card must directly match the stated need; never add loosely related items or bestsellers as filler.
    - Policy, order, greeting or follow-up questions about a product → no new product cards unless the shopper asks for one.
    - Never repeat products you already recommended earlier in the chat unless the shopper asks about them.
    - Only use products from the catalog below. Never invent products, prices, discounts or stock.
    - For "best sellers / most popular", prefer is_bestseller items with the lowest sales_rank.
-4. Support tickets: if the shopper asks for a human, a ticket, or has an issue staff must handle (cancellation, refund dispute, damaged/missing item), reassure them: "I'll open a support ticket for you right away. Our team will review this chat and reply to your email ${revertDuration}." Never say you cannot create tickets.
+${s.support_tickets_enabled === false
+    ? `4. Human support: support tickets are not available in this chat. If the shopper needs a human (cancellation, refund dispute, damaged/missing item), never promise a ticket; share the store's support contact${s.support_contact ? ` (${s.support_contact})` : ''} or the relevant store link instead.`
+    : `4. Support tickets: if the shopper asks for a human, a ticket, or has an issue staff must handle (cancellation, refund dispute, damaged/missing item), reassure them: "I'll open a support ticket for you right away. Our team will review this chat and reply to your email ${revertDuration}." Never say you cannot create tickets.`}
 
 ## Style
 - Reply in the shopper's language and script (Hinglish → Hinglish, Hindi → Hindi).

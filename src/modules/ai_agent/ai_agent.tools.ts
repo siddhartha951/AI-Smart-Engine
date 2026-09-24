@@ -11,6 +11,8 @@ import { fetchShopifyOrders } from './shopify_orders.service';
 import { ShopifyHealthService } from '../shopify_health/shopify_health.service';
 import { AgentToolName, AgentToolResult } from './ai_agent.types';
 import { TenantIsolationError } from '../../utils/errors';
+import { EntitlementRepository } from '../entitlements/entitlement.repository';
+import { FeatureKey } from '../entitlements/entitlement.types';
 import { logger } from '../../utils/logger';
 
 export interface ToolDefinition {
@@ -111,6 +113,7 @@ async function getTodayOverview(storeId: string, _args: ToolArgs): Promise<Agent
   requireStore(storeId);
   const today = new Date().toISOString().slice(0, 10);
 
+  const metaAllowed = await new EntitlementRepository().isFeatureEnabled(storeId, FeatureKey.META_ADS).catch(() => false);
   const [shopify, meta] = await Promise.all([
     fetchShopifyOrders(storeId, {
       createdAtMin: `${today}T00:00:00Z`,
@@ -119,6 +122,7 @@ async function getTodayOverview(storeId: string, _args: ToolArgs): Promise<Agent
       financialStatus: 'paid',
     }),
     (async () => {
+      if (!metaAllowed) return null;
       try {
         const svc = new MetaAdsService();
         return await svc.getInsights(storeId, { level: 'account', datePreset: 'today', limit: 5 });
@@ -149,7 +153,9 @@ async function getTodayOverview(storeId: string, _args: ToolArgs): Promise<Agent
             clicks_today: meta.totals.clicks,
             currency: meta.accountCurrency,
           }
-        : { connected: false, note: 'Meta Ads is not connected for this store.' },
+        : metaAllowed
+          ? { connected: false, note: 'Meta Ads is not connected for this store.' }
+          : { enabled: false, note: 'Meta Ads is not enabled for this store.' },
     },
   };
 }
@@ -323,6 +329,31 @@ const EXECUTORS: Record<AgentToolName, (storeId: string, args: ToolArgs) => Prom
   get_attribution_summary: getAttributionSummary,
 };
 
+/** Feature each tool reads from; tools without an entry use core Shopify data only. */
+export const TOOL_FEATURES: Partial<Record<AgentToolName, FeatureKey>> = {
+  get_meta_performance: FeatureKey.META_ADS,
+  get_ad_creatives: FeatureKey.ADS_EXPLORER,
+  get_attribution_summary: FeatureKey.AD_INTELLIGENCE,
+};
+
+const FEATURE_DISABLED_NOTE =
+  'This feature is not enabled for this store. Tell the merchant plainly that it is not enabled and that their administrator can activate it. Do not guess any numbers for it.';
+
+/** Tools the store is entitled to; the LLM is never offered tools for disabled modules. */
+export async function getAllowedAgentTools(storeId: string): Promise<ToolDefinition[]> {
+  const entitlements = await new EntitlementRepository().getStoreEntitlements(storeId);
+  return AGENT_TOOLS.filter((t) => {
+    const feature = TOOL_FEATURES[t.name];
+    return !feature || entitlements[feature] !== false;
+  });
+}
+
+async function isToolAllowed(storeId: string, toolName: AgentToolName): Promise<boolean> {
+  const feature = TOOL_FEATURES[toolName];
+  if (!feature || !storeId) return true; // empty storeId is rejected by the executor itself
+  return new EntitlementRepository().isFeatureEnabled(storeId, feature);
+}
+
 /** Executes a single tool call. Always tenant-scoped; never throws raw errors to the LLM. */
 export async function executeAgentTool(
   storeId: string,
@@ -332,6 +363,14 @@ export async function executeAgentTool(
   const executor = EXECUTORS[toolName as AgentToolName];
   if (!executor) {
     return { ok: false, note: `Unknown tool: ${toolName}` };
+  }
+  try {
+    if (!(await isToolAllowed(storeId, toolName as AgentToolName))) {
+      return { ok: false, note: FEATURE_DISABLED_NOTE };
+    }
+  } catch {
+    // Fail closed: if access cannot be verified, do not read the data
+    return { ok: false, note: 'Access to this data could not be verified right now. Tell the merchant to try again shortly.' };
   }
   try {
     return await executor(storeId, args);

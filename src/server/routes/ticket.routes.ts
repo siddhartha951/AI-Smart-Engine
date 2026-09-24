@@ -124,13 +124,14 @@ const createWidgetTicketSchema = z.object({
   store_id: z.string().optional().nullable(),
   widget_key: z.string().optional().nullable(),
   session_id: z.string().optional().nullable(),
-  customer_email: z.string().email('Please provide a valid email address'),
-  customer_name: z.string().optional(),
-  subject: z.string().min(1, 'Subject or question is required'),
+  customer_email: z.string().max(254).email('Please provide a valid email address'),
+  // Public endpoint: long values are trimmed (not rejected) so a shopper's ticket never fails
+  customer_name: z.string().optional().transform(v => (v === undefined ? v : v.slice(0, 200))),
+  subject: z.string().min(1, 'Subject or question is required').transform(v => v.slice(0, 500)),
   chat_transcript: z.array(z.object({
-    role: z.string(),
-    content: z.string(),
-  })).optional(),
+    role: z.string().transform(v => v.slice(0, 20)),
+    content: z.string().transform(v => v.slice(0, 4000)),
+  })).optional().transform(v => (v ? v.slice(-50) : v)),
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

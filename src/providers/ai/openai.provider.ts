@@ -70,7 +70,8 @@ export class OpenAiProvider implements IAiProvider {
               },
             },
           },
-          {
+          // Ticket tool only exists when the admin has enabled support tickets
+          ...(context.assistantSettings.support_tickets_enabled === false ? [] : [{
             type: 'function',
             function: {
               name: 'escalate_support_ticket',
@@ -94,7 +95,7 @@ export class OpenAiProvider implements IAiProvider {
                 required: ['message', 'subject', 'reason'],
               },
             },
-          },
+          }] as OpenAI.Chat.ChatCompletionTool[]),
         ],
         tool_choice: 'auto',
       });
@@ -176,10 +177,10 @@ export class OpenAiProvider implements IAiProvider {
         err?.message?.includes('quota')
       ) {
         const contact = context.assistantSettings.support_contact || 'our store support';
-        const fallbackIds = context.catalogSubset.slice(0, 2).map((p) => p.id);
+        // No product cards here: showing arbitrary catalog items is irrelevant to the question asked
         return {
-          content: `Hi! I am currently experiencing high demand. Please feel free to browse our store collections, check our delivery and returns policies, or reach out to our team at ${contact}!`,
-          recommended_product_ids: fallbackIds,
+          content: `Sorry, I'm a little busy right now. Please try again in a moment, or reach out to our team at ${contact}.`,
+          recommended_product_ids: [],
           input_tokens: 0,
           output_tokens: 0,
           estimated_cost_usd: 0,

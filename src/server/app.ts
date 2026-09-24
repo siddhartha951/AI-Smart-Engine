@@ -19,6 +19,8 @@ import { getAiProvider, BudgetGuard } from '../providers/ai';
 import { matchBoldProductMentions } from '../providers/ai/ai.utils';
 import { MAX_RECOMMENDATIONS } from '../providers/ai/shopper-prompt';
 import { buildKnowledgeContext } from '../modules/knowledge/knowledge-retrieval';
+import { EntitlementRepository } from '../modules/entitlements/entitlement.repository';
+import { FeatureKey } from '../modules/entitlements/entitlement.types';
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import adminRoutes from './routes/admin.routes';
@@ -133,9 +135,10 @@ export function createApp(deps: AppDependencies = {}): Express {
     async (req: Request, res: Response, next) => {
       try {
         const store = req.store!;
-        const [widgetSettings, assistantSettings] = await Promise.all([
+        const [widgetSettings, assistantSettings, ticketsEnabled] = await Promise.all([
           merchantRepo.getWidgetSettings(store.id),
           merchantRepo.getAssistantSettings(store.id),
+          new EntitlementRepository(db).isFeatureEnabled(store.id, FeatureKey.SUPPORT_TICKETS).catch(() => true),
         ]);
 
         // Disable browser caching so updates in dashboard reflect immediately on storefront
@@ -187,6 +190,8 @@ export function createApp(deps: AppDependencies = {}): Express {
               : null,
             features: {
               live_tracking_enabled: store.live_tracking_enabled !== false,
+              // Widget hides the ticket buttons when the admin has not enabled support tickets
+              support_tickets_enabled: ticketsEnabled,
             },
           },
         });
@@ -295,6 +300,10 @@ export function createApp(deps: AppDependencies = {}): Express {
         if (!message || typeof message !== 'string') {
           throw new ValidationError('Missing required message');
         }
+        // Public endpoint: cap size so one request cannot drain the store's AI budget
+        if (message.length > 2000) {
+          throw new ValidationError('Message is too long. Please keep it under 2000 characters.');
+        }
 
         // Fetch session to validate existence & ownership
         const session = await chatRepo.getSessionById(storeId, session_id);
@@ -387,6 +396,10 @@ export function createApp(deps: AppDependencies = {}): Express {
           console.warn(`[WidgetChat] Catalog lookup failed for store ${storeId}, continuing without products:`, catalogErr);
         }
 
+        const ticketsEnabled = await new EntitlementRepository(db)
+          .isFeatureEnabled(storeId, FeatureKey.SUPPORT_TICKETS)
+          .catch(() => true);
+
         const knowledgeContext = await buildKnowledgeContext(
           storeId,
           (settings as any)?.knowledge_base || '',
@@ -409,6 +422,7 @@ export function createApp(deps: AppDependencies = {}): Express {
             support_contact: settings?.support_contact || '',
             ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
             quick_action_pills: (settings as any)?.quick_action_pills || [],
+            support_tickets_enabled: ticketsEnabled,
           }
         });
 
@@ -479,6 +493,11 @@ export function createApp(deps: AppDependencies = {}): Express {
           targetProductIds = matchBoldProductMentions(aiRes.content, catalogSubset, MAX_RECOMMENDATIONS);
         }
 
+        // A bare greeting never gets product cards, whatever the model returned
+        if (/^\s*(hi+|hello+|hey+|hola|namaste|good\s+(morning|afternoon|evening))[\s!.,?]*$/i.test(message)) {
+          targetProductIds = [];
+        }
+
         const recommendations = [];
         if (targetProductIds.length > 0) {
           const validProducts = targetProductIds
@@ -527,7 +546,7 @@ export function createApp(deps: AppDependencies = {}): Express {
           data: {
             message: cleanMessage,
             recommendations,
-            should_escalate_ticket: Boolean(aiRes.should_escalate_ticket),
+            should_escalate_ticket: ticketsEnabled && Boolean(aiRes.should_escalate_ticket),
             ticket_subject: aiRes.ticket_subject,
             ticket_reason: aiRes.ticket_reason,
             ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
@@ -599,6 +618,10 @@ export function createApp(deps: AppDependencies = {}): Express {
     validateStoreOrigin,
     async (req: Request, res: Response, next) => {
       try {
+        // Test-only helper: never reachable on the live platform
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(404).json({ success: false, error: 'Not found' });
+        }
         const storeId = req.storeId!;
         const { visitor_id, session_id } = req.body;
 

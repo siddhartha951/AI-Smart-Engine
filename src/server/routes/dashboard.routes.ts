@@ -30,6 +30,17 @@ const router = Router();
 router.use(verifyJwt);
 router.use(requireRole(['super_admin', 'ops_admin', 'platform_admin', 'merchant_owner']));
 
+// Feature gates by path prefix, registered before the handlers so every route in a
+// module (including ones added later) is blocked when the admin disables it.
+router.use('/:storeId/whatsapp', enforceStoreAccess, enforceFeature(FeatureKey.WHATSAPP));
+router.use('/:storeId/ad-creatives', enforceStoreAccess, enforceFeature(FeatureKey.AD_CREATIVE));
+router.use('/:storeId/email', enforceStoreAccess, enforceFeature(FeatureKey.EMAIL_AUTOMATION));
+router.use(['/:storeId/agent', '/:storeId/website/scan'], enforceStoreAccess, enforceFeature(FeatureKey.WIDGET));
+router.use(['/:storeId/widget', '/:storeId/settings'], enforceStoreAccess, enforceFeature(FeatureKey.WIDGET));
+router.use('/:storeId/leads/export', enforceStoreAccess, enforceFeature(FeatureKey.LEADS));
+router.use('/:storeId/analytics/products', enforceStoreAccess, enforceFeature(FeatureKey.LIVE_PULSE));
+router.use('/:storeId/meta-ads/explorer', enforceStoreAccess, enforceFeature(FeatureKey.ADS_EXPLORER));
+
 router.get('/stores', async (req: Request, res: Response, next) => {
   try {
     const db = getDatabaseClient();
@@ -540,13 +551,13 @@ router.post('/:storeId/shopify/reconnect', enforceStoreAccess, async (req: Reque
     if (!probe.valid) {
       if (probe.reason === 'invalid') {
         throw new AppError(
-          'Ye token kaam nahi kar raha (Shopify ne reject kar diya). Shopify admin → Apps → your custom app → API credentials se Admin API access token dobara copy karke paste karo. Tumhara purana token abhi bhi saved hai.',
+          'Shopify rejected this access token. In Shopify Admin, go to Apps → your custom app → API credentials, copy the Admin API access token again and paste it here. Your previous token is still saved.',
           400,
           'SHOPIFY_TOKEN_INVALID'
         );
       }
       throw new AppError(
-        'Shopify se connect nahi ho paya (network timeout). Store domain check karke dobara try karo. Tumhara purana token abhi bhi saved hai.',
+        'Could not reach Shopify (network timeout). Please check your store domain and try again. Your previous token is still saved.',
         503,
         'SHOPIFY_UNREACHABLE'
       );

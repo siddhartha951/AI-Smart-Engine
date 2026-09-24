@@ -56,6 +56,20 @@ const requireOnboardingToken = async (req: Request, res: Response, next: NextFun
       return;
     }
 
+    // Any store referenced by the request must belong to this merchant. store_id is
+    // public (widget config), so without this an invited merchant could overwrite a
+    // live store's Shopify credentials, AI settings or sender domains.
+    const referencedStoreId = req.params.storeId || (req.body && typeof req.body === 'object' ? req.body.store_id : undefined);
+    if (referencedStoreId !== undefined && referencedStoreId !== null && referencedStoreId !== '') {
+      const owned = typeof referencedStoreId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referencedStoreId)
+        ? await db.query('SELECT id FROM stores WHERE id = $1 AND merchant_id = $2', [referencedStoreId, merchant.id])
+        : { rows: [] };
+      if (owned.rows.length === 0) {
+        res.status(403).json({ error: 'This store does not belong to your onboarding session' });
+        return;
+      }
+    }
+
     (req as any).merchant = merchant;
     (req as any).onboardingToken = token;
     next();

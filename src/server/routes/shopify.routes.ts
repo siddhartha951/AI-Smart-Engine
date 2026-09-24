@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { WebhookService } from '../../modules/events/webhook.service';
 import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
+import { timingSafeEqualStr } from '../../utils/webhook-signature';
 
 declare global {
   namespace Express {
@@ -38,7 +39,7 @@ const verifyShopifyWebhook = (req: Request, res: Response, next: NextFunction): 
     .update(req.rawBody)
     .digest('base64');
 
-  if (generatedHash !== hmacHeader) {
+  if (!timingSafeEqualStr(generatedHash, String(hmacHeader))) {
     logger.warn(`HMAC validation failed for webhook from ${shopDomain}`);
     // In a real app we'd block here. For local testing with simulated payloads, we might want to bypass or mock it.
     // However, the test should generate the correct HMAC so we can enforce it.

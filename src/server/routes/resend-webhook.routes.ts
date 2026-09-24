@@ -3,11 +3,32 @@ import { getDatabaseClient } from '../../database/client';
 import { EmailRepository } from '../../modules/email/email.repository';
 import { SenderDomainRepository } from '../../modules/email/sender-domain.repository';
 import { logger } from '../../utils/logger';
+import { verifySvixSignature } from '../../utils/webhook-signature';
 
 const router = Router();
 
+let warnedUnsigned = false;
+
 router.post('/', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    // Svix signature check. Required whenever RESEND_WEBHOOK_SECRET is configured;
+    // without it events are accepted as before (logged once) so live stores keep working.
+    const secret = process.env.RESEND_WEBHOOK_SECRET;
+    if (secret) {
+      const ok = verifySvixSignature((req as any).rawBody || JSON.stringify(req.body || {}), {
+        id: req.header('svix-id'),
+        timestamp: req.header('svix-timestamp'),
+        signature: req.header('svix-signature'),
+      }, secret);
+      if (!ok) {
+        res.status(401).json({ error: 'Invalid webhook signature' });
+        return;
+      }
+    } else if (!warnedUnsigned) {
+      warnedUnsigned = true;
+      logger.warn('Resend webhook received without RESEND_WEBHOOK_SECRET configured; signatures are not being verified');
+    }
+
     const payload = req.body;
     if (!payload || !payload.type) {
       res.status(400).json({ error: 'Invalid webhook payload: missing event type' });

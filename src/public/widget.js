@@ -148,6 +148,25 @@
     return escapeHtml(value == null ? '' : String(value));
   }
 
+  // '#ffffff' unless the background is light enough that dark text reads better (WCAG luminance)
+  function readableTextOn(color) {
+    const hex = String(color || '').trim().replace('#', '');
+    const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+    if (!/^[0-9a-f]{6}$/i.test(full)) return '#ffffff';
+    const channel = (i) => {
+      const v = parseInt(full.slice(i, i + 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+    return luminance > 0.45 ? '#0f172a' : '#ffffff';
+  }
+
+  // Only http(s) or site-relative URLs may reach href/src (blocks javascript:, data: etc.)
+  function safeUrl(value, fallback = '#') {
+    const url = String(value == null ? '' : value).trim();
+    return /^(https?:)?\/\//i.test(url) || (url.startsWith('/') && !url.startsWith('//')) ? url : fallback;
+  }
+
   function formatChatContent(rawText) {
     if (!rawText) return '';
 
@@ -158,6 +177,21 @@
     // "skin. Here's more information: - Aniwell..." or "skin: • Soothes..."
     // split the bullet to a new line cleanly
     text = text.replace(/([.:!?])\s*[-•]\s+/g, '$1\n• ');
+
+    // Pull links out into placeholders BEFORE escaping/formatting, so the italic rules can't
+    // mangle URLs (utm_source=a_b) and each link is escaped on its own. Only http(s) is linked.
+    const links = [];
+    const stashLink = (href, label) => {
+      links.push({ href, label });
+      return `\u0000${links.length - 1}\u0000`;
+    };
+    // [label](https://...) markdown links (not ![image](...))
+    text = text.replace(/(^|[^!])\[([^\]\n]{1,120})\]\((https?:\/\/[^\s)]+)\)/g, (_, pre, label, url) => pre + stashLink(url, label));
+    // Bare URLs and store domains (getaniwell.com/pages/faq). Emails are left alone.
+    text = text.replace(
+      /(^|[^@\w.\/\u0000])((?:https?:\/\/|www\.)[^\s<>"']*[^\s<>"'.,;:!?)\]]|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|co|net|org|shop|store|io|uk)(?:\/[^\s<>"']*[^\s<>"'.,;:!?)\]])?)(?![\w@-])/gi,
+      (_, pre, url) => pre + stashLink(/^https?:\/\//i.test(url) ? url : `https://${url}`, url)
+    );
 
     // Escape HTML first for security
     text = escapeHtml(text);
@@ -206,8 +240,17 @@
       outputHtml += '</ul>';
     }
 
+    // Restore links as safe, tappable anchors that open in a new tab
+    outputHtml = outputHtml.replace(/\u0000(\d+)\u0000/g, (_, i) => {
+      const link = links[Number(i)];
+      if (!link) return '';
+      return `<a class="chat-link" href="${escapeAttr(link.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>`;
+    });
+
     return outputHtml;
   }
+
+  const LEGACY_SHARED_KEYS = new Set(['ai_session_id', 'ai_visitor_id']);
 
   class ShoppingAssistantWidget extends HTMLElement {
     constructor() {
@@ -261,12 +304,15 @@
 
     readStored(base) {
       try {
-        return (
-          sessionStorage.getItem(this.storageKey(base)) ||
-          localStorage.getItem(this.storageKey(base)) ||
-          sessionStorage.getItem(base) ||
-          localStorage.getItem(base)
-        );
+        const scoped = sessionStorage.getItem(this.storageKey(base)) || localStorage.getItem(this.storageKey(base));
+        if (scoped) return scoped;
+        // Unscoped legacy keys are only honoured for the session/visitor ids handed over via
+        // ?ai_sid= links (validated against the server). Chat history, shopper email and view
+        // state are never read unscoped, so they cannot leak between stores on one origin.
+        if (LEGACY_SHARED_KEYS.has(base)) {
+          return sessionStorage.getItem(base) || localStorage.getItem(base);
+        }
+        return null;
       } catch (_) {
         return null;
       }
@@ -725,8 +771,9 @@
         // Auto-offer human ticket if customer asks for human/ticket/complaint or backend flagged escalation
         const isHumanQuery = /(human|agent|real person|customer care|talk to someone|support ticket|complaint|representative|executive|create ticket|raise ticket|open ticket)/i.test(text);
         const replyText = json.success ? (json.data?.message || '') : '';
-        const isAiUnsure = !json.success || /(contact (our )?support|reach out to (our )?support|support team|unable to assist|can't help with this)/i.test(replyText);
-        const shouldEscalate = Boolean(json.data?.should_escalate_ticket) || isHumanQuery || isAiUnsure;
+        // A backend error is not a reason to open a ticket (it used to auto-submit one)
+        const isAiUnsure = Boolean(json.success) && /(contact (our )?support|reach out to (our )?support|support team|unable to assist|can't help with this)/i.test(replyText);
+        const shouldEscalate = this.ticketsEnabled() && (Boolean(json.data?.should_escalate_ticket) || isHumanQuery || isAiUnsure);
 
         if (json.data?.ticket_revert_duration) {
           this.ticketRevertDuration = json.data.ticket_revert_duration;
@@ -781,7 +828,27 @@
       }
     }
 
+    // Older servers send no flag, so only an explicit false disables tickets
+    ticketsEnabled() {
+      return this.state.config?.features?.support_tickets_enabled !== false;
+    }
+
     async openTicketEscalationPrompt(reason = '', revertDuration = '') {
+      if (!this.ticketsEnabled()) {
+        // Tickets are not enabled for this store: point to the store's own support contact instead
+        const contact = this.state.config?.assistant?.support_contact;
+        const validContact = contact && contact !== 'support@store.com' ? contact : '';
+        this.setState({
+          view: 'chat',
+          messages: [...this.state.messages, {
+            role: 'assistant',
+            content: validContact
+              ? `For help from our team, please contact us at ${validContact}.`
+              : 'For help from our team, please use the contact details on our store website.',
+          }],
+        });
+        return;
+      }
       const duration = revertDuration || this.ticketRevertDuration || 'within 24 hours';
       this.ticketRevertDuration = duration;
       const email = this.visitorEmail || this.readStored('ai_visitor_email') || '';
@@ -927,6 +994,8 @@
 
     getStyles() {
       const primaryColor = this.state.config?.widget?.primary_colour || '#4f46e5';
+      // White text on the brand colour, unless the brand colour is too light to read it on
+      const userTextColor = readableTextOn(primaryColor);
       const secondaryColor = this.state.config?.widget?.secondary_colour || '#ffffff';
       const position = this.state.config?.widget?.position || 'bottom-right';
       const isLeft = position === 'bottom-left';
@@ -1663,13 +1732,29 @@
         
         .msg.user {
           background-color: ${primaryColor};
-          color: #ffffff !important;
+          color: ${userTextColor} !important;
           align-self: flex-end;
           border-bottom-right-radius: 3px;
         }
         .msg.user .msg-text,
         .msg.user * {
-          color: #ffffff !important;
+          color: ${userTextColor} !important;
+        }
+        .msg-text a.chat-link {
+          color: ${primaryColor};
+          font-weight: 600;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          word-break: break-all;
+          cursor: pointer;
+        }
+        .msg-text a.chat-link:hover,
+        .msg-text a.chat-link:focus-visible {
+          opacity: 0.85;
+          outline: none;
+        }
+        .msg.user .msg-text a.chat-link {
+          color: ${userTextColor} !important;
         }
 
 
@@ -2212,10 +2297,11 @@
     render() {
       const { widget: widgetConfig, assistant: assistantConfig } = this.state.config || {};
       
-      const buttonText = widgetConfig?.button_text || 'Ask our shopping assistant';
-      const greeting = widgetConfig?.greeting || 'Hello! How can I help you today?';
-      const assistantName = assistantConfig?.assistant_name || 'Mira';
-      const headerTitle = widgetConfig?.header_title || assistantName;
+      // Merchant-entered text is only ever used in HTML below, so it is escaped once here
+      const buttonText = escapeHtml(widgetConfig?.button_text || 'Ask our shopping assistant');
+      const greeting = escapeHtml(widgetConfig?.greeting || 'Hello! How can I help you today?');
+      const assistantName = escapeHtml(assistantConfig?.assistant_name || 'Mira');
+      const headerTitle = widgetConfig?.header_title ? escapeHtml(widgetConfig.header_title) : assistantName;
       const persona = widgetConfig?.avatar_persona || 'female_3d';
       let avatarUrl = widgetConfig?.avatar_url || '';
       if (!avatarUrl) {
@@ -2223,13 +2309,14 @@
         else if (persona === 'bot_3d') avatarUrl = `${API_BASE_URL}/assets/avatars/cosmo-3d.jpg`;
         else avatarUrl = `${API_BASE_URL}/assets/avatars/mira-3d.jpg`;
       }
-      const policyUrl = assistantConfig?.privacy_policy_url || '#';
+      avatarUrl = escapeAttr(safeUrl(avatarUrl, `${API_BASE_URL}/assets/avatars/mira-3d.jpg`));
+      const policyUrl = escapeAttr(safeUrl(assistantConfig?.privacy_policy_url || '#'));
 
-      const offerCode = widgetConfig?.offer_code || '';
+      const offerCode = escapeHtml(widgetConfig?.offer_code || '');
       const offerDiscount = Number(widgetConfig?.offer_discount_percent || 0);
       let nudgeMessage = `👋 Hi! I'm ${assistantName}. Looking for recommendations or size help today?`;
       if (widgetConfig?.offer_text && widgetConfig.offer_text.trim()) {
-        nudgeMessage = widgetConfig.offer_text.trim();
+        nudgeMessage = escapeHtml(widgetConfig.offer_text.trim());
       } else if (offerCode && offerDiscount > 0) {
         nudgeMessage = `👋 Hi! Looking for recommendations? Tap here to get ${offerDiscount}% OFF with code ${offerCode}!`;
       }
@@ -2264,7 +2351,7 @@
                 </div>
               </div>
               <div class="header-actions">
-                ${this.state.view === 'chat' ? `
+                ${this.state.view === 'chat' && this.ticketsEnabled() ? `
                   <button type="button" class="btn-need-help-header btn-human-ticket" aria-label="Human Helpdesk" title="Need Human Support? Open Ticket">
                     <span>🛎️ Need Help?</span>
                   </button>
@@ -2420,7 +2507,7 @@
           </form>
           
           <div class="policy-link">
-            <a href="${policyUrl}" target="_blank">Privacy Policy</a>
+            <a href="${policyUrl}" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
           </div>
         `;
       }
@@ -2463,9 +2550,12 @@
               const specialAiPrice = hasOffer ? (rawPrice * (1 - offerPercent / 100)).toFixed(0) : '';
 
               const priceDisplay = formatCurrencyPrice(rawPrice, r.currency);
-              const trackingUrl = buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId);
+              const trackingUrl = safeUrl(buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId));
               const inStock = r.in_stock !== false;
-              const imgUrl = r.image_url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
+              const imgUrl = safeUrl(r.image_url, '') || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
+              // Card fields can come from AI text (markdown fallback), so every value is escaped
+              const safeTitle = escapeAttr(r.title || 'Product');
+              const safeOffer = escapeAttr(offerCode);
               // Badge only reflects real Shopify BEST_SELLING rank from the catalog sync (top 25 are flagged)
               const salesRank = Number(r.sales_rank) || 999;
               let popularBadge = '';
@@ -2476,32 +2566,32 @@
               return `
                 <div class="product-card">
                   <div class="product-card-thumb-wrap">
-                    <img src="${imgUrl}" alt="${r.title || 'Product'}" class="product-card-thumb" loading="lazy" />
+                    <img src="${escapeAttr(imgUrl)}" alt="${safeTitle}" class="product-card-thumb" loading="lazy" />
                     ${popularBadge ? `<span class="product-badge-popular">${popularBadge}</span>` : ''}
                     <span class="${inStock ? 'product-badge-stock' : 'product-badge-out'}">
                       ${inStock ? 'In Stock' : 'Out of Stock'}
                     </span>
                   </div>
                   <div class="product-card-info">
-                    <h4 class="product-card-title" title="${r.title || ''}">${r.title || 'Product'}</h4>
+                    <h4 class="product-card-title" title="${safeTitle}">${safeTitle}</h4>
                     <div class="product-card-price-row">
-                      <span class="product-card-price">${priceDisplay}</span>
+                      <span class="product-card-price">${escapeHtml(String(priceDisplay))}</span>
                       ${hasRealCompare ? `
-                        <span class="product-card-compare-price">${formatCurrencyPrice(comparePrice, r.currency)}</span>
+                        <span class="product-card-compare-price">${escapeHtml(String(formatCurrencyPrice(comparePrice, r.currency)))}</span>
                         <span class="product-card-discount-tag">${catalogDiscount}% OFF</span>
                       ` : ''}
                     </div>
 
                     ${hasOffer ? `
-                      <div class="ai-special-badge" data-code="${offerCode}">
+                      <div class="ai-special-badge" data-code="${safeOffer}">
                         <div class="ai-badge-top">
                           <span class="ai-badge-star">✨</span>
                           <span class="ai-badge-label">AI Special:</span>
-                          <strong class="ai-badge-price">${formatCurrencyPrice(specialAiPrice, r.currency)}</strong>
+                          <strong class="ai-badge-price">${escapeHtml(String(formatCurrencyPrice(specialAiPrice, r.currency)))}</strong>
                         </div>
                         <div class="ai-coupon-row">
-                          <span class="ai-coupon-code">${offerCode}</span>
-                          <button type="button" class="btn-copy-coupon" data-code="${offerCode}" title="Click to copy for checkout / Razorpay">
+                          <span class="ai-coupon-code">${safeOffer}</span>
+                          <button type="button" class="btn-copy-coupon" data-code="${safeOffer}" title="Click to copy for checkout / Razorpay">
                             📋 Copy
                           </button>
                         </div>
@@ -2509,21 +2599,21 @@
                     ` : ''}
 
                     <div class="product-card-btn-group">
-                      <a href="${trackingUrl}" target="_blank" class="btn-view-product" 
-                         data-product-id="${r.product_id || r.productId || ''}" 
+                      <a href="${escapeAttr(trackingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-view-product" 
+                         data-product-id="${escapeAttr(r.product_id || r.productId || '')}" 
                          data-title="${encodeURIComponent(r.title || '')}"
                          data-url="${encodeURIComponent(trackingUrl)}"
-                         data-offer-code="${offerCode}">
+                         data-offer-code="${safeOffer}">
                         View Product ↗
                       </a>
                       <button type="button" class="btn-add-to-cart" 
-                              data-variant-id="${r.variant_id || r.variantId || ''}" 
-                              data-product-id="${r.product_id || r.productId || ''}" 
+                              data-variant-id="${escapeAttr(r.variant_id || r.variantId || '')}" 
+                              data-product-id="${escapeAttr(r.product_id || r.productId || '')}" 
                               data-title="${encodeURIComponent(r.title || '')}" 
-                              data-price="${rawPrice}" 
-                              data-currency="${r.currency || 'INR'}"
+                              data-price="${escapeAttr(rawPrice)}" 
+                              data-currency="${escapeAttr(r.currency || 'INR')}"
                               data-product-url="${encodeURIComponent(trackingUrl)}"
-                              data-offer-code="${offerCode}">
+                              data-offer-code="${safeOffer}">
                         Add to Cart 🛒
                       </button>
                     </div>
@@ -2589,11 +2679,12 @@
             <div class="chat-messages" style="overflow-y: auto;">
               ${messagesHtml}
             </div>
+            ${this.ticketsEnabled() ? `
             <div class="chat-action-pills-bar">
               <button type="button" class="btn-need-help-chip" id="btn-quick-need-help" title="Need Human Support? Open Ticket">
                 <span>🛎️ Need Human Help? Open Ticket</span>
               </button>
-            </div>
+            </div>` : ''}
             <form class="chat-input" id="chat-form">
               <input type="text" id="chat-input-text" placeholder="Type a message..." ${isWaiting ? 'disabled' : ''} autocomplete="off" />
               <button type="submit" ${isWaiting ? 'disabled' : ''}>Send</button>
@@ -2774,9 +2865,7 @@
           pendingPill: null,
           view: 'welcome'
         });
-        try {
-          sessionStorage.setItem('ai_widget_view', 'welcome');
-        } catch (_) {}
+        this.writeSessionStored('ai_widget_view', 'welcome');
       };
 
       const btnBackWelcome = this.shadowRoot.getElementById('btn-back-welcome');

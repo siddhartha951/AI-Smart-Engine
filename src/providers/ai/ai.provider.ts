@@ -32,6 +32,8 @@ export interface AiRequestContext {
     knowledge_base?: string;
     support_contact?: string;
     ticket_revert_duration?: string;
+    /** false when the admin has not enabled support tickets for this store */
+    support_tickets_enabled?: boolean;
     quick_action_pills?: Array<{
       id: string;
       label: string;

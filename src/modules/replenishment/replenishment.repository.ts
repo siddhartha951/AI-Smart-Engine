@@ -259,14 +259,23 @@ export class ReplenishmentRepository {
     );
   }
 
-  async getDueSchedules(limit = 50): Promise<ReplenishmentSchedule[]> {
-    const res = await this.db.query<ReplenishmentSchedule>(
-      `SELECT * FROM replenishment_schedules 
-       WHERE status = 'pending' AND reminder_at <= NOW() 
-       ORDER BY reminder_at ASC 
-       LIMIT $1`,
-      [limit]
-    );
+  /** Due schedules across all stores (worker), or for one store when storeId is given (merchant action). */
+  async getDueSchedules(limit = 50, storeId?: string): Promise<ReplenishmentSchedule[]> {
+    const res = storeId
+      ? await this.db.query<ReplenishmentSchedule>(
+          `SELECT * FROM replenishment_schedules
+           WHERE status = 'pending' AND reminder_at <= NOW() AND store_id = $2
+           ORDER BY reminder_at ASC
+           LIMIT $1`,
+          [limit, storeId]
+        )
+      : await this.db.query<ReplenishmentSchedule>(
+          `SELECT * FROM replenishment_schedules
+           WHERE status = 'pending' AND reminder_at <= NOW()
+           ORDER BY reminder_at ASC
+           LIMIT $1`,
+          [limit]
+        );
     return res.rows;
   }
 

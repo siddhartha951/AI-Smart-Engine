@@ -15,7 +15,10 @@ import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
 import {
   AGENT_TOOLS,
+  TOOL_FEATURES,
+  ToolDefinition,
   executeAgentTool,
+  getAllowedAgentTools,
 } from './ai_agent.tools';
 import {
   AgentChatResponse,
@@ -23,6 +26,7 @@ import {
   AgentToolName,
   ChatHistoryMessage,
 } from './ai_agent.types';
+import { decideReplyLanguage, languageInstruction } from './language';
 
 /** Hard ceiling on LLM output per agent turn (cost safety). */
 export const AGENT_MAX_OUTPUT_TOKENS = 1200;
@@ -40,7 +44,7 @@ HARD RULES — never break these:
 3. NEVER reveal API keys, access tokens, or any other store's data. You only ever see this one store.
 4. If the merchant's question is not about their store data (greetings, general advice), answer briefly without tools — but never attach numbers to such answers.
 5. Keep answers concise and skimmable. Use short bullet lists for multiple findings.
-6. Match the merchant's language: if they write in Hinglish/Hindi, reply in Hinglish; if English, reply in English.
+6. Write in professional English by default. Follow the REPLY LANGUAGE instruction below exactly; do not switch language because of a single Hindi word.
 
 When data suggests an action (e.g. a campaign with very low ROAS, an ad with collapsing CTR), end with one clear, specific recommendation grounded in the numbers you just reported.`;
 
@@ -63,8 +67,8 @@ export function isAgentConfigured(): boolean {
   }
 }
 
-function toOpenAiTools(): OpenAI.Chat.ChatCompletionTool[] {
-  return AGENT_TOOLS.map((t) => ({
+function toOpenAiTools(defs: ToolDefinition[] = AGENT_TOOLS): OpenAI.Chat.ChatCompletionTool[] {
+  return defs.map((t) => ({
     type: 'function' as const,
     function: {
       name: t.name,
@@ -101,16 +105,29 @@ export async function runAgentChat(opts: RunAgentChatOptions): Promise<AgentChat
   const env = getEnvConfig();
   const model = env.OPENAI_MODEL || 'gpt-4o-mini';
 
+  const recentHistory = history.slice(-20);
+  const replyLanguage = decideReplyLanguage([
+    ...recentHistory.filter((m) => m.role === 'user').map((m) => m.content),
+    message,
+  ]);
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: AGENT_SYSTEM_PROMPT },
-    ...history.slice(-20).map((m) => ({
+    { role: 'system', content: `${AGENT_SYSTEM_PROMPT}\n\n${languageInstruction(replyLanguage)}` },
+    ...recentHistory.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     })),
     { role: 'user', content: message },
   ];
 
-  const tools = toOpenAiTools();
+  // Only offer tools for modules this store is entitled to (fail closed to core Shopify tools)
+  let allowedTools: ToolDefinition[];
+  try {
+    allowedTools = await getAllowedAgentTools(storeId);
+  } catch {
+    allowedTools = AGENT_TOOLS.filter((t) => !TOOL_FEATURES[t.name]);
+  }
+  const tools = toOpenAiTools(allowedTools);
   const toolsUsed: AgentToolName[] = [];
   let inputTokens = 0;
   let outputTokens = 0;

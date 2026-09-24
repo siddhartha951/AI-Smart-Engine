@@ -276,13 +276,13 @@ export class ReplenishmentService {
   // 4. Reminder Worker & Multi-Channel Dispatch
   // ==========================================
 
-  async processDueReminders(limit = 50): Promise<{
+  async processDueReminders(limit = 50, storeId?: string): Promise<{
     processed: number;
     sent: number;
     suppressed: number;
     cancelled: number;
   }> {
-    const dueSchedules = await this.repo.getDueSchedules(limit);
+    const dueSchedules = await this.repo.getDueSchedules(limit, storeId);
     let sentCount = 0;
     let suppressedCount = 0;
     let cancelledCount = 0;

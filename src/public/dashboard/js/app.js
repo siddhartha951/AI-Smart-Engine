@@ -1,5 +1,5 @@
-import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.4.0';
-import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.4.0';
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.5.0';
+import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.5.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -39,7 +39,7 @@ try {
         });
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Login failed');
+        if (!res.ok) throw new Error(data.message || data.error?.message || (typeof data.error === 'string' ? data.error : '') || 'Login failed');
 
         state.token = data.token;
         state.user = data.user;
@@ -149,6 +149,40 @@ const sections = {
   'ai-agent': document.getElementById('ai-agent')
 };
 
+const LOAD_ERROR_TEXT = "We couldn't load this data right now. Please refresh the page or try again in a moment.";
+
+// Replaces a stuck "Loading..." table body with a clear error row spanning the table
+function showTableError(tbody, text = LOAD_ERROR_TEXT) {
+  if (!tbody) return;
+  const cols = tbody.closest('table')?.querySelectorAll('thead th').length || 1;
+  tbody.innerHTML = `<tr><td colspan="${cols}" class="text-center text-muted" style="padding: 18px;">${escapeHtml(text)}</td></tr>`;
+}
+
+const FEATURE_DISABLED_MESSAGE = 'This feature is currently not enabled for your store. Please contact your administrator to activate it.';
+
+// Any API call blocked by a disabled entitlement (403 FEATURE_DISABLED) surfaces one clear
+// message instead of a generic error or a silent blank section. The response is passed through untouched.
+(function installFeatureDisabledNotice() {
+  if (window.__featureNoticeInstalled || typeof window.fetch !== 'function') return;
+  window.__featureNoticeInstalled = true;
+  const nativeFetch = window.fetch.bind(window);
+  let lastNoticeAt = 0;
+  window.fetch = async (...args) => {
+    const res = await nativeFetch(...args);
+    if (res.status === 403) {
+      res.clone().json().then(body => {
+        if (body && body.code === 'FEATURE_DISABLED' && Date.now() - lastNoticeAt > 4000) {
+          lastNoticeAt = Date.now();
+          showToast(body.message || FEATURE_DISABLED_MESSAGE, true);
+        }
+      }).catch(() => {});
+    }
+    return res;
+  };
+})();
+
+// Shopify connection is core infrastructure (catalog sync, chat grounding), not a paid module,
+// so it is intentionally not mapped: disabling "catalogue" must not hide the connect screen.
 const NAV_FEATURE_MAP = {
   'growth-copilot': 'growth_copilot',
   'overview': 'overview',
@@ -157,7 +191,6 @@ const NAV_FEATURE_MAP = {
   'leads-optins': 'leads',
   'support-tickets': 'support_tickets',
   'widget-settings': 'widget',
-  'shopify-connection': 'catalogue',
   'ad-creative-studio': 'ad_creative',
   'whatsapp-growth': 'whatsapp',
   'email-automation': 'email_automation',
@@ -280,11 +313,11 @@ function setupEventListeners() {
       e.preventDefault();
       const a = e.target.closest('a');
       if (!a) return;
+      const target = a.getAttribute('data-target');
+      // Disabled feature: keep the current tab and do not fire requests for the blocked module
+      if (!showSection(target)) return;
       document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
       a.classList.add('active');
-      
-      const target = a.getAttribute('data-target');
-      showSection(target);
       loadSectionData(target);
       closeMobileSidebar();
     });
@@ -631,7 +664,7 @@ function setupEventListeners() {
           body: JSON.stringify({ currency: newCurrency })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update currency');
+        if (!res.ok) throw new Error(data.message || data.error?.message || (typeof data.error === 'string' ? data.error : '') || 'Failed to update currency');
 
         state.activeStoreCurrency = newCurrency;
         if (statusEl) {
@@ -1275,8 +1308,8 @@ async function disconnectShopify() {
 function showSection(sectionName) {
   const featKey = NAV_FEATURE_MAP[sectionName];
   if (featKey && state.features && state.features[featKey] === false) {
-    showToast('This feature is not enabled for your store. Contact your administrator.', true);
-    return;
+    showToast(FEATURE_DISABLED_MESSAGE, true);
+    return false;
   }
 
   Object.values(sections).forEach(s => { 
@@ -1306,6 +1339,7 @@ function showSection(sectionName) {
   } else {
     stopLiveAnalyticsPolling();
   }
+  return true;
 }
 
 async function loadSectionData(section) {
@@ -1790,6 +1824,7 @@ async function loadProductsTable(search = '') {
     }).join('');
   } catch (err) {
     console.error('Error loading products table:', err);
+    showTableError(tbody);
   }
 }
 
@@ -2963,6 +2998,7 @@ async function loadSavedCreativesTable() {
     });
   } catch (err) {
     console.error('Error loading saved creatives:', err);
+    showTableError(tbody);
   }
 }
 
@@ -3699,7 +3735,7 @@ async function loadReplenishableProducts(search = '') {
             body: JSON.stringify({ replenishable, cycleDays, reminderDaysBefore: reminderDays })
           });
           const resData = await res.json();
-          if (!res.ok) throw new Error(resData.error || 'Failed to update product');
+          if (!res.ok) throw new Error(resData.message || resData.error?.message || (typeof resData.error === 'string' ? resData.error : '') || 'Failed to update product');
           showToast('Product replenishment settings saved!');
         } catch (err) {
           showToast(err.message, true);
@@ -3711,6 +3747,7 @@ async function loadReplenishableProducts(search = '') {
     });
   } catch (err) {
     console.error('Failed to load replenishable products:', err);
+    showTableError(tbody);
   }
 }
 
@@ -3789,7 +3826,7 @@ async function runReplenishmentWorkerNow() {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to process reminders');
+    if (!res.ok) throw new Error(data.message || data.error?.message || (typeof data.error === 'string' ? data.error : '') || 'Failed to process reminders');
 
     const d = data.data || {};
     showToast(`Worker processed ${d.processed || 0} schedules (${d.sent || 0} sent, ${d.suppressed || 0} suppressed, ${d.cancelled || 0} skipped).`);
@@ -3912,7 +3949,7 @@ function setupAdIntelligenceEventListeners() {
         });
 
         const resData = await res.json();
-        if (!res.ok) throw new Error(resData.error || 'Failed to save ad spend');
+        if (!res.ok) throw new Error(resData.message || resData.error?.message || (typeof resData.error === 'string' ? resData.error : '') || 'Failed to save ad spend');
 
         showToast('Ad spend entry saved successfully!');
         document.getElementById('spend-amount').value = '';
@@ -4037,6 +4074,7 @@ async function loadChannelPerformance() {
     }).join('');
   } catch (err) {
     console.error('Failed to load channel performance:', err);
+    showTableError(tbody);
   }
 }
 
@@ -4083,6 +4121,7 @@ async function loadCampaignPerformance() {
     }).join('');
   } catch (err) {
     console.error('Failed to load campaign performance:', err);
+    showTableError(tbody);
   }
 }
 
@@ -4141,6 +4180,7 @@ async function loadAttributedOrders() {
     }).join('');
   } catch (err) {
     console.error('Failed to load attributed orders:', err);
+    showTableError(tbody);
   }
 }
 
@@ -4256,6 +4296,7 @@ async function loadAdSpendList() {
     }).join('');
   } catch (err) {
     console.error('Failed to load ad spend list:', err);
+    showTableError(tbody);
   }
 }
 
@@ -4656,6 +4697,7 @@ async function loadOverviewInsights(forceRefresh = false) {
     }
   } catch (err) {
     console.error('Error loading overview insights:', err);
+    [happeningEl, whyEl, actionsEl].forEach(el => { if (el) el.innerHTML = `<p class="text-muted" style="margin: 0;">${LOAD_ERROR_TEXT}</p>`; });
   }
 }
 
@@ -4674,8 +4716,11 @@ window.navigateToModule = function(moduleName) {
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
   if (link && link.closest('li').style.display !== 'none') {
     link.click();
+  } else if (link) {
+    // Tab is hidden because the admin has not enabled this module for the store
+    showToast(FEATURE_DISABLED_MESSAGE, true);
   } else {
-    showToast(`Navigated to ${moduleName}`);
+    showToast('This section is not available in your dashboard.', true);
   }
 };
 
@@ -5313,7 +5358,7 @@ async function metaApi(path, options = {}) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(body.error || body.message || `Request failed (${res.status})`);
+    throw new Error(body.message || body.error?.message || (typeof body.error === 'string' ? body.error : '') || `Request failed (${res.status})`);
   }
   return body.data;
 }
@@ -5593,7 +5638,7 @@ async function explorerApi(path, options = {}) {
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(body.error || body.message || `Request failed (${res.status})`);
+    throw new Error(body.message || body.error?.message || (typeof body.error === 'string' ? body.error : '') || `Request failed (${res.status})`);
   }
   return body.data;
 }

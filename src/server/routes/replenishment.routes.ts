@@ -207,7 +207,8 @@ replenishmentRouter.post('/process-due', async (req: Request, res: Response, nex
     const db = (req as any).db || getDatabaseClient();
     const service = new ReplenishmentService({ db });
 
-    const result = await service.processDueReminders(50);
+    // Merchant action: only this store's due reminders (the worker handles all stores)
+    const result = await service.processDueReminders(50, req.params.storeId as string);
     res.json({
       success: true,
       data: result,
