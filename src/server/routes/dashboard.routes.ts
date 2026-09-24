@@ -25,6 +25,7 @@ import { ticketDashboardRouter } from './ticket.routes';
 import { emailSenderRouter } from './email-sender.routes';
 import { knowledgeRouter } from './knowledge.routes';
 import { normalizeEscalationMode, normalizeEscalationSensitivity } from '../../modules/support_tickets/escalation';
+import { normalizeRecommendationSettings } from '../../modules/chat/recommendation-policy';
 
 const router = Router();
 
@@ -295,6 +296,19 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
             assistant.escalation_sensitivity !== undefined ? normalizeEscalationSensitivity(assistant.escalation_sensitivity) : normalizeEscalationSensitivity(old.escalation_sensitivity),
             storeId,
           ]
+        );
+      }
+      // Product recommendations: ask first / style / per reply / card details (unknown values fall back safely)
+      const recKeys = ['product_suggestion_mode', 'product_display_style', 'max_recommendations', 'show_product_variants', 'show_product_reason'];
+      if (recKeys.some(k => assistant[k] !== undefined)) {
+        const merged = normalizeRecommendationSettings({
+          ...old,
+          ...Object.fromEntries(recKeys.filter(k => assistant[k] !== undefined).map(k => [k, assistant[k]])),
+        });
+        await db.query(
+          `UPDATE assistant_settings SET product_suggestion_mode = $1, product_display_style = $2, max_recommendations = $3,
+             show_product_variants = $4, show_product_reason = $5 WHERE store_id = $6`,
+          [merged.suggestionMode, merged.displayStyle, merged.maxRecommendations, merged.showVariants, merged.showReason, storeId]
         );
       }
       await auditRepo.logAction(req.user!.id, storeId, 'UPDATE_ASSISTANT_SETTINGS', 'assistant_settings', oldAssistant.rows[0] || {}, assistant);

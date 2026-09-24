@@ -17,6 +17,8 @@ describe('Phase 4: AI Chat and Recommendations', () => {
     db = new InMemoryPostgresClient();
     const migrator = new Migrator(db);
     await migrator.runMigrations();
+    // These tests cover immediate recommendations; "Ask first" (the default) has its own suite
+    await db.query(`UPDATE assistant_settings SET product_suggestion_mode = 'direct'`);
 
     app = createApp({ db });
   });

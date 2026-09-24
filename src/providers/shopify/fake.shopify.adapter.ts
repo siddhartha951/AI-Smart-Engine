@@ -15,7 +15,13 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
         in_stock: true,
         category: 'audio',
         image_url: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&auto=format&fit=crop&q=80',
-        product_url: 'https://store-a.com/products/wireless-earbuds'
+        product_url: 'https://store-a.com/products/wireless-earbuds',
+        // Demo variants so the in-chat variant picker has data in fake mode
+        options: [{ name: 'Color', values: ['Black', 'White'] }],
+        variants: [
+          { id: 'var_a_1', title: 'Black', price: 49.99, compare_at_price: 69.99, available: true, options: { Color: 'Black' } },
+          { id: 'var_a_1w', title: 'White', price: 54.99, compare_at_price: 69.99, available: false, options: { Color: 'White' } },
+        ],
       },
       {
         id: 'prod_a_2',

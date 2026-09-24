@@ -1,5 +1,5 @@
-import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.7.0';
-import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.7.0';
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.8.0';
+import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.8.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -180,7 +180,39 @@ function applyEscalationPanelState() {
 
 document.addEventListener('change', (e) => {
   if (e.target && e.target.name === 'agent-escalation-mode') applyEscalationPanelState();
+  if (e.target && (e.target.name === 'agent-recs-timing' || e.target.name === 'agent-recs-style'
+    || ['agent-recs-max', 'agent-recs-variants', 'agent-recs-why'].includes(e.target.id))) applyRecsPanelState();
 });
+
+// My Agent -> Product recommendations: keeps the live preview in step with the choices
+function applyRecsPanelState() {
+  const panel = document.getElementById('agent-recs-panel');
+  if (!panel) return;
+  const timing = document.querySelector('input[name="agent-recs-timing"]:checked')?.value || 'ask_first';
+  const style = document.querySelector('input[name="agent-recs-style"]:checked')?.value || 'cards';
+  const max = parseInt(document.getElementById('agent-recs-max')?.value, 10) || 3;
+  const variantsOn = Boolean(document.getElementById('agent-recs-variants')?.checked);
+  const whyOn = Boolean(document.getElementById('agent-recs-why')?.checked);
+  const links = style === 'links';
+
+  ['agent-recs-variants', 'agent-recs-why'].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.disabled = links;
+    input.closest('.recs-toggle')?.classList.toggle('is-disabled', links);
+  });
+  document.getElementById('agent-recs-links-note')?.classList.toggle('hidden', !links);
+
+  const show = (selector, visible) => panel.querySelectorAll(selector).forEach(el => { el.style.display = visible ? '' : 'none'; });
+  show('.recs-prev-ask', timing === 'ask_first');
+  show('.recs-prev-links', links);
+  show('.recs-prev-card', style === 'cards');
+  show('.recs-prev-compact', style === 'compact');
+  show('.recs-prev-why', whyOn);
+  show('.recs-prev-variants, .recs-prev-variants-chip', variantsOn);
+  const intro = document.getElementById('recs-prev-intro');
+  if (intro) intro.textContent = links ? 'You can go with the link below:' : max === 1 ? "Here's the one I'd pick for you:" : `Here are up to ${max} that fit:`;
+}
 
 const FEATURE_DISABLED_MESSAGE = 'This feature is currently not enabled for your store. Please contact your administrator to activate it.';
 
@@ -390,6 +422,13 @@ function setupEventListeners() {
         tone: document.getElementById('agent-tone').value,
         support_contact: document.getElementById('agent-support').value,
         ticket_revert_duration: document.getElementById('agent-revert-duration') ? document.getElementById('agent-revert-duration').value : 'within 24 hours',
+        ...(document.getElementById('agent-recs-panel') ? {
+          product_suggestion_mode: document.querySelector('input[name="agent-recs-timing"]:checked')?.value || 'ask_first',
+          product_display_style: document.querySelector('input[name="agent-recs-style"]:checked')?.value || 'cards',
+          max_recommendations: parseInt(document.getElementById('agent-recs-max')?.value, 10) || 3,
+          show_product_variants: Boolean(document.getElementById('agent-recs-variants')?.checked),
+          show_product_reason: Boolean(document.getElementById('agent-recs-why')?.checked),
+        } : {}),
         ...(document.querySelector('input[name="agent-escalation-mode"]') ? {
           escalation_mode: document.querySelector('input[name="agent-escalation-mode"]:checked')?.value || 'smart',
           escalation_sensitivity: document.getElementById('agent-escalation-sensitivity')?.value || 'balanced',
@@ -1509,6 +1548,16 @@ async function loadSectionData(section) {
           document.getElementById('agent-escalation-sensitivity').value = data.assistant.escalation_sensitivity || 'balanced';
         }
         applyEscalationPanelState();
+        const recTiming = data.assistant.product_suggestion_mode === 'direct' ? 'direct' : 'ask_first';
+        const recStyle = ['cards', 'compact', 'links'].includes(data.assistant.product_display_style) ? data.assistant.product_display_style : 'cards';
+        const timingRadio = document.querySelector(`input[name="agent-recs-timing"][value="${recTiming}"]`);
+        const styleRadio = document.querySelector(`input[name="agent-recs-style"][value="${recStyle}"]`);
+        if (timingRadio) timingRadio.checked = true;
+        if (styleRadio) styleRadio.checked = true;
+        if (document.getElementById('agent-recs-max')) document.getElementById('agent-recs-max').value = String(data.assistant.max_recommendations || 3);
+        if (document.getElementById('agent-recs-variants')) document.getElementById('agent-recs-variants').checked = data.assistant.show_product_variants !== false;
+        if (document.getElementById('agent-recs-why')) document.getElementById('agent-recs-why').checked = data.assistant.show_product_reason !== false;
+        applyRecsPanelState();
         if (document.getElementById('agent-apology-code')) {
           document.getElementById('agent-apology-code').value = data.assistant.ticket_apology_discount_code || '';
           document.getElementById('agent-apology-percent').value = data.assistant.ticket_apology_discount_percent || 10;

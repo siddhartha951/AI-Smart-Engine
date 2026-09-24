@@ -13,7 +13,7 @@ import {
 import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { MockAiProvider } from './mock.ai.provider';
-import { extractAndParseJson, matchBoldProductMentions } from './ai.utils';
+import { extractAndParseJson, matchBoldProductMentions, pickReasons } from './ai.utils';
 import { buildShopperSystemPrompt, MAX_HISTORY_MESSAGES, MAX_RECOMMENDATIONS, ticketsUnavailable } from './shopper-prompt';
 
 export class OpenAiProvider implements IAiProvider {
@@ -65,6 +65,11 @@ export class OpenAiProvider implements IAiProvider {
                     items: { type: 'string' },
                     description: 'List of product IDs from the catalog subset to show to the user as cards',
                   },
+                  reasons: {
+                    type: 'object',
+                    additionalProperties: { type: 'string' },
+                    description: 'Optional: product_id -> short "why this fits" line (max 10 words) for each recommended product',
+                  },
                 },
                 required: ['message', 'product_ids'],
               },
@@ -105,6 +110,7 @@ export class OpenAiProvider implements IAiProvider {
 
       let finalContent = choice.message.content || '';
       let recommendedIds: string[] = [];
+      let recommendationReasons: Record<string, string> = {};
       let shouldEscalateTicket = false;
       let ticketSubject: string | undefined;
       let ticketReason: string | undefined;
@@ -123,6 +129,7 @@ export class OpenAiProvider implements IAiProvider {
           if (toolCall.function.name === 'recommend_products') {
             if (args.message) finalContent = args.message;
             recommendedIds = [...new Set<string>((args.product_ids || []).filter((id: string) => validIds.has(id)))];
+            recommendationReasons = pickReasons(args.reasons, validIds);
           } else if (toolCall.function.name === 'escalate_support_ticket') {
             if (args.message) finalContent = args.message;
             shouldEscalateTicket = true;
@@ -168,6 +175,7 @@ export class OpenAiProvider implements IAiProvider {
         should_escalate_ticket: shouldEscalateTicket,
         ticket_subject: ticketSubject,
         ticket_reason: ticketReason,
+        recommendation_reasons: recommendationReasons,
       };
     } catch (err: any) {
       if (

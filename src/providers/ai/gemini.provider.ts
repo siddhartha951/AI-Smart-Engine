@@ -16,7 +16,7 @@ import {
 import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { MockAiProvider } from './mock.ai.provider';
-import { extractAndParseJson, matchBoldProductMentions } from './ai.utils';
+import { extractAndParseJson, matchBoldProductMentions, pickReasons } from './ai.utils';
 import { buildShopperSystemPrompt, MAX_HISTORY_MESSAGES, MAX_RECOMMENDATIONS } from './shopper-prompt';
 
 export class GeminiAiProvider implements IAiProvider {
@@ -85,6 +85,7 @@ export class GeminiAiProvider implements IAiProvider {
 
       let finalContent = '';
       let recommendedIds: string[] = [];
+      let recommendationReasons: Record<string, string> = {};
       let shouldEscalateTicket = false;
       let ticketSubject: string | undefined;
       let ticketReason: string | undefined;
@@ -93,6 +94,7 @@ export class GeminiAiProvider implements IAiProvider {
         const parsed = extractAndParseJson<{
           message?: string;
           recommended_product_ids?: string[];
+          product_reasons?: Record<string, string>;
           should_escalate_ticket?: boolean;
           ticket_subject?: string;
           ticket_reason?: string;
@@ -104,6 +106,7 @@ export class GeminiAiProvider implements IAiProvider {
           recommendedIds = matchBoldProductMentions(finalContent, context.catalogSubset);
         }
         recommendedIds = recommendedIds.slice(0, MAX_RECOMMENDATIONS);
+        recommendationReasons = pickReasons(parsed.product_reasons, validIds);
         shouldEscalateTicket = Boolean(parsed.should_escalate_ticket);
         ticketSubject = parsed.ticket_subject;
         ticketReason = parsed.ticket_reason;
@@ -134,6 +137,7 @@ export class GeminiAiProvider implements IAiProvider {
         should_escalate_ticket: shouldEscalateTicket,
         ticket_subject: ticketSubject,
         ticket_reason: ticketReason,
+        recommendation_reasons: recommendationReasons,
       };
     } catch (err: any) {
       logger.warn('GeminiAiProvider.generateResponse failed, attempting OpenAI fallback:', { error: err.message });

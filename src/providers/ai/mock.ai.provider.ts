@@ -15,8 +15,13 @@ export class MockAiProvider implements IAiProvider {
     chatHistory: ChatMessage[],
     context: AiRequestContext
   ): Promise<AiResponse> {
-    const lastUserMessage = [...chatHistory].reverse().find((m) => m.role === 'user');
-    const userText = lastUserMessage?.content.toLowerCase() || '';
+    const userTurns = chatHistory.filter((m) => m.role === 'user');
+    const lastUserMessage = userTurns[userTurns.length - 1];
+    let userText = lastUserMessage?.content.toLowerCase() || '';
+    // "Yes, show me some options" answers the previous question: match products on that topic too
+    if (/^\s*(yes|yeah|sure|ok|haan)\b/.test(userText) && userTurns.length > 1) {
+      userText = `${userTurns[userTurns.length - 2].content.toLowerCase()} ${userText}`;
+    }
 
     let recommendedIds: string[] = [];
     let content = `Hello! I am ${context.assistantSettings.assistant_name}, your shopping assistant. `;

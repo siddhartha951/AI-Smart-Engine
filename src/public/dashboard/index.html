@@ -673,6 +673,87 @@
                 </select>
               </div>
             </div>
+            <div class="form-group" id="agent-recs-panel">
+              <label>Product Recommendations</label>
+              <small class="form-hint" style="margin: 0 0 10px;">Decide when your assistant suggests products and how they appear in the chat. The preview updates as you choose.</small>
+              <div class="recs-layout">
+                <div class="recs-controls">
+                  <div class="recs-step">
+                    <span class="recs-step-title">1. When should the assistant suggest products?</span>
+                    <div class="esc-mode-options" role="radiogroup" aria-label="When to suggest products">
+                      <label class="esc-mode-option">
+                        <input type="radio" name="agent-recs-timing" value="ask_first" checked>
+                        <span><strong>Ask first (recommended)</strong><small>The assistant asks "Would you like me to show a few options?" and shows products only after the shopper says yes or asks for them.</small></span>
+                      </label>
+                      <label class="esc-mode-option">
+                        <input type="radio" name="agent-recs-timing" value="direct">
+                        <span><strong>Show directly</strong><small>Products appear as soon as the shopper's need is clear, without asking first.</small></span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="recs-step">
+                    <span class="recs-step-title">2. How should products appear?</span>
+                    <div class="recs-style-options" role="radiogroup" aria-label="How products appear">
+                      <label class="esc-mode-option">
+                        <input type="radio" name="agent-recs-style" value="cards" checked>
+                        <span><strong>Product cards</strong><small>Image, variants, price and Add to cart.</small></span>
+                      </label>
+                      <label class="esc-mode-option">
+                        <input type="radio" name="agent-recs-style" value="compact">
+                        <span><strong>Compact list</strong><small>Small thumbnail, price and a quick Add button.</small></span>
+                      </label>
+                      <label class="esc-mode-option">
+                        <input type="radio" name="agent-recs-style" value="links">
+                        <span><strong>Links only</strong><small>Clickable product links in the reply. No Add to cart.</small></span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="recs-step-row">
+                    <div class="recs-step">
+                      <label for="agent-recs-max" class="recs-step-title">3. Products per reply</label>
+                      <select id="agent-recs-max" class="form-control">
+                        <option value="1">1 product</option>
+                        <option value="2">Up to 2 products</option>
+                        <option value="3" selected>Up to 3 products</option>
+                      </select>
+                    </div>
+                    <div class="recs-step">
+                      <span class="recs-step-title">4. Card details</span>
+                      <label class="recs-toggle"><input type="checkbox" id="agent-recs-variants" checked> Show variants (pack size, colour, size)</label>
+                      <label class="recs-toggle"><input type="checkbox" id="agent-recs-why" checked> Show a "Why this fits" line</label>
+                      <small id="agent-recs-links-note" class="form-hint hidden" style="margin: 4px 0 0;">Links only shows text links: no images, variants or Add to cart.</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="recs-preview" aria-label="Live preview of the chat">
+                  <div class="recs-prev-head">Live preview</div>
+                  <div class="recs-prev-chat">
+                    <div class="recs-prev-bubble user">My dog keeps scratching. What can help?</div>
+                    <div class="recs-prev-ask">
+                      <div class="recs-prev-bubble">Scratching often comes from dry or itchy skin. Would you like me to show a few options that fit?</div>
+                      <div class="recs-prev-chips"><span class="is-primary">Yes, show me</span><span>No thanks</span></div>
+                      <div class="recs-prev-bubble user">Yes, show me</div>
+                    </div>
+                    <div class="recs-prev-bubble">
+                      <span id="recs-prev-intro">Here's the one I'd pick for you:</span>
+                      <div class="recs-prev-links"><a href="#agent-recs-panel">Aniwell Dermaprex · Pack of 3 ↗</a></div>
+                    </div>
+                    <div class="recs-prev-card">
+                      <div class="recs-prev-img"></div>
+                      <div class="recs-prev-body">
+                        <strong>Aniwell Dermaprex</strong>
+                        <span class="recs-prev-why">Why this fits: for itching and dry patches</span>
+                        <span class="recs-prev-variants"><em>Pack of 1</em><em>Pack of 2</em><em class="is-on">Pack of 3</em></span>
+                        <span class="recs-prev-cart">Add to cart</span>
+                      </div>
+                    </div>
+                    <div class="recs-prev-compact">
+                      <div class="recs-prev-row"><span class="recs-prev-thumb"></span><span><strong>Aniwell Dermaprex</strong><em class="recs-prev-variants-chip">Pack of 3</em></span><span class="recs-prev-add">Add</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="form-group">
               <label for="agent-revert-duration">Support Ticket SLA / Revert Duration</label>
               <select id="agent-revert-duration" class="form-control">
@@ -3095,6 +3176,6 @@
     }
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
-  <script type="module" src="js/app.js?v=2.7.0"></script>
+  <script type="module" src="js/app.js?v=2.8.0"></script>
 </body>
 </html>

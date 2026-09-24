@@ -92,3 +92,15 @@ export function matchBoldProductMentions(
   }
   return ids;
 }
+
+/** Keeps short "why this fits" lines for known product ids only. */
+export function pickReasons(raw: unknown, validIds: Set<string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (validIds.has(id) && typeof value === 'string' && value.trim()) {
+      out[id] = value.replace(/\s+/g, ' ').trim().slice(0, 120);
+    }
+  }
+  return out;
+}

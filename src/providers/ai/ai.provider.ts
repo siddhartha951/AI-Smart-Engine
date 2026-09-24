@@ -14,6 +14,8 @@ export interface AiResponse {
   should_escalate_ticket?: boolean;
   ticket_subject?: string;
   ticket_reason?: string;
+  /** Optional one-line "why this fits" per recommended product id */
+  recommendation_reasons?: Record<string, string>;
 }
 
 export interface AiRequestContext {
@@ -36,6 +38,12 @@ export interface AiRequestContext {
     support_tickets_enabled?: boolean;
     /** contact_only | smart | instant (see modules/support_tickets/escalation.ts) */
     escalation_mode?: string;
+    /** ask_first | direct (modules/chat/recommendation-policy.ts) */
+    product_suggestion_mode?: string;
+    /** cards | compact | links */
+    product_display_style?: string;
+    max_recommendations?: number;
+    show_product_reason?: boolean;
     quick_action_pills?: Array<{
       id: string;
       label: string;

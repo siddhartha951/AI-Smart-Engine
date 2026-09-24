@@ -161,6 +161,11 @@
     return luminance > 0.45 ? '#0f172a' : '#ffffff';
   }
 
+  // Distance of `el` from the top of the scroll container's content
+  function contentOffset(scroller, el) {
+    return el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+  }
+
   // Only http(s) or site-relative URLs may reach href/src (blocks javascript:, data: etc.)
   function safeUrl(value, fallback = '#') {
     const url = String(value == null ? '' : value).trim();
@@ -248,6 +253,67 @@
     });
 
     return outputHtml;
+  }
+
+  // ---- Product variants (pack size / colour / size) -------------------------------------
+  const SWATCH_COLORS = {
+    black: '#1c1b19', white: '#ffffff', ivory: '#f6f1e6', cream: '#f3ead8', beige: '#d9c8a9', oat: '#e3d8c3',
+    sand: '#d8c4a0', khaki: '#b9a77a', brown: '#7a5230', tan: '#b88a5a', grey: '#8a8a86', gray: '#8a8a86',
+    charcoal: '#3a3a38', silver: '#c0c0c0', gold: '#c9a24a', navy: '#26344d', blue: '#2f5fb3', sky: '#8fb8e0',
+    teal: '#2d7f7f', green: '#3f7d4f', sage: '#8fa98b', olive: '#6b6b3a', mint: '#a8d8c0', red: '#c0392b',
+    maroon: '#6d1f2b', burgundy: '#6d1f2b', pink: '#e8a1b0', peach: '#f2b999', orange: '#e07b39', yellow: '#e9c34a',
+    mustard: '#c9a227', purple: '#6b4fa0', lavender: '#b9a6d9', lilac: '#c8a2c8',
+  };
+
+  function swatchColor(value) {
+    const key = String(value || '').toLowerCase().trim();
+    if (SWATCH_COLORS[key]) return SWATCH_COLORS[key];
+    const word = Object.keys(SWATCH_COLORS).find(k => key.split(/[\s/-]+/).includes(k));
+    return word ? SWATCH_COLORS[word] : '';
+  }
+
+  function optionKind(name) {
+    if (/colou?r|shade/i.test(name || '')) return 'color';
+    if (/size/i.test(name || '')) return 'size';
+    return 'tile';
+  }
+
+  // "Pack of 3" / "3 Pack" / "Set of 2" / "2 x 250g" -> 3 / 3 / 2 / 2; plain values -> 0
+  function packCount(value) {
+    const text = String(value || '');
+    const m = text.match(/(?:pack|set|box|combo)\s*of\s*(\d+)/i)
+      || text.match(/^\s*(\d+)\s*(?:x\b|pack\b|pcs\b|pieces\b|units\b|bottles?\b|jars?\b|tubs?\b|boxes\b|count\b)/i);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+
+  function variantMatches(variant, selection) {
+    return Object.keys(selection).every(name => !selection[name] || (variant.options || {})[name] === selection[name]);
+  }
+
+  function resolveVariant(variants, selection, options) {
+    const complete = (options || []).every(o => selection[o.name]);
+    if (!complete) return null;
+    return variants.find(v => variantMatches(v, selection)) || null;
+  }
+
+  // Can this value still be bought given the shopper's other choices?
+  function valueAvailable(variants, selection, optName, value) {
+    const probe = { ...selection, [optName]: value };
+    return variants.some(v => v.available && variantMatches(v, probe));
+  }
+
+  function defaultSelection(rec) {
+    const variants = Array.isArray(rec.variants) ? rec.variants : [];
+    const options = Array.isArray(rec.options) ? rec.options : [];
+    const start = variants.find(v => String(v.id) === String(rec.variant_id) && v.available)
+      || variants.find(v => v.available) || variants[0];
+    const sel = {};
+    options.forEach(o => {
+      // Sizes are a personal choice: never pre-select one for the shopper
+      if (optionKind(o.name) === 'size' && variants.length > 1) return;
+      if (start && start.options && start.options[o.name]) sel[o.name] = start.options[o.name];
+    });
+    return sel;
   }
 
   const LEGACY_SHARED_KEYS = new Set(['ai_session_id', 'ai_visitor_id']);
@@ -763,10 +829,12 @@
         updatedMessages[updatedMessages.length - 1] = {
           role: 'assistant',
           content: json.success ? json.data.message : 'Error: ' + (errMsg || 'Unknown error'),
-          recommendations: json.success ? json.data.recommendations : []
+          recommendations: json.success ? json.data.recommendations : [],
+          productOffer: Boolean(json.success && json.data?.product_offer),
+          displayStyle: json.success ? json.data?.display_style : undefined,
         };
 
-        this.setState({ messages: updatedMessages });
+        this.setState({ messages: updatedMessages }, 'reply');
 
         // Auto-offer human ticket if customer asks for human/ticket/complaint or backend flagged escalation
         const isHumanQuery = /(human|agent|real person|customer care|talk to someone|support ticket|complaint|representative|executive|create ticket|raise ticket|open ticket)/i.test(text);
@@ -808,10 +876,16 @@
       }
     }
 
-    setState(newState) {
+    // scrollIntent: 'bottom' (shopper just sent a message / opened the chat),
+    // 'reply' (show the START of the newest assistant reply, never jump past it to the
+    // product cards), 'preserve' (keep the shopper's scroll position). Inferred when omitted.
+    setState(newState, scrollIntent) {
       if (newState.isOpen) {
         this.hideProactiveNudge();
       }
+      const prev = this.state;
+      const prevScroller = this.shadowRoot && this.shadowRoot.querySelector('.chat-messages');
+      const prevScrollTop = prevScroller ? prevScroller.scrollTop : 0;
       this.state = { ...this.state, ...newState };
       try {
         if (this.state.messages && this.state.messages.length > 0) {
@@ -821,14 +895,318 @@
         this.writeSessionStored('ai_widget_open', this.state.isOpen ? 'true' : 'false');
       } catch (_) {}
       this.render();
-      
-      // Auto scroll to bottom if in chat view
-      if (this.state.view === 'chat') {
-        setTimeout(() => {
-          const chatMessages = this.shadowRoot.querySelector('.chat-messages');
-          if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
-        }, 50);
+
+      if (this.state.view !== 'chat') return;
+      let intent = scrollIntent;
+      if (!intent) {
+        const openedChat = (prev.view !== 'chat') || (!prev.isOpen && this.state.isOpen);
+        const prevLen = (prev.messages || []).length;
+        const msgs = this.state.messages || [];
+        const last = msgs[msgs.length - 1];
+        if (openedChat) intent = 'bottom';
+        else if (msgs.length > prevLen && last) intent = last.role === 'user' || last.isLoading ? 'bottom' : 'reply';
+        else intent = 'preserve';
       }
+      this.applyChatScroll(intent, prevScrollTop);
+    }
+
+    applyChatScroll(intent, prevScrollTop) {
+      const scroller = this.shadowRoot.querySelector('.chat-messages');
+      if (!scroller) return;
+      if (intent === 'preserve') {
+        scroller.scrollTop = prevScrollTop; // synchronous: no visible jump after a re-render
+      } else if (intent === 'bottom') {
+        scroller.scrollTop = scroller.scrollHeight;
+      } else if (intent === 'reply') {
+        const replies = scroller.querySelectorAll('.msg-block.assistant');
+        const latest = replies[replies.length - 1];
+        if (latest) {
+          const fits = latest.offsetHeight <= scroller.clientHeight - 16;
+          // Short reply: show it fully at the bottom. Long reply (text + products): pin its first line.
+          scroller.scrollTop = fits ? scroller.scrollHeight : Math.max(0, contentOffset(scroller, latest) - 8);
+        }
+      }
+      // Layout (images) can still settle; re-apply once, then update the "options below" pill
+      requestAnimationFrame(() => {
+        if (intent === 'bottom') scroller.scrollTop = scroller.scrollHeight;
+        this.updateMorePill();
+      });
+    }
+
+    // "↓ 2 options below" when the newest reply's products are out of view
+    updateMorePill() {
+      const pill = this.shadowRoot.getElementById('scroll-more-pill');
+      const scroller = this.shadowRoot.querySelector('.chat-messages');
+      if (!pill || !scroller) return;
+      const blocks = scroller.querySelectorAll('.msg-block.assistant');
+      const latest = blocks[blocks.length - 1];
+      const products = latest ? latest.querySelector('.msg-products') : null;
+      const count = products ? Number(products.getAttribute('data-count') || 0) : 0;
+      const hidden = products && (contentOffset(scroller, products) + 24) > (scroller.scrollTop + scroller.clientHeight);
+      if (products && count > 0 && hidden) {
+        pill.textContent = `↓ ${count === 1 ? '1 option' : `${count} options`} below`;
+        pill.classList.remove('hidden');
+      } else {
+        pill.classList.add('hidden');
+      }
+    }
+
+    // ---- Product recommendations: cards / compact / links, with variant pickers -------------
+    recommendationConfig() {
+      const rc = this.state.config?.recommendations || {};
+      return {
+        style: ['cards', 'compact', 'links'].includes(rc.display_style) ? rc.display_style : 'cards',
+        showVariants: rc.show_variants !== false,
+        showReason: rc.show_reason !== false,
+      };
+    }
+
+    recSelection(key, rec) {
+      const chosen = (this.state.variantSel || {})[key];
+      return chosen ? { ...chosen } : defaultSelection(rec);
+    }
+
+    selectVariantOption(key, rec, name, value) {
+      const next = { ...this.recSelection(key, rec), [name]: value };
+      // Drop choices that no longer combine into a buyable variant
+      const variants = Array.isArray(rec.variants) ? rec.variants : [];
+      Object.keys(next).forEach(other => {
+        if (other !== name && next[other] && !variants.some(v => variantMatches(v, next))) delete next[other];
+      });
+      this.setState({ variantSel: { ...(this.state.variantSel || {}), [key]: next } }, 'preserve');
+    }
+
+    formatMoney(amount, currency) {
+      const n = Number(amount) || 0;
+      const text = Number.isInteger(n) ? n.toLocaleString('en-IN') : n.toFixed(2);
+      return formatCurrencyPrice(text, currency);
+    }
+
+    // Returns { inBubble, below }: links sit inside the reply bubble, cards/compact below it
+    renderRecommendations(recs, mIdx, m) {
+      const cfg = this.recommendationConfig();
+      const style = ['cards', 'compact', 'links'].includes(m.displayStyle) ? m.displayStyle : cfg.style;
+      const keyed = recs.map((r, i) => ({ r, key: `${mIdx}_${r.product_id || r.productId || r.id || i}` }));
+
+      if (style === 'links') {
+        const links = keyed.map(({ r }) => {
+          const url = safeUrl(buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId));
+          return `<a class="rec-link btn-view-product" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer"
+                     data-product-id="${escapeAttr(r.product_id || r.productId || '')}" data-title="${encodeURIComponent(r.title || '')}" data-url="${encodeURIComponent(url)}">
+                    <span>${escapeHtml(r.title || 'View product')}</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"></path><path d="M8 7h9v9"></path></svg>
+                  </a>`;
+        }).join('');
+        return { inBubble: `<div class="rec-links">${links}</div>`, below: '' };
+      }
+
+      if (style === 'compact') {
+        const rows = keyed.map(({ r, key }) => ((this.state.expandedRecs || {})[key]
+          ? this.renderProductCard(r, key, false, cfg)
+          : this.renderCompactRow(r, key, cfg))).join('');
+        return { inBubble: '', below: `<div class="msg-products compact" data-count="${recs.length}">${rows}</div>` };
+      }
+
+      if (keyed.length === 1) {
+        return { inBubble: '', below: `<div class="msg-products" data-count="1">${this.renderProductCard(keyed[0].r, keyed[0].key, false, cfg)}</div>` };
+      }
+      const carouselId = 'car_' + mIdx;
+      return {
+        inBubble: '',
+        below: `
+          <div class="msg-products" data-count="${recs.length}">
+            <div class="product-carousel-wrapper" data-carousel-id="${carouselId}">
+              <button type="button" class="carousel-nav-btn prev" aria-label="Previous products">❮</button>
+              <div class="product-carousel-track" id="${carouselId}">
+                ${keyed.map(({ r, key }) => this.renderProductCard(r, key, true, cfg)).join('')}
+              </div>
+              <button type="button" class="carousel-nav-btn next" aria-label="Next products">❯</button>
+            </div>
+            <div class="carousel-dots-indicator" data-carousel-id="${carouselId}">
+              ${keyed.map((_, i) => `<span class="carousel-dot ${i === 0 ? 'active' : ''}" data-index="${i}"></span>`).join('')}
+            </div>
+          </div>`,
+      };
+    }
+
+    // Price, stock, image and cart id for the shopper's current variant choice
+    variantState(r, key, cfg) {
+      const variants = cfg.showVariants && Array.isArray(r.variants) && r.variants.length > 1 ? r.variants : [];
+      const options = variants.length ? (Array.isArray(r.options) ? r.options.filter(o => o && o.name && Array.isArray(o.values)) : []) : [];
+      const selection = variants.length ? this.recSelection(key, r) : {};
+      const current = variants.length ? resolveVariant(variants, selection, options) : null;
+      const missing = options.find(o => !selection[o.name]);
+      return {
+        variants, options, selection, current, missing,
+        price: current ? current.price : Number(r.price) || 0,
+        compare: current ? current.compare_at_price : Number(r.compare_at_price) || 0,
+        inStock: current ? current.available : r.in_stock !== false,
+        variantId: current ? current.id : (r.variant_id || r.variantId || ''),
+        image: (current && current.image_url) || r.image_url || '',
+        label: current ? (current.title || Object.values(current.options || {}).join(' / ')) : '',
+      };
+    }
+
+    renderOptionGroups(r, key, vs) {
+      const { variants, options, selection } = vs;
+      if (!options.length) return '';
+      // Per-pack maths for single-option pack products ("Pack of 1 / 2 / 3")
+      const single = options.length === 1 ? options[0] : null;
+      let bestValue = '';
+      if (single) {
+        const priced = single.values
+          .map(v => ({ v, n: packCount(v), variant: variants.find(x => (x.options || {})[single.name] === v) }))
+          .filter(x => x.variant && x.n > 0);
+        if (priced.length >= 2) {
+          bestValue = priced.reduce((a, b) => (b.variant.price / b.n < a.variant.price / a.n ? b : a)).v;
+        }
+      }
+
+      return options.map(o => {
+        const kind = optionKind(o.name);
+        const values = o.values.slice(0, 8);
+        const extra = o.values.length - values.length;
+        const buttons = values.map(value => {
+          const on = selection[o.name] === value;
+          const avail = valueAvailable(variants, selection, o.name, value);
+          const attrs = `type="button" class="pc-opt-btn kind-${kind}${on ? ' is-on' : ''}${avail ? '' : ' is-out'}" data-rec-key="${escapeAttr(key)}" data-opt-name="${escapeAttr(o.name)}" data-opt-value="${escapeAttr(value)}" aria-pressed="${on ? 'true' : 'false'}" ${avail ? '' : 'disabled'}`;
+          if (kind === 'color') {
+            const hex = swatchColor(value);
+            return hex
+              ? `<button ${attrs} aria-label="${escapeAttr(value)}${avail ? '' : ' (sold out)'}" title="${escapeAttr(value)}"><span class="pc-swatch" style="background:${hex}"></span></button>`
+              : `<button ${attrs}>${escapeHtml(value)}</button>`;
+          }
+          if (kind === 'tile' && single) {
+            const variant = variants.find(x => (x.options || {})[o.name] === value);
+            const n = packCount(value);
+            const per = variant && n > 1 ? `<span class="pc-tile-sub">${escapeHtml(this.formatMoney(Math.round(variant.price / n), r.currency))} each</span>` : '';
+            const tag = value === bestValue ? '<span class="pc-tile-tag">Best value</span>' : '';
+            return `<button ${attrs}>${tag}<span class="pc-tile-name">${escapeHtml(value)}</span>${variant ? `<span class="pc-tile-price">${escapeHtml(this.formatMoney(variant.price, r.currency))}</span>` : ''}${per}</button>`;
+          }
+          return `<button ${attrs} aria-label="${escapeAttr(`${o.name} ${value}`)}${avail ? '' : ' (sold out)'}">${escapeHtml(value)}</button>`;
+        }).join('');
+        const more = extra > 0
+          ? `<a class="pc-more btn-view-product" href="${escapeAttr(safeUrl(buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId)))}" target="_blank" rel="noopener noreferrer" data-product-id="${escapeAttr(r.product_id || '')}" data-title="${encodeURIComponent(r.title || '')}" data-url="">+${extra} more</a>`
+          : '';
+        return `
+          <div class="pc-opt">
+            <div class="pc-opt-label">${escapeHtml(o.name)}${selection[o.name] ? `: <strong>${escapeHtml(selection[o.name])}</strong>` : ''}</div>
+            <div class="pc-opt-values kind-${kind}">${buttons}${more}</div>
+          </div>`;
+      }).join('');
+    }
+
+    renderProductCard(r, key, inCarousel, cfg) {
+      const vs = this.variantState(r, key, cfg);
+      const widgetConfig = this.state.config?.widget || {};
+      const offerCode = widgetConfig.offer_code || '';
+      const offerPercent = Number(widgetConfig.offer_discount_percent || 0);
+      const trackingUrl = safeUrl(buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId));
+      const image = safeUrl(vs.image, '') || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
+      const salesRank = Number(r.sales_rank) || 999;
+      const badge = salesRank <= 3 ? `Best seller #${salesRank}` : salesRank <= 10 ? 'Best seller' : (r.is_bestseller ? 'Trending' : '');
+
+      // Savings: vs buying single packs, else vs the compare-at price
+      let saveText = '';
+      const n = vs.current ? packCount(Object.values(vs.current.options || {})[0]) : 0;
+      const singleVariant = vs.options.length === 1 ? vs.variants.find(v => packCount(Object.values(v.options || {})[0]) === 1) : null;
+      if (n > 1 && singleVariant && singleVariant.price > 0) {
+        const pct = Math.round((1 - vs.price / (n * singleVariant.price)) * 100);
+        if (pct > 0) saveText = `Save ${pct}% vs single`;
+      } else if (vs.compare > vs.price && vs.price > 0) {
+        saveText = `Save ${Math.round(((vs.compare - vs.price) / vs.compare) * 100)}%`;
+      }
+
+      const why = cfg.showReason && r.why ? `
+        <div class="pc-why">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+          <span><strong>Why this fits:</strong> ${escapeHtml(r.why)}</span>
+        </div>` : '';
+
+      let cartLabel = 'Add to cart';
+      let cartDisabled = false;
+      if (vs.missing) { cartLabel = `Select ${vs.missing.name.toLowerCase()}`; cartDisabled = true; }
+      else if (!vs.inStock) { cartLabel = 'Sold out'; cartDisabled = true; }
+      else if (vs.label) cartLabel = `Add to cart · ${vs.label}`;
+
+      const coupon = offerCode && offerPercent > 0 ? `
+        <div class="pc-coupon">
+          <span>Extra ${offerPercent}% off with <strong>${escapeHtml(offerCode)}</strong></span>
+          <button type="button" class="btn-copy-coupon" data-code="${escapeAttr(offerCode)}">Copy</button>
+        </div>` : '';
+
+      return `
+        <div class="pc-card product-card${inCarousel ? ' in-carousel' : ''}">
+          <div class="pc-media">
+            <img src="${escapeAttr(image)}" alt="${escapeAttr(r.title || 'Product')}" loading="lazy" />
+            ${badge ? `<span class="pc-badge">${escapeHtml(badge)}</span>` : ''}
+          </div>
+          <div class="pc-body">
+            <div class="pc-title" title="${escapeAttr(r.title || '')}">${escapeHtml(r.title || 'Product')}</div>
+            ${why}
+            ${this.renderOptionGroups(r, key, vs)}
+            <div class="pc-price-row">
+              <span class="pc-price">${escapeHtml(this.formatMoney(vs.price, r.currency))}</span>
+              ${vs.compare > vs.price ? `<span class="pc-compare">${escapeHtml(this.formatMoney(vs.compare, r.currency))}</span>` : ''}
+              ${saveText ? `<span class="pc-save">${escapeHtml(saveText)}</span>` : ''}
+              <span class="pc-stock ${vs.inStock && !vs.missing ? 'in' : 'out'}">${vs.missing ? '' : vs.inStock ? 'In stock' : 'Sold out'}</span>
+            </div>
+            ${coupon}
+            <div class="pc-actions">
+              <button type="button" class="btn-add-to-cart pc-cart" ${cartDisabled ? 'disabled' : ''}
+                data-variant-id="${escapeAttr(vs.variantId)}" data-product-id="${escapeAttr(r.product_id || r.productId || '')}"
+                data-title="${encodeURIComponent((r.title || '') + (vs.label ? ` (${vs.label})` : ''))}" data-price="${escapeAttr(vs.price)}"
+                data-currency="${escapeAttr(r.currency || 'INR')}" data-product-url="${encodeURIComponent(trackingUrl)}" data-offer-code="${escapeAttr(offerCode)}">${escapeHtml(cartLabel)}</button>
+              <a href="${escapeAttr(trackingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-view-product pc-details"
+                data-product-id="${escapeAttr(r.product_id || r.productId || '')}" data-title="${encodeURIComponent(r.title || '')}" data-url="${encodeURIComponent(trackingUrl)}">Details</a>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    renderCompactRow(r, key, cfg) {
+      const vs = this.variantState(r, key, cfg);
+      const trackingUrl = safeUrl(buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId));
+      const image = safeUrl(vs.image, '') || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
+      const chip = vs.options.length ? (vs.label || `${vs.variants.length} options`) : '';
+      const action = vs.options.length
+        ? `<button type="button" class="pc-choose-btn" data-rec-key="${escapeAttr(key)}">Choose</button>`
+        : `<button type="button" class="btn-add-to-cart pc-add-sm" ${vs.inStock ? '' : 'disabled'}
+             data-variant-id="${escapeAttr(vs.variantId)}" data-product-id="${escapeAttr(r.product_id || r.productId || '')}"
+             data-title="${encodeURIComponent(r.title || '')}" data-price="${escapeAttr(vs.price)}" data-currency="${escapeAttr(r.currency || 'INR')}"
+             data-product-url="${encodeURIComponent(trackingUrl)}" data-offer-code="">${vs.inStock ? 'Add' : 'Sold out'}</button>`;
+      return `
+        <div class="pc-row">
+          <a class="pc-row-thumb btn-view-product" href="${escapeAttr(trackingUrl)}" target="_blank" rel="noopener noreferrer" data-product-id="${escapeAttr(r.product_id || '')}" data-title="${encodeURIComponent(r.title || '')}" data-url="${encodeURIComponent(trackingUrl)}"><img src="${escapeAttr(image)}" alt="${escapeAttr(r.title || 'Product')}" loading="lazy" /></a>
+          <div class="pc-row-info">
+            <span class="pc-row-title">${escapeHtml(r.title || 'Product')}</span>
+            ${cfg.showReason && r.why ? `<span class="pc-row-why">${escapeHtml(r.why)}</span>` : ''}
+            ${chip ? `<span class="pc-row-chip">${escapeHtml(chip)}</span>` : ''}
+            <span class="pc-row-price">${escapeHtml(this.formatMoney(vs.price, r.currency))}${vs.compare > vs.price ? ` <s>${escapeHtml(this.formatMoney(vs.compare, r.currency))}</s>` : ''}</span>
+          </div>
+          ${action}
+        </div>`;
+    }
+
+    // Ask-first offer under a reply: the shopper decides whether to see products
+    answerProductOffer(msgIdx, accepted) {
+      const messages = [...this.state.messages];
+      const msg = messages[msgIdx];
+      if (!msg || !msg.productOffer || msg.productOfferAnswered) return;
+      messages[msgIdx] = { ...msg, productOfferAnswered: accepted ? 'yes' : 'no' };
+      if (accepted) {
+        this.setState({ messages }, 'preserve');
+        this.sendMessage('Yes, show me some options');
+      } else {
+        messages.push({ role: 'assistant', content: 'No problem! Ask me anything else, or just say "show me options" whenever you like.' });
+        this.setState({ messages });
+      }
+    }
+
+    findRecByKey(key) {
+      const mIdx = parseInt(String(key).split('_')[0], 10);
+      const recs = (this.state.messages[mIdx] || {}).recommendations || [];
+      return recs.find((r, i) => `${mIdx}_${r.product_id || r.productId || r.id || i}` === key) || null;
     }
 
     // Older servers send no flag, so only an explicit false disables tickets
@@ -841,7 +1219,6 @@
       let label = '';
       if (mode === 'instant') label = '🛎️ Need Human Help? Open Ticket';
       else if (mode === 'smart' && this.state.showHelpChip) label = '🙋 Still stuck? Talk to our team';
-      else if (mode === 'contact_only' && this.state.showHelpChip) label = '📧 Contact our team';
       if (!label) return '';
       return `
             <div class="chat-action-pills-bar">
@@ -897,7 +1274,7 @@
       if (!offer || !offer.isTicketOffer || offer.offerAnswered) return;
       messages[msgIdx] = { ...offer, offerAnswered: accepted ? 'yes' : 'no' };
       if (!accepted) {
-        messages.push({ role: 'assistant', content: 'No problem! I am here if you need anything else. You can still reach our team anytime with the "Need Help?" button.' });
+        messages.push({ role: 'assistant', content: 'No problem! I am here if you need anything else. Just tell me whenever you would like to talk to our team.' });
       }
       this.setState({ messages, showHelpChip: true });
       if (accepted) this.openTicketEscalationPrompt(offer.ticketSubject || 'Customer inquiry via storefront chat', offer.revertDuration);
@@ -1387,6 +1764,127 @@
         }
 
         /* Custom Merchant CSS overrides */
+        /* ===== Message blocks, product cards v2, compact rows, links, ask-first offer ===== */
+        .chat-area { position: relative; }
+        .msg-block { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+        .msg-block.user { align-items: flex-end; }
+        .msg-block.assistant { align-items: flex-start; }
+        .msg-products { width: 100%; min-width: 0; max-width: 100%; }
+        .msg-block { min-width: 0; }
+        .chat-messages { overflow-x: hidden; }
+        /* Arrows sit on the product photo, never over the title */
+        .msg-products .carousel-nav-btn { top: 96px; width: 34px; height: 34px; font-size: 12px; }
+        .msg-products.compact { display: flex; flex-direction: column; gap: 8px; }
+
+        .scroll-more-pill {
+          position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); z-index: 5;
+          border: none; border-radius: 999px; padding: 8px 14px; min-height: 36px;
+          background: #1c1b19; color: #ffffff; font-size: 12.5px; font-weight: 700; cursor: pointer;
+          box-shadow: 0 6px 16px rgba(28, 27, 25, 0.25);
+        }
+        .scroll-more-pill.hidden { display: none; }
+
+        .product-offer-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .btn-product-offer {
+          min-height: 40px; padding: 0 16px; border-radius: 999px; border: none;
+          font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+        .btn-product-offer.is-secondary { background: #ffffff; color: #1c1b19; border: 1.5px solid #d5cfc4; }
+
+        .rec-links { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+        .rec-link {
+          display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px;
+          padding: 0 12px; border-radius: 10px; background: #f1f5f4; color: ${primaryColor};
+          font-weight: 700; font-size: 13px; text-decoration: none;
+        }
+        .rec-link:hover { filter: brightness(0.97); text-decoration: underline; }
+
+        .pc-card {
+          width: 100%; box-sizing: border-box; background: #ffffff; border: 1px solid #e2ddd4; border-radius: 16px;
+          overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 6px 18px rgba(28, 27, 25, 0.07);
+        }
+        .product-card.pc-card.in-carousel { flex: 0 0 258px; }
+        .pc-card:hover { transform: none; }
+        .pc-media { position: relative; background: #f4f1ec; aspect-ratio: 4 / 3; overflow: hidden; }
+        .pc-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .pc-badge {
+          position: absolute; top: 10px; left: 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+          padding: 4px 9px; border-radius: 999px; background: #1c1b19; color: #ffffff;
+        }
+        .pc-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+        .pc-title { font-size: 15px; font-weight: 700; line-height: 1.3; color: #1c1b19; }
+        .pc-why {
+          display: flex; gap: 6px; align-items: flex-start; padding: 7px 9px; border-radius: 9px;
+          background: #ecf3ef; color: #174a3b; font-size: 12px; line-height: 1.4;
+        }
+        .pc-why svg { flex-shrink: 0; margin-top: 1px; }
+        .pc-opt { display: flex; flex-direction: column; gap: 6px; }
+        .pc-opt-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #5f5b55; }
+        .pc-opt-label strong { text-transform: none; letter-spacing: 0; color: #1c1b19; }
+        .pc-opt-values { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pc-opt-values.kind-tile { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 6px; padding-top: 6px; }
+        .pc-opt-btn {
+          position: relative; font-family: inherit; cursor: pointer; background: #ffffff; color: #1c1b19;
+          border: 1.5px solid #ddd8cf; border-radius: 10px; font-size: 12.5px; font-weight: 700;
+          min-height: 40px; min-width: 44px; padding: 6px 10px;
+        }
+        .pc-opt-btn.is-on { border: 2px solid ${primaryColor}; background: #f1f5f4; }
+        .pc-opt-btn.kind-size.is-on { background: ${primaryColor}; color: ${userTextColor}; }
+        .pc-opt-btn.is-out { background: #f4f2ee; color: #9a958d; border-style: dashed; text-decoration: line-through; cursor: not-allowed; }
+        .pc-opt-btn.kind-color { width: 40px; height: 40px; min-width: 40px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .pc-opt-btn.kind-color.is-out { opacity: 0.45; text-decoration: none; }
+        .pc-swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(28, 27, 25, 0.18); }
+        .pc-opt-btn.kind-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; min-height: 58px; padding: 7px; }
+        .pc-tile-name { font-size: 12.5px; font-weight: 700; }
+        .pc-tile-price { font-size: 12px; font-weight: 600; }
+        .pc-tile-sub { font-size: 10.5px; font-weight: 500; color: #5f5b55; }
+        .pc-tile-tag {
+          position: absolute; top: -9px; right: 6px; font-size: 9.5px; font-weight: 700; padding: 2px 6px;
+          border-radius: 999px; background: #a4471a; color: #ffffff; text-decoration: none;
+        }
+        .pc-more { align-self: center; font-size: 12px; font-weight: 700; color: ${primaryColor}; padding: 0 4px; }
+        .pc-price-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+        .pc-price { font-size: 19px; font-weight: 800; color: #1c1b19; }
+        .pc-compare { font-size: 12.5px; color: #6b665e; text-decoration: line-through; }
+        .pc-save { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #fbeee4; color: #8a3b12; }
+        .pc-stock { margin-left: auto; font-size: 11.5px; font-weight: 600; }
+        .pc-stock.in { color: #2f6b45; }
+        .pc-stock.out { color: #9a3412; }
+        .pc-coupon {
+          display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px;
+          border-radius: 9px; border: 1px dashed #d5cfc4; font-size: 12px; color: #3d3a35;
+        }
+        .pc-coupon .btn-copy-coupon { border: none; background: none; color: ${primaryColor}; font-weight: 700; cursor: pointer; font-size: 12px; }
+        .pc-actions { display: flex; gap: 8px; }
+        .pc-cart {
+          flex: 1; min-height: 44px; border: none; border-radius: 11px; cursor: pointer;
+          background: ${primaryColor}; color: ${userTextColor}; font-size: 13px; font-weight: 700; padding: 0 12px;
+        }
+        .pc-cart:disabled { background: #edeae4; color: #6b665e; cursor: not-allowed; }
+        .pc-details {
+          display: flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 11px;
+          border: 1.5px solid #d5cfc4; color: #1c1b19; font-size: 13px; font-weight: 600; text-decoration: none;
+        }
+
+        .pc-row {
+          display: flex; gap: 10px; align-items: center; padding: 9px; background: #ffffff;
+          border: 1px solid #e2ddd4; border-radius: 13px;
+        }
+        .pc-row-thumb { flex: 0 0 60px; width: 60px; height: 60px; border-radius: 9px; overflow: hidden; background: #f4f1ec; }
+        .pc-row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .pc-row-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+        .pc-row-title { font-size: 13.5px; font-weight: 700; color: #1c1b19; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pc-row-why { font-size: 11.5px; color: #5f5b55; }
+        .pc-row-chip { align-self: flex-start; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #f1eee8; color: #3d3a35; }
+        .pc-row-price { font-size: 13px; font-weight: 800; color: #1c1b19; }
+        .pc-row-price s { font-weight: 500; color: #6b665e; font-size: 11.5px; }
+        .pc-add-sm, .pc-choose-btn {
+          min-height: 40px; padding: 0 14px; border-radius: 10px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+        }
+        .pc-add-sm { border: none; background: ${primaryColor}; color: ${userTextColor}; }
+        .pc-add-sm:disabled { background: #edeae4; color: #6b665e; cursor: not-allowed; }
+        .pc-choose-btn { border: 1.5px solid #d5cfc4; background: #ffffff; color: #1c1b19; }
+
         ${this.state.config?.widget?.custom_css || ''}
         
         #popup {
@@ -2438,7 +2936,7 @@
                 </div>
               </div>
               <div class="header-actions">
-                ${this.state.view === 'chat' ? `
+                ${this.state.view === 'chat' && this.escalationMode() === 'instant' ? `
                   <button type="button" class="btn-need-help-header btn-human-ticket" aria-label="Human Helpdesk" title="Need Human Support? Open Ticket">
                     <span>🛎️ Need Help?</span>
                   </button>
@@ -2616,108 +3114,13 @@
             }
           }
 
-          let recsHtml = '';
-          if (recs.length > 0) {
-            const carouselId = 'car_' + mIdx + '_' + Math.random().toString(36).substr(2, 5);
-            const totalRecs = recs.length;
-
-            recsHtml = `
-              <div class="product-carousel-wrapper" data-carousel-id="${carouselId}">
-                ${totalRecs > 1 ? `<button type="button" class="carousel-nav-btn prev" aria-label="Previous Products">❮</button>` : ''}
-                <div class="product-carousel-track" id="${carouselId}">
-            ` + recs.map(r => {
-              const rawPrice = r.price !== undefined ? parseFloat(r.price) : 0;
-              const comparePrice = r.compare_at_price ? parseFloat(r.compare_at_price) : 0;
-              const hasRealCompare = comparePrice > rawPrice;
-              const catalogDiscount = hasRealCompare ? Math.round(((comparePrice - rawPrice) / comparePrice) * 100) : 0;
-
-              const offerCode = widgetConfig?.offer_code || '';
-              const offerPercent = Number(widgetConfig?.offer_discount_percent || 0);
-              const hasOffer = Boolean(offerCode && offerPercent > 0);
-              const specialAiPrice = hasOffer ? (rawPrice * (1 - offerPercent / 100)).toFixed(0) : '';
-
-              const priceDisplay = formatCurrencyPrice(rawPrice, r.currency);
-              const trackingUrl = safeUrl(buildUtmProductUrl(r.product_url, this.sessionId, this.visitorId, this.storeId));
-              const inStock = r.in_stock !== false;
-              const imgUrl = safeUrl(r.image_url, '') || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80';
-              // Card fields can come from AI text (markdown fallback), so every value is escaped
-              const safeTitle = escapeAttr(r.title || 'Product');
-              const safeOffer = escapeAttr(offerCode);
-              // Badge only reflects real Shopify BEST_SELLING rank from the catalog sync (top 25 are flagged)
-              const salesRank = Number(r.sales_rank) || 999;
-              let popularBadge = '';
-              if (salesRank <= 3) popularBadge = `🔥 Best Seller #${salesRank}`;
-              else if (salesRank <= 10) popularBadge = '🔥 Best Seller';
-              else if (r.is_bestseller) popularBadge = '⭐ Trending';
-
-              return `
-                <div class="product-card">
-                  <div class="product-card-thumb-wrap">
-                    <img src="${escapeAttr(imgUrl)}" alt="${safeTitle}" class="product-card-thumb" loading="lazy" />
-                    ${popularBadge ? `<span class="product-badge-popular">${popularBadge}</span>` : ''}
-                    <span class="${inStock ? 'product-badge-stock' : 'product-badge-out'}">
-                      ${inStock ? 'In Stock' : 'Out of Stock'}
-                    </span>
-                  </div>
-                  <div class="product-card-info">
-                    <h4 class="product-card-title" title="${safeTitle}">${safeTitle}</h4>
-                    <div class="product-card-price-row">
-                      <span class="product-card-price">${escapeHtml(String(priceDisplay))}</span>
-                      ${hasRealCompare ? `
-                        <span class="product-card-compare-price">${escapeHtml(String(formatCurrencyPrice(comparePrice, r.currency)))}</span>
-                        <span class="product-card-discount-tag">${catalogDiscount}% OFF</span>
-                      ` : ''}
-                    </div>
-
-                    ${hasOffer ? `
-                      <div class="ai-special-badge" data-code="${safeOffer}">
-                        <div class="ai-badge-top">
-                          <span class="ai-badge-star">✨</span>
-                          <span class="ai-badge-label">AI Special:</span>
-                          <strong class="ai-badge-price">${escapeHtml(String(formatCurrencyPrice(specialAiPrice, r.currency)))}</strong>
-                        </div>
-                        <div class="ai-coupon-row">
-                          <span class="ai-coupon-code">${safeOffer}</span>
-                          <button type="button" class="btn-copy-coupon" data-code="${safeOffer}" title="Click to copy for checkout / Razorpay">
-                            📋 Copy
-                          </button>
-                        </div>
-                      </div>
-                    ` : ''}
-
-                    <div class="product-card-btn-group">
-                      <a href="${escapeAttr(trackingUrl)}" target="_blank" rel="noopener noreferrer" class="btn-view-product" 
-                         data-product-id="${escapeAttr(r.product_id || r.productId || '')}" 
-                         data-title="${encodeURIComponent(r.title || '')}"
-                         data-url="${encodeURIComponent(trackingUrl)}"
-                         data-offer-code="${safeOffer}">
-                        View Product ↗
-                      </a>
-                      <button type="button" class="btn-add-to-cart" 
-                              data-variant-id="${escapeAttr(r.variant_id || r.variantId || '')}" 
-                              data-product-id="${escapeAttr(r.product_id || r.productId || '')}" 
-                              data-title="${encodeURIComponent(r.title || '')}" 
-                              data-price="${escapeAttr(rawPrice)}" 
-                              data-currency="${escapeAttr(r.currency || 'INR')}"
-                              data-product-url="${encodeURIComponent(trackingUrl)}"
-                              data-offer-code="${safeOffer}">
-                        Add to Cart 🛒
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              `;
-            }).join('') + `
-                </div>
-                ${totalRecs > 1 ? `<button type="button" class="carousel-nav-btn next" aria-label="Next Products">❯</button>` : ''}
-              </div>
-              ${totalRecs > 1 ? `
-                <div class="carousel-dots-indicator" data-carousel-id="${carouselId}">
-                  ${recs.map((_, i) => `<span class="carousel-dot ${i === 0 ? 'active' : ''}" data-index="${i}"></span>`).join('')}
-                </div>
-              ` : ''}
-            `;
-          }
+          const recParts = recs.length > 0 ? this.renderRecommendations(recs, mIdx, m) : { inBubble: '', below: '' };
+          const offerHtml = m.role === 'assistant' && m.productOffer && !m.productOfferAnswered
+            ? `<div class="product-offer-actions">
+                 <button type="button" class="btn-product-offer" data-msg-idx="${mIdx}" data-answer="yes" style="background: ${primaryColor}; color: ${secondaryColor};">Yes, show me</button>
+                 <button type="button" class="btn-product-offer is-secondary" data-msg-idx="${mIdx}" data-answer="no">No thanks</button>
+               </div>`
+            : '';
 
           let ticketCardHtml = '';
           if (m.isTicketOffer) {
@@ -2769,10 +3172,14 @@
           }
 
           return `
-            <div class="msg ${m.role}">
-              <div class="msg-text">${formatChatContent(displayText)}</div>
-              ${recsHtml}
-              ${ticketCardHtml}
+            <div class="msg-block ${m.role}">
+              <div class="msg ${m.role}">
+                <div class="msg-text">${formatChatContent(displayText)}</div>
+                ${recParts.inBubble}
+                ${offerHtml}
+                ${ticketCardHtml}
+              </div>
+              ${recParts.below}
             </div>
           `;
         }).join('');
@@ -2784,6 +3191,7 @@
             <div class="chat-messages" style="overflow-y: auto;">
               ${messagesHtml}
             </div>
+            <button type="button" class="scroll-more-pill hidden" id="scroll-more-pill">↓ Options below</button>
             ${this.helpChipHtml()}
             <form class="chat-input" id="chat-form">
               <input type="text" id="chat-input-text" placeholder="Type a message..." ${isWaiting ? 'disabled' : ''} autocomplete="off" />
@@ -3010,6 +3418,46 @@
         }, 150);
       }
 
+      // Variant pickers (pack / colour / size) on product cards
+      this.shadowRoot.querySelectorAll('.pc-opt-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (btn.disabled) return;
+          const key = btn.getAttribute('data-rec-key');
+          const rec = this.findRecByKey(key);
+          if (rec) this.selectVariantOption(key, rec, btn.getAttribute('data-opt-name'), btn.getAttribute('data-opt-value'));
+        });
+      });
+
+      // Compact rows: "Choose" opens the full card with its variant picker
+      this.shadowRoot.querySelectorAll('.pc-choose-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const key = btn.getAttribute('data-rec-key');
+          this.setState({ expandedRecs: { ...(this.state.expandedRecs || {}), [key]: true } }, 'preserve');
+        });
+      });
+
+      // Ask-first: "Yes, show me" / "No thanks"
+      this.shadowRoot.querySelectorAll('.btn-product-offer').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.answerProductOffer(parseInt(btn.getAttribute('data-msg-idx'), 10), btn.getAttribute('data-answer') === 'yes');
+        });
+      });
+
+      // The shopper scrolls to products themselves; the pill only points the way
+      const chatScroller = this.shadowRoot.querySelector('.chat-messages');
+      const morePill = this.shadowRoot.getElementById('scroll-more-pill');
+      if (chatScroller) chatScroller.addEventListener('scroll', () => this.updateMorePill(), { passive: true });
+      if (morePill && chatScroller) {
+        morePill.addEventListener('click', () => {
+          const blocks = chatScroller.querySelectorAll('.msg-block.assistant');
+          const products = blocks.length ? blocks[blocks.length - 1].querySelector('.msg-products') : null;
+          if (products) chatScroller.scrollTo({ top: Math.max(0, contentOffset(chatScroller, products) - 8), behavior: 'smooth' });
+        });
+      }
+
       // Carousel navigation prev / next and dot indicators
       this.shadowRoot.querySelectorAll('.product-carousel-wrapper').forEach(wrapper => {
         const track = wrapper.querySelector('.product-carousel-track');
@@ -3115,6 +3563,7 @@
             } catch (_) {}
           }
 
+          const originalLabel = btn.textContent;
           btn.disabled = true;
           btn.textContent = 'Adding...';
 
@@ -3173,7 +3622,7 @@
             btn.onclick = () => { window.location.href = '/cart'; };
             setTimeout(() => {
               btn.classList.remove('added');
-              btn.textContent = 'Add to Cart 🛒';
+              btn.textContent = originalLabel;
             }, 3500);
           } else if (productUrl && productUrl !== '#') {
             btn.textContent = 'Opening Product...';
@@ -3184,7 +3633,7 @@
             setTimeout(() => {
               btn.classList.remove('added');
               btn.disabled = false;
-              btn.textContent = 'Add to Cart 🛒';
+              btn.textContent = originalLabel;
             }, 2000);
           }
         });

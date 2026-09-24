@@ -4,6 +4,7 @@ import { getDatabaseClient } from '../../database/client';
 import { decryptString } from '../../utils/crypto';
 import { TenantIsolationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import { defaultVariant, parseVariantColumns, variantsFromAdminGraphql, variantsFromAdminRest, variantsFromStorefront } from './variants';
 
 export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
   
@@ -176,6 +177,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             category: r.category,
             image_url: r.image_url,
             product_url: r.product_url,
+            ...variantFields(r),
           }));
         }
 
@@ -400,9 +402,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             const compositeId = `${storeId}_${rawId}`;
             await db.query(`
               INSERT INTO products (
-                id, store_id, shopify_id, variant_id, title, handle, description, tags, is_bestseller, sales_rank, price, compare_at_price, currency, in_stock, category, image_url, product_url, synced_at, updated_at
+                id, store_id, shopify_id, variant_id, title, handle, description, tags, is_bestseller, sales_rank, price, compare_at_price, currency, in_stock, category, image_url, product_url, variants, variant_options, synced_at, updated_at
               ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19::jsonb, NOW(), NOW()
               )
               ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
@@ -418,6 +420,8 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 category = EXCLUDED.category,
                 image_url = CASE WHEN EXCLUDED.image_url IS NOT NULL AND EXCLUDED.image_url != '' THEN EXCLUDED.image_url ELSE products.image_url END,
                 product_url = EXCLUDED.product_url,
+                variants = EXCLUDED.variants,
+                variant_options = EXCLUDED.variant_options,
                 synced_at = NOW(),
                 updated_at = NOW()
             `, [
@@ -437,7 +441,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
               p.in_stock ?? true,
               p.category || '',
               resolveProductImageUrl(p.image_url, p.category, p.title),
-              p.product_url || ''
+              p.product_url || '',
+              JSON.stringify(p.variants || []),
+              JSON.stringify(p.options || []),
             ]);
           }
         } catch (dbErr) {
@@ -460,7 +466,8 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     let hasNextPage = true;
     let cursor: string | null = null;
     let iterations = 0;
-    const maxIterations = 20; // Up to 1,000 products
+    const maxIterations = 50; // Up to 1,000 products (20 per page)
+    let throttleRetries = 0;
 
     while (hasNextPage && iterations < maxIterations) {
       iterations++;
@@ -470,7 +477,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           shop {
             currencyCode
           }
-          products(first: 50${afterArg}) {
+          products(first: 20${afterArg}) {
             pageInfo {
               hasNextPage
               endCursor
@@ -481,6 +488,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 title
                 handle
                 productType
+                options { name values }
                 description
                 tags
                 status
@@ -494,13 +502,16 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                     }
                   }
                 }
-                variants(first: 1) {
+                variants(first: 25) {
                   edges {
                     node {
                       id
+                      title
                       price
                       compareAtPrice
                       availableForSale
+                      selectedOptions { name value }
+                      image { url }
                     }
                   }
                 }
@@ -525,6 +536,16 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       }
 
       const data = (await response.json()) as any;
+      // Shopify rate-limits by query cost; wait for the bucket to refill and retry this page
+      if (Array.isArray(data.errors) && data.errors.some((e: any) => e?.extensions?.code === 'THROTTLED')) {
+        if (throttleRetries++ < 5) {
+          iterations--;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        logger.warn(`Shopify Admin GraphQL still throttled for ${shopDomain}; stopping sync at ${products.length} products`);
+        break;
+      }
       const shopCurrency = data.data?.shop?.currencyCode || 'INR';
       const productsData = data.data?.products;
       if (!productsData?.edges || productsData.edges.length === 0) {
@@ -533,7 +554,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
       for (const edge of productsData.edges) {
         const node = edge.node;
-        const variant = node.variants?.edges[0]?.node;
+        const { variants, options } = variantsFromAdminGraphql(node);
+        const buyable = defaultVariant(variants);
+        // Price, stock and cart id come from the first variant that can actually be bought
+        const variant = node.variants?.edges?.find((e: any) => String(e.node?.id || '').endsWith(`/${buyable?.id}`))?.node || node.variants?.edges[0]?.node;
         const imgUrl = node.featuredImage?.url || node.images?.edges[0]?.node?.url || '';
         const rawId = node.id || '';
         const numericId = rawId.split('/').pop() || rawId;
@@ -559,10 +583,12 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           price: parseFloat(variant?.price || '0'),
           compare_at_price: parseFloat(variant?.compareAtPrice || '0'),
           currency: shopCurrency,
-          in_stock: variant?.availableForSale ?? (node.status === 'ACTIVE'),
+          in_stock: variants.length > 0 ? variants.some(v => v.available) : (variant?.availableForSale ?? (node.status === 'ACTIVE')),
           category: node.productType || '',
           image_url: resolveProductImageUrl(imgUrl, node.productType, node.title),
           product_url: `https://${shopDomain}/products/${node.handle || numericId}`,
+          variants,
+          options,
         });
       }
 
@@ -606,7 +632,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     const rawProducts = data.products || [];
 
     for (const p of rawProducts) {
-      const variant = p.variants?.[0];
+      const { variants, options } = variantsFromAdminRest(p);
+      const buyable = defaultVariant(variants);
+      const variant = p.variants?.find((v: any) => String(v.id) === buyable?.id) || p.variants?.[0];
       const imgUrl = p.image?.src || p.image?.url || p.images?.[0]?.src || p.images?.[0]?.url || (typeof p.featured_image === 'string' ? p.featured_image : p.featured_image?.src) || '';
       const rawVarId = variant ? String(variant.id) : '';
       const numericVarId = rawVarId.split('/').pop() || rawVarId;
@@ -634,10 +662,12 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         price: parseFloat(variant?.price || '0'),
         compare_at_price: parseFloat(variant?.compareAtPrice || '0'),
         currency: shopCurrency,
-        in_stock: variant?.available ?? (p.status === 'active'),
+        in_stock: variants.length > 0 ? variants.some(v => v.available) : (variant?.available ?? (p.status === 'active')),
         category: p.product_type || '',
         image_url: resolveProductImageUrl(imgUrl, p.product_type, p.title),
         product_url: `https://${shopDomain}/products/${p.handle || p.id}`,
+        variants,
+        options,
       });
     }
 
@@ -668,13 +698,17 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 productType
                 description
                 tags
-                variants(first: 1) {
+                options { name values }
+                variants(first: 25) {
                   edges {
                     node {
                       id
+                      title
                       price { amount currencyCode }
                       compareAtPrice { amount currencyCode }
                       availableForSale
+                      selectedOptions { name value }
+                      image { url }
                     }
                   }
                 }
@@ -716,7 +750,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
 
       for (const edge of productsData.edges) {
         const node = edge.node;
-        const variant = node.variants?.edges[0]?.node;
+        const { variants, options } = variantsFromStorefront(node);
+        const buyable = defaultVariant(variants);
+        const variant = node.variants?.edges?.find((e: any) => String(e.node?.id || '').endsWith(`/${buyable?.id}`))?.node || node.variants?.edges[0]?.node;
         const rawVarId = variant?.id || '';
         const numericVarId = rawVarId.split('/').pop() || rawVarId;
         const cleanDesc = (node.description || '')
@@ -733,10 +769,12 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           price: parseFloat(variant?.price?.amount || '0'),
           compare_at_price: parseFloat(variant?.compareAtPrice?.amount || '0'),
           currency: variant?.price?.currencyCode || 'INR',
-          in_stock: variant?.availableForSale ?? true,
+          in_stock: variants.length > 0 ? variants.some(v => v.available) : (variant?.availableForSale ?? true),
           category: node.productType || '',
           image_url: resolveProductImageUrl(node.featuredImage?.url || node.images?.edges[0]?.node?.url, node.productType, node.title),
           product_url: node.onlineStoreUrl || `https://${shopDomain}/products/${node.id.split('/').pop()}`,
+          variants,
+          options,
         });
       }
 
@@ -751,4 +789,10 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     const products = await this.searchProducts(storeId, {});
     return products.find(p => p.id === productId || p.id.includes(productId)) || null;
   }
+}
+
+/** variants/options columns of a products row, only when the product really has several variants */
+function variantFields(row: any): Pick<ShopifyProduct, 'variants' | 'options'> {
+  const { variants, options } = parseVariantColumns(row);
+  return variants.length > 1 ? { variants, options } : {};
 }

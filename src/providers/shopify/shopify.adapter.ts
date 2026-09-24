@@ -1,3 +1,5 @@
+import { ProductOption, ProductVariant } from './variants';
+
 export interface ShopifyProduct {
   id: string;
   variant_id: string;
@@ -14,6 +16,10 @@ export interface ShopifyProduct {
   category: string;
   image_url: string;
   product_url: string;
+  /** All purchasable variants (pack size / colour / size); empty for single-variant products */
+  variants?: ProductVariant[];
+  /** Option groups, e.g. [{ name: 'Size', values: ['S', 'M'] }] */
+  options?: ProductOption[];
 }
 
 export interface ProductSearchQuery {

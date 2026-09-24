@@ -22,6 +22,14 @@ import { buildKnowledgeContext } from '../modules/knowledge/knowledge-retrieval'
 import { EntitlementRepository } from '../modules/entitlements/entitlement.repository';
 import { FeatureKey } from '../modules/entitlements/entitlement.types';
 import { decideEscalation, normalizeEscalationMode } from '../modules/support_tickets/escalation';
+import {
+  PRODUCT_OFFER_QUESTION,
+  applyRecommendationPolicy,
+  normalizeRecommendationSettings,
+  recommendationExtras,
+  replyOffersProducts,
+  widgetRecommendationConfig,
+} from '../modules/chat/recommendation-policy';
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import adminRoutes from './routes/admin.routes';
@@ -33,6 +41,20 @@ import whatsappWebhookRoutes from './routes/whatsapp-webhook.routes';
 import { reorderClickRouter } from './routes/replenishment.routes';
 import { publicAttributionRouter } from './routes/attribution.routes';
 import { ticketWidgetRouter } from './routes/ticket.routes';
+
+/** quick_action_pills is JSONB; some drivers/rows return it as a JSON string */
+function parsePills(raw: unknown): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 export interface AppDependencies {
   db?: IDatabaseClient;
@@ -196,6 +218,8 @@ export function createApp(deps: AppDependencies = {}): Express {
               // How the widget hands shoppers to humans (admin-disabled tickets always mean contact_only)
               escalation_mode: ticketsEnabled ? normalizeEscalationMode((assistantSettings as any)?.escalation_mode) : 'contact_only',
             },
+            // Merchant's product recommendation settings (ask first / style / variants)
+            recommendations: widgetRecommendationConfig(normalizeRecommendationSettings(assistantSettings)),
           },
         });
       } catch (err) {
@@ -403,6 +427,8 @@ export function createApp(deps: AppDependencies = {}): Express {
           .isFeatureEnabled(storeId, FeatureKey.SUPPORT_TICKETS)
           .catch(() => true);
 
+        const recSettings = normalizeRecommendationSettings(settings);
+
         const knowledgeContext = await buildKnowledgeContext(
           storeId,
           (settings as any)?.knowledge_base || '',
@@ -424,9 +450,13 @@ export function createApp(deps: AppDependencies = {}): Express {
             knowledge_base: knowledgeContext,
             support_contact: settings?.support_contact || '',
             ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
-            quick_action_pills: (settings as any)?.quick_action_pills || [],
+            quick_action_pills: parsePills((settings as any)?.quick_action_pills),
             support_tickets_enabled: ticketsEnabled,
             escalation_mode: ticketsEnabled ? normalizeEscalationMode((settings as any)?.escalation_mode) : 'contact_only',
+            product_suggestion_mode: recSettings.suggestionMode,
+            product_display_style: recSettings.displayStyle,
+            max_recommendations: recSettings.maxRecommendations,
+            show_product_reason: recSettings.showReason,
           }
         });
 
@@ -441,17 +471,6 @@ export function createApp(deps: AppDependencies = {}): Express {
           aiRequestedTicket: Boolean(aiRes.should_escalate_ticket),
         });
 
-        // Save AI message and record usage
-        await chatRepo.addMessage(
-          storeId, 
-          session_id, 
-          'assistant', 
-          aiRes.content,
-          aiRes.input_tokens,
-          aiRes.output_tokens,
-          aiRes.estimated_cost_usd
-        );
-        
         await budgetGuard.recordUsage(
           storeId, 
           session_id, 
@@ -463,7 +482,7 @@ export function createApp(deps: AppDependencies = {}): Express {
 
         // Product cards = exactly what the AI recommended. Only when it named products in
         // **bold** without passing ids do we resolve those names (incl. products outside the subset).
-        let targetProductIds = (aiRes.recommended_product_ids || []).slice(0, MAX_RECOMMENDATIONS);
+        let targetProductIds = (aiRes.recommended_product_ids || []).slice(0, recSettings.maxRecommendations);
         const boldMatches = Array.from(aiRes.content.matchAll(/\*\*([^*]+)\*\*/g))
           .map(m => m[1].toLowerCase().trim())
           .filter(t => t.length > 3 && !t.includes('http'));
@@ -505,13 +524,39 @@ export function createApp(deps: AppDependencies = {}): Express {
           } catch (dbErr) {
             console.warn('[WidgetChat] Supplemental product lookup warning:', dbErr);
           }
-          targetProductIds = matchBoldProductMentions(aiRes.content, catalogSubset, MAX_RECOMMENDATIONS);
+          targetProductIds = matchBoldProductMentions(aiRes.content, catalogSubset, recSettings.maxRecommendations);
         }
 
         // A bare greeting never gets product cards, whatever the model returned
         if (/^\s*(hi+|hello+|hey+|hola|namaste|good\s+(morning|afternoon|evening))[\s!.,?]*$/i.test(message)) {
           targetProductIds = [];
         }
+
+        // Merchant's "Ask first" rule: no products until the shopper asks for them or says yes
+        const previousAssistantMessage = history.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '';
+        const policy = applyRecommendationPolicy({
+          settings: recSettings,
+          latestUserMessage: message,
+          previousAssistantMessage,
+          productIds: targetProductIds,
+          aiText: aiRes.content,
+        });
+        targetProductIds = policy.productIds;
+        let assistantText = aiRes.content;
+        if (policy.heldBack && !replyOffersProducts(assistantText)) {
+          assistantText = `${assistantText.trim()}\n\n${PRODUCT_OFFER_QUESTION}`;
+        }
+
+        // Save AI message (after the policy, so the next turn sees the offer it answers)
+        await chatRepo.addMessage(
+          storeId,
+          session_id,
+          'assistant',
+          assistantText,
+          aiRes.input_tokens,
+          aiRes.output_tokens,
+          aiRes.estimated_cost_usd
+        );
 
         const recommendations = [];
         if (targetProductIds.length > 0) {
@@ -525,7 +570,7 @@ export function createApp(deps: AppDependencies = {}): Express {
               title: p.title,
               price: p.price,
               currency: p.currency || 'INR',
-              reason: 'Recommended by AI',
+              reason: (recSettings.showReason && aiRes.recommendation_reasons?.[p.id]) || 'Recommended by AI',
               imageUrl: p.image_url,
               productUrl: p.product_url,
             });
@@ -545,12 +590,13 @@ export function createApp(deps: AppDependencies = {}): Express {
               // Real Shopify sales ranking so the widget badge never claims popularity it can't back up
               is_bestseller: Boolean((p as any).is_bestseller),
               sales_rank: Number((p as any).sales_rank) || 999,
+              ...recommendationExtras(p, recSettings, aiRes.recommendation_reasons?.[p.id]),
             });
           }
         }
 
         // Clean conversational text so no raw markdown images/links leak into the chat bubble
-        const cleanMessage = aiRes.content
+        const cleanMessage = assistantText
           .replace(/!\[.*?\]\(.*?\)/g, '')
           .replace(/\[(?:View Product|Check out|Buy now|Product).*?\]\(.*?\)/gi, '')
           .replace(/\n{3,}/g, '\n\n')
@@ -561,6 +607,9 @@ export function createApp(deps: AppDependencies = {}): Express {
           data: {
             message: cleanMessage,
             recommendations,
+            // Ask-first: show "Yes, show me / No thanks" under this reply
+            product_offer: policy.productOffer,
+            display_style: recSettings.displayStyle,
             // Kept for widgets cached before escalation modes existed
             should_escalate_ticket: escalation.level === 'offer',
             escalation: { level: escalation.level, mode: escalation.mode, reasons: escalation.reasons },
