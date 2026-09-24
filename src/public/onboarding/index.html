@@ -118,7 +118,8 @@
           <div class="form-group">
             <label for="s-admin-token">Admin API Access Token</label>
             <input type="password" id="s-admin-token" required placeholder="shpat_...">
-            <small class="form-helper">Required scopes: read_products, read_orders</small>
+            <small class="form-helper">Create the token in Shopify admin → Apps → Develop apps → your app, with the permissions below.</small>
+            <div data-shopify-scopes style="margin-top: 10px;"></div>
           </div>
           <div class="form-group">
             <label for="s-storefront-token">Storefront API Access Token</label>
@@ -253,6 +254,7 @@
   <!-- Toast Container -->
   <div id="toast-container"></div>
 
+  <script src="../common/js/shopify-scopes.js"></script>
   <script src="js/onboarding.js"></script>
 </body>
 </html>

@@ -27,6 +27,8 @@ export interface ShopifyScopeCheck {
   unlocks: string;
   /** Extra detail for non-ok states, e.g. 'HTTP 403 — scope not granted'. */
   detail?: string;
+  /** required | recommended | optional (see shopify-scopes.ts); absent on legacy probe results */
+  level?: 'required' | 'recommended' | 'optional';
 }
 
 export interface ShopifyHealthResult {

@@ -24,6 +24,7 @@ import {
   ShopifyScopeCheck,
   ShopifyScopeStatus,
 } from './shopify_health.types';
+import { ADMIN_SCOPES, isScopeGranted } from './shopify-scopes';
 
 const SHOPIFY_API_VERSION = '2024-01';
 const REQUEST_TIMEOUT_MS = 10000;
@@ -39,7 +40,7 @@ const SCOPE_PROBES: ScopeProbe[] = [
   {
     scope: 'read_orders',
     path: 'orders.json?limit=1&status=any',
-    unlocks: 'Revenue timeline, orders dashboard, and AI Agent sales Q&A ("aaj kitni sale hui?")',
+    unlocks: 'Revenue timeline, orders dashboard, and AI Agent sales answers ("How much did I sell today?")',
   },
   {
     scope: 'read_products',
@@ -97,7 +98,10 @@ async function probeShopify(
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     // Token travels in the header only — never in the URL, never logged.
-    const res = await fetch(`https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/${path}`, {
+    const url = path.startsWith('/')
+      ? `https://${shopDomain}${path}`
+      : `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/${path}`;
+    const res = await fetch(url, {
       headers: {
         'X-Shopify-Access-Token': adminToken,
         'Content-Type': 'application/json',
@@ -192,12 +196,7 @@ export class ShopifyHealthService {
         token_valid: false,
         store_match: null,
         shop_name: null,
-        scopes: SCOPE_PROBES.map((p) => ({
-          scope: p.scope,
-          status: 'unchecked',
-          tested_endpoint: p.path.split('?')[0],
-          unlocks: p.unlocks,
-        })),
+        scopes: uncheckedScopes(),
         rate_limit: null,
         fix_steps: FIX_STEPS_NOT_CONNECTED,
         checked_at: checkedAt,
@@ -216,12 +215,7 @@ export class ShopifyHealthService {
         token_valid: false,
         store_match: null,
         shop_name: null,
-        scopes: SCOPE_PROBES.map((p) => ({
-          scope: p.scope,
-          status: 'unchecked',
-          tested_endpoint: p.path.split('?')[0],
-          unlocks: p.unlocks,
-        })),
+        scopes: uncheckedScopes(),
         rate_limit: null,
         fix_steps: [
           'Could not reach your Shopify store (network timeout).',
@@ -240,12 +234,7 @@ export class ShopifyHealthService {
         token_valid: false,
         store_match: null,
         shop_name: null,
-        scopes: SCOPE_PROBES.map((p) => ({
-          scope: p.scope,
-          status: 'unchecked',
-          tested_endpoint: p.path.split('?')[0],
-          unlocks: p.unlocks,
-        })),
+        scopes: uncheckedScopes(),
         rate_limit: shopProbe.rateLimit,
         fix_steps: FIX_STEPS_TOKEN_INVALID,
         checked_at: checkedAt,
@@ -261,21 +250,42 @@ export class ShopifyHealthService {
       : null;
     const shopName = typeof shop.name === 'string' ? shop.name : null;
 
-    // 2. Per-scope probes (only meaningful now that the token is valid)
+    // 2. Every granted scope in one call; endpoint probes only when that call is unavailable
     const scopes: ShopifyScopeCheck[] = [];
-    for (const probe of SCOPE_PROBES) {
-      const outcome = await probeShopify(creds.shopDomain, creds.adminToken, probe.path);
-      const { status, detail } = classifyScopeProbe(outcome);
-      scopes.push({
-        scope: probe.scope,
-        status,
-        tested_endpoint: probe.path.split('?')[0],
-        unlocks: probe.unlocks,
-        ...(detail ? { detail } : {}),
-      });
+    const scopesProbe = await probeShopify(creds.shopDomain, creds.adminToken, '/admin/oauth/access_scopes.json');
+    const handles = scopesProbe.status === 200 && Array.isArray(scopesProbe.body?.access_scopes)
+      ? (scopesProbe.body.access_scopes as Array<{ handle?: string }>).map((h) => String(h?.handle || '')).filter(Boolean)
+      : null;
+    if (handles) {
+      const granted = new Set(handles);
+      for (const req of ADMIN_SCOPES) {
+        const ok = isScopeGranted(req.scope, granted);
+        scopes.push({
+          scope: req.scope,
+          level: req.level,
+          status: ok ? 'ok' : 'missing',
+          tested_endpoint: 'oauth/access_scopes.json',
+          unlocks: req.unlocks,
+          ...(ok ? {} : { detail: 'Not granted on this token' }),
+        });
+      }
+    } else {
+      for (const probe of SCOPE_PROBES) {
+        const outcome = await probeShopify(creds.shopDomain, creds.adminToken, probe.path);
+        const { status, detail } = classifyScopeProbe(outcome);
+        scopes.push({
+          scope: probe.scope,
+          status,
+          tested_endpoint: probe.path.split('?')[0],
+          unlocks: probe.unlocks,
+          ...(detail ? { detail } : {}),
+        });
+      }
     }
 
-    const missing = scopes.filter((s) => s.status === 'missing');
+    // Only required scopes make the connection "degraded"; recommended ones are a suggestion
+    const missing = scopes.filter((s) => s.status === 'missing' && (s.level ?? 'required') === 'required');
+    const suggested = scopes.filter((s) => s.status === 'missing' && s.level && s.level !== 'required');
     const errored = scopes.filter((s) => s.status === 'error');
 
     let overall: HealthOverallStatus = 'healthy';
@@ -302,6 +312,11 @@ export class ShopifyHealthService {
       fixSteps = [
         `Could not verify scope${errored.length > 1 ? 's' : ''}: ${errored.map((s) => s.scope).join(', ')} (${errored.map((s) => s.detail || 'request failed').join('; ')}).`,
         'Press Re-check. If it persists, regenerate the token with the required scopes.',
+      ];
+    } else if (suggested.length > 0) {
+      fixSteps = [
+        `Connected. For the full feature set also grant: ${suggested.map((s) => s.scope).join(', ')}.`,
+        ...FIX_STEPS_SCOPE_MISSING.filter((step) => !step.includes('at minimum')),
       ];
     }
 
@@ -469,4 +484,15 @@ export class ShopifyHealthService {
       // Table may not exist on a database that hasn't run migration 029 yet.
     }
   }
+}
+
+/** Full permission list shown before a live check has confirmed anything */
+function uncheckedScopes(): ShopifyScopeCheck[] {
+  return ADMIN_SCOPES.map((req) => ({
+    scope: req.scope,
+    level: req.level,
+    status: 'unchecked' as ShopifyScopeStatus,
+    tested_endpoint: 'oauth/access_scopes.json',
+    unlocks: req.unlocks,
+  }));
 }

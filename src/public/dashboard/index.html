@@ -2840,8 +2840,8 @@
         Paste a fresh <strong>Admin API access token</strong>. It is verified against your store before it replaces the old one — an invalid token changes nothing.
       </p>
       <div class="callout-box" style="margin-bottom: 12px; font-size: 12px; line-height: 1.5;">
-        The token needs <strong>read_orders</strong> and <strong>read_products</strong> at minimum (read_customers recommended).<br>
-        Shopify admin → Apps → App and sales channel settings → your custom app → API credentials → tick the scopes → Save → <strong>regenerate the token</strong> → paste it here.
+        Shopify admin → Apps → App and sales channel settings → your custom app → API credentials → tick the permissions below → Save → <strong>regenerate the token</strong> → paste it here. Shopify only adds new permissions to a regenerated token.
+        <div data-shopify-scopes style="margin-top: 10px; max-height: 260px; overflow-y: auto;"></div>
       </div>
       <form id="shopify-reconnect-form">
         <label for="shopify-reconnect-token" style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Admin API access token</label>
@@ -3176,6 +3176,7 @@
     }
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
-  <script type="module" src="js/app.js?v=2.8.0"></script>
+  <script src="../common/js/shopify-scopes.js"></script>
+  <script type="module" src="js/app.js?v=2.9.0"></script>
 </body>
 </html>

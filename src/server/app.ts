@@ -22,6 +22,7 @@ import { buildKnowledgeContext } from '../modules/knowledge/knowledge-retrieval'
 import { EntitlementRepository } from '../modules/entitlements/entitlement.repository';
 import { FeatureKey } from '../modules/entitlements/entitlement.types';
 import { decideEscalation, normalizeEscalationMode } from '../modules/support_tickets/escalation';
+import { ADMIN_SCOPES, STOREFRONT_SCOPES } from '../modules/shopify_health/shopify-scopes';
 import {
   PRODUCT_OFFER_QUESTION,
   applyRecommendationPolicy,
@@ -717,6 +718,11 @@ export function createApp(deps: AppDependencies = {}): Express {
   app.use('/api/v1/onboarding', onboardingRoutes);
   app.use('/api/v1/widget', widgetRoutes);
   app.use('/api/v1/widget', ticketWidgetRouter);
+  // Public: the Shopify custom-app permissions merchants tick (onboarding + reconnect screens)
+  app.get('/api/v1/shopify/required-scopes', (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({ success: true, data: { admin: ADMIN_SCOPES, storefront: STOREFRONT_SCOPES } });
+  });
   app.use('/api/v1/shopify', shopifyRoutes);
   app.use('/api/v1/webhooks/resend', resendWebhookRoutes);
   app.use('/api/v1/webhooks/whatsapp', whatsappWebhookRoutes);

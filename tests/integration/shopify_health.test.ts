@@ -371,4 +371,41 @@ describe('Shopify Connection Health Check', () => {
     expect(res.body.data.overall_status).toBe('down');
     expect(res.body.data.reason).toBe('not_connected');
   });
+
+  // Stub for shops that answer /admin/oauth/access_scopes.json (all current Shopify stores)
+  function accessScopesStub(handles: string[]) {
+    return vi.fn(async (url: string) => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith('/shop.json')) {
+        return jsonResponse({ shop: { name: 'London Eco', myshopify_domain: DOMAIN_A } }, 200, { 'x-shopify-shop-api-call-limit': '3/40' });
+      }
+      if (path === '/admin/oauth/access_scopes.json') {
+        return jsonResponse({ access_scopes: handles.map((handle) => ({ handle })) }, 200);
+      }
+      return jsonResponse({ errors: 'not stubbed' }, 500);
+    });
+  }
+
+  it('reads every granted permission in one call and only fails on required ones', async () => {
+    await seedShopifyCreds(STORE_A_ID);
+    vi.stubGlobal('fetch', accessScopesStub(['read_products', 'write_orders', 'read_customers', 'read_inventory', 'read_fulfillments']));
+    const result = await new ShopifyHealthService().checkHealth(STORE_A_ID);
+
+    expect(result.overall_status).toBe('healthy');
+    const byScope = Object.fromEntries(result.scopes.map((s) => [s.scope, s]));
+    expect(byScope.read_orders.status).toBe('ok'); // write_orders implies read_orders
+    expect(byScope.read_fulfillments.status).toBe('ok');
+    expect(byScope.read_checkouts).toMatchObject({ status: 'missing', level: 'recommended' });
+    expect(result.fix_steps[0]).toMatch(/For the full feature set also grant: .*read_checkouts/);
+  });
+
+  it('a missing required permission marks the connection degraded', async () => {
+    await seedShopifyCreds(STORE_A_ID);
+    vi.stubGlobal('fetch', accessScopesStub(['read_products', 'read_orders', 'read_customers']));
+    const result = await new ShopifyHealthService().checkHealth(STORE_A_ID);
+
+    expect(result.overall_status).toBe('degraded');
+    expect(result.reason).toBe('scopes_missing');
+    expect(result.fix_steps[0]).toBe('Missing scope: read_inventory.');
+  });
 });

@@ -1,5 +1,5 @@
-import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.8.0';
-import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.8.0';
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
+import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -1217,7 +1217,7 @@ function renderShopifyHealth(data) {
   for (const s of (data.scopes || [])) {
     html += `<div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:8px 10px;border:1px solid var(--color-border-default);border-radius:8px;">`
       + `<span style="font-size:15px;">${scopeIcon(s.status)}</span>`
-      + `<div><div style="font-weight:600;">${escapeHtml(s.scope)} <span style="font-weight:400;color:var(--color-text-muted);font-size:12px;">${escapeHtml(s.tested_endpoint || '')}</span></div>`
+      + `<div><div style="font-weight:600;">${escapeHtml(s.scope)} ${s.level ? `<span class="badge badge--neutral" style="font-size:10.5px;font-weight:600;">${escapeHtml(s.level.charAt(0).toUpperCase() + s.level.slice(1))}</span>` : `<span style="font-weight:400;color:var(--color-text-muted);font-size:12px;">${escapeHtml(s.tested_endpoint || '')}</span>`}</div>`
       + `<div style="color:var(--color-text-secondary);font-size:12px;">Unlocks: ${escapeHtml(s.unlocks || '')}</div>`
       + (s.detail ? `<div style="color:var(--color-danger);font-size:12px;">${escapeHtml(s.detail)}</div>` : '')
       + `</div></div>`;
