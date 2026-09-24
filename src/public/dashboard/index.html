@@ -8,7 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../common/css/design-system.css">
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=2.10.0">
+  <link rel="stylesheet" href="css/plan-billing.css?v=2.10.0">
   <!-- GSAP & ScrollTrigger Animation Engine -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
@@ -92,6 +93,7 @@
         </div>
 
         <ul class="nav-links">
+          <li class="nav-group-label" role="presentation">Home</li>
           <li>
             <a href="#" data-target="growth-copilot" class="active">
               <span class="nav-icon" aria-hidden="true">
@@ -116,29 +118,13 @@
               Live Pulse & Funnel
             </a>
           </li>
+          <li class="nav-group-label" role="presentation">AI Assistant</li>
           <li>
             <a href="#" data-target="my-agent">
               <span class="nav-icon" aria-hidden="true">
                 <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8.01" y2="16"></line><line x1="16" y1="16" x2="16.01" y2="16"></line></svg>
               </span>
               My Agent
-            </a>
-          </li>
-          <li>
-            <a href="#" data-target="leads-optins">
-              <span class="nav-icon" aria-hidden="true">
-                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-              </span>
-              Leads & Opt-ins
-            </a>
-          </li>
-          <li>
-            <a href="#" data-target="support-tickets">
-              <span class="nav-icon" aria-hidden="true">
-                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-              </span>
-              Support Tickets
-              <span id="badge-open-tickets-nav" class="badge badge--danger hidden" style="margin-left: auto; font-size: 10px; padding: 1px 6px;">0</span>
             </a>
           </li>
           <li>
@@ -157,28 +143,31 @@
               Shopify Catalog
             </a>
           </li>
+          <li class="nav-group-label" role="presentation">Inbox &amp; customers</li>
           <li>
-            <a href="#" data-target="ad-creative-studio">
+            <a href="#" data-target="support-tickets">
               <span class="nav-icon" aria-hidden="true">
-                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
               </span>
-              Ad Creative Studio
+              Support Tickets
+              <span id="badge-open-tickets-nav" class="badge badge--danger hidden" style="margin-left: auto; font-size: 10px; padding: 1px 6px;">0</span>
             </a>
           </li>
           <li>
-            <a href="#" data-target="whatsapp-growth">
+            <a href="#" data-target="leads-optins">
               <span class="nav-icon" aria-hidden="true">
-                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
               </span>
-              WhatsApp Growth
+              Leads & Opt-ins
             </a>
           </li>
+          <li class="nav-group-label" role="presentation">Marketing</li>
           <li>
             <a href="#" data-target="email-automation">
               <span class="nav-icon" aria-hidden="true">
                 <svg class="nav-svg" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
               </span>
-              Email Automation
+              Email Recovery
             </a>
           </li>
           <li>
@@ -190,13 +179,14 @@
             </a>
           </li>
           <li>
-            <a href="#" data-target="ad-intelligence">
+            <a href="#" data-target="whatsapp-growth">
               <span class="nav-icon" aria-hidden="true">
-                <svg class="nav-svg" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
               </span>
-              Ad Intelligence
+              WhatsApp
             </a>
           </li>
+          <li class="nav-group-label" role="presentation">Ads</li>
           <li>
             <a href="#" data-target="meta-ads">
               <span class="nav-icon" aria-hidden="true">
@@ -210,19 +200,49 @@
               <span class="nav-icon" aria-hidden="true">
                 <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
               </span>
-              Ads Explorer
+              Ad Creatives
             </a>
           </li>
+          <li>
+            <a href="#" data-target="ad-creative-studio">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              </span>
+              Create Ads
+            </a>
+          </li>
+          <li>
+            <a href="#" data-target="ad-intelligence">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+              </span>
+              Attribution
+            </a>
+          </li>
+          <li class="nav-group-label" role="presentation">AI tools</li>
           <li>
             <a href="#" data-target="ai-agent">
               <span class="nav-icon" aria-hidden="true">
                 <svg class="nav-svg" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.2-2.6 5.6-.9.9-1.4 2-1.4 3.4H9c0-1.4-.5-2.5-1.4-3.4C6.2 13.2 5 11.4 5 9a7 7 0 0 1 7-7z"></path><path d="M9 21h6"></path></svg>
               </span>
-              AI Agent
+              Ask AI
+            </a>
+          </li>
+          <li class="nav-group-label" role="presentation">Settings</li>
+          <li>
+            <a href="#" data-target="plan-billing">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+              </span>
+              Plan &amp; Billing
             </a>
           </li>
         </ul>
         <div class="sidebar-footer">
+          <button type="button" id="sidebar-plan-card" class="sidebar-plan hidden" aria-label="Open plan and billing">
+            <span class="sidebar-plan-row"><strong id="sidebar-plan-name">Plan</strong><span id="sidebar-plan-status" class="sidebar-plan-status"></span></span>
+            <span id="sidebar-plan-renews" class="sidebar-plan-renews"></span>
+          </button>
           <button id="logout-btn" class="btn-secondary btn-sm" style="width: 100%;">Sign Out</button>
         </div>
       </nav>
@@ -2758,6 +2778,35 @@
             </div>
           </div>
         </section>
+
+        <!-- Settings: Plan & billing -->
+        <section id="plan-billing" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <h2>Plan &amp; Billing</h2>
+              <p class="section-subtitle">Your plan, what it includes and how much of it you have used this month.</p>
+            </div>
+          </header>
+          <div class="plan-billing-top">
+            <div class="panel" id="pb-current">
+              <p class="text-muted">Loading your plan...</p>
+            </div>
+            <div class="panel" id="pb-usage"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header-clean">
+              <h3 class="pb-heading">What your plan includes</h3>
+              <span class="pb-hint">Locked features are available on a higher plan</span>
+            </div>
+            <div id="pb-sections" class="pb-sections"></div>
+          </div>
+          <div class="panel hidden" id="pb-compare-panel">
+            <div class="panel-header-clean">
+              <h3 class="pb-heading">Compare plans</h3>
+            </div>
+            <div id="pb-compare" class="pb-compare"></div>
+          </div>
+        </section>
       </main>
     </div>
   </div>
@@ -3177,6 +3226,6 @@
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
   <script src="../common/js/shopify-scopes.js"></script>
-  <script type="module" src="js/app.js?v=2.9.0"></script>
+  <script type="module" src="js/app.js?v=2.10.0"></script>
 </body>
 </html>

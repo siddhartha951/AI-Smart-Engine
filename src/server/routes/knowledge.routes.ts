@@ -9,6 +9,7 @@ import {
 } from '../../modules/knowledge/knowledge-document.repository';
 import { AuditRepository } from '../../modules/merchant/audit.repository';
 import { ValidationError } from '../../utils/errors';
+import { safeEffectiveLimits } from '../../modules/plans/plan.repository';
 
 // Mounted at /api/v1/dashboard/:storeId/agent/knowledge (store access enforced by the parent router)
 export const knowledgeRouter = Router({ mergeParams: true });
@@ -58,8 +59,10 @@ function cleanText(raw: string): { text: string; truncated: boolean } {
 }
 
 async function ensureCapacity(repo: KnowledgeDocumentRepository, storeId: string) {
-  if ((await repo.countDocuments(storeId)) >= MAX_KNOWLEDGE_DOCUMENTS) {
-    throw new ValidationError(`You can keep up to ${MAX_KNOWLEDGE_DOCUMENTS} knowledge documents. Remove one to add another.`);
+  // Plan limit when the store has a plan, otherwise the platform default
+  const limit = (await safeEffectiveLimits(getDatabaseClient(), storeId)).knowledge_doc_limit ?? MAX_KNOWLEDGE_DOCUMENTS;
+  if ((await repo.countDocuments(storeId)) >= limit) {
+    throw new ValidationError(`Your plan includes up to ${limit} knowledge documents. Remove one to add another.`);
   }
 }
 

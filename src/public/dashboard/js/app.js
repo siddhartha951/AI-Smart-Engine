@@ -1,5 +1,6 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
+import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -146,7 +147,8 @@ const sections = {
   'ad-intelligence': document.getElementById('ad-intelligence'),
   'meta-ads': document.getElementById('meta-ads'),
   'ads-explorer': document.getElementById('ads-explorer'),
-  'ai-agent': document.getElementById('ai-agent')
+  'ai-agent': document.getElementById('ai-agent'),
+  'plan-billing': document.getElementById('plan-billing')
 };
 
 const LOAD_ERROR_TEXT = "We couldn't load this data right now. Please refresh the page or try again in a moment.";
@@ -352,6 +354,15 @@ function setupEventListeners() {
     escapeHtml,
   });
 
+  // Settings → Plan & billing, sidebar plan card, locked-feature hints
+  initPlanBilling({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    escapeHtml,
+    openSection: (target) => openNavTarget(target),
+    loadErrorText: LOAD_ERROR_TEXT,
+  });
+
   // Login submit is handled at module top level (see above) so it can never
   // be skipped by a failure in the feature sections below.
 
@@ -370,6 +381,12 @@ function setupEventListeners() {
       const a = e.target.closest('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
+      // Locked feature: explain which plan unlocks it instead of opening an empty module
+      if (a.classList.contains('nav-locked')) {
+        showLockedFeature(target);
+        closeMobileSidebar();
+        return;
+      }
       // Disabled feature: keep the current tab and do not fire requests for the blocked module
       if (!showSection(target)) return;
       document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
@@ -1473,6 +1490,11 @@ async function loadSectionData(section) {
 
     if (section === 'support-tickets') {
       await loadSupportTickets();
+      return;
+    }
+
+    if (section === 'plan-billing') {
+      await loadPlanBilling();
       return;
     }
 
@@ -4584,10 +4606,11 @@ window.executeGrowthAction = async function(actionId, targetModule, _targetId) {
   } catch (_) {}
 
   const navLink = document.querySelector(`.nav-links a[data-target="${targetModule}"]`);
-  if (navLink) {
+  if (navLink && navLink.classList.contains('nav-locked')) {
+    showLockedFeature(targetModule);
+  } else if (navLink && showSection(targetModule)) {
     document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
     navLink.classList.add('active');
-    showSection(targetModule);
     loadSectionData(targetModule);
     showToast(`Navigating to ${targetModule.replace('-', ' ')} ➔`);
   }
@@ -4688,6 +4711,25 @@ document.addEventListener('DOMContentLoaded', () => {
 // PHASE 17: AI INTELLIGENCE LAYER & MERCHANT ANALYTICS MODULE
 // =========================================================================
 
+// Opens a sidebar tab by its data-target, respecting locks
+function openNavTarget(target) {
+  const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
+  if (link) link.click();
+}
+
+// A feature outside the store's plan: say which plan includes it and show Plan & billing
+function showLockedFeature(target) {
+  const featKey = NAV_FEATURE_MAP[target];
+  const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
+  const badgeText = link?.querySelector('.nav-lock-badge')?.textContent || '';
+  const name = link ? link.textContent.replace(badgeText, '').trim() : 'This feature';
+  const planName = planNameFor(state.planSummary, featKey);
+  showToast(planName
+    ? `${name} is available on the ${planName} plan. See Plan & Billing to upgrade.`
+    : FEATURE_DISABLED_MESSAGE, !planName);
+  openNavTarget('plan-billing');
+}
+
 async function fetchStoreFeatures() {
   if (!state.activeStoreId) return;
   try {
@@ -4703,34 +4745,38 @@ async function fetchStoreFeatures() {
       if (curSelect) curSelect.value = json.data.currency;
     }
 
-    // Hide or show nav links based on entitlements
+    // Features outside the plan stay visible with a lock and the plan that unlocks them
+    const planSummary = await getPlanSummary(true);
+    state.planSummary = planSummary;
+    renderSidebarPlan(planSummary);
     document.querySelectorAll('.nav-links li').forEach(li => {
       const a = li.querySelector('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
       const featKey = NAV_FEATURE_MAP[target];
-      if (featKey && state.features[featKey] === false) {
-        li.style.display = 'none';
+      const locked = !!(featKey && state.features[featKey] === false);
+      li.style.display = '';
+      a.classList.toggle('nav-locked', locked);
+      a.querySelector('.nav-lock-badge')?.remove();
+      if (locked) {
+        a.setAttribute('aria-description', 'Not included in your plan');
+        const badge = document.createElement('span');
+        badge.className = 'nav-lock-badge';
+        badge.textContent = planNameFor(planSummary, featKey) || 'Locked';
+        a.appendChild(badge);
       } else {
-        li.style.display = '';
+        a.removeAttribute('aria-description');
       }
     });
 
     applyEscalationPanelState();
 
-    // If currently active tab is disabled, redirect to first visible
+    // If the active tab is locked, move to the first tab the store can use
     const activeLink = document.querySelector('.nav-links a.active');
-    if (activeLink) {
-      const curTarget = activeLink.getAttribute('data-target');
-      const curFeat = NAV_FEATURE_MAP[curTarget];
-      if (curFeat && state.features[curFeat] === false) {
-        const firstVisible = Array.from(document.querySelectorAll('.nav-links li'))
-          .find(li => li.style.display !== 'none')
-          ?.querySelector('a');
-        if (firstVisible) {
-          firstVisible.click();
-        }
-      }
+    if (activeLink && activeLink.classList.contains('nav-locked')) {
+      const firstOpen = Array.from(document.querySelectorAll('.nav-links a[data-target]'))
+        .find(a => !a.classList.contains('nav-locked'));
+      if (firstOpen) firstOpen.click();
     }
   } catch (err) {
     console.warn('Could not fetch store feature entitlements', err);
@@ -4800,11 +4846,9 @@ window.navigateToModule = function(moduleName) {
   };
   const target = targetMap[moduleName] || moduleName;
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
-  if (link && link.closest('li').style.display !== 'none') {
+  if (link) {
+    // A locked tab explains which plan unlocks it (handled by the nav click handler)
     link.click();
-  } else if (link) {
-    // Tab is hidden because the admin has not enabled this module for the store
-    showToast(FEATURE_DISABLED_MESSAGE, true);
   } else {
     showToast('This section is not available in your dashboard.', true);
   }

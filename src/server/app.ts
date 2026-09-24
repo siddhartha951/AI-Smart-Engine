@@ -34,6 +34,7 @@ import {
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import adminRoutes from './routes/admin.routes';
+import adminPlansRoutes from './routes/admin-plans.routes';
 import onboardingRoutes from './routes/onboarding.routes';
 import widgetRoutes from './routes/widget.routes';
 import shopifyRoutes from './routes/shopify.routes';
@@ -715,6 +716,7 @@ export function createApp(deps: AppDependencies = {}): Express {
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/dashboard', dashboardRoutes);
   app.use('/api/v1/admin', adminRoutes);
+  app.use('/api/v1/admin', adminPlansRoutes);
   app.use('/api/v1/onboarding', onboardingRoutes);
   app.use('/api/v1/widget', widgetRoutes);
   app.use('/api/v1/widget', ticketWidgetRouter);

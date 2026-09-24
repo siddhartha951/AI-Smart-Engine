@@ -1,0 +1,137 @@
+/* ===== Sidebar sections, locked features and Settings → Plan & billing ===== */
+
+.nav-links .nav-group-label {
+  margin: var(--space-3) 0 2px;
+  padding: 0 var(--space-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+.nav-links .nav-group-label:first-child { margin-top: 0; }
+
+.nav-links a.nav-locked { color: var(--color-text-tertiary); }
+.nav-links a.nav-locked:hover { color: var(--color-text-secondary); }
+.nav-lock-badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sidebar-plan {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-plan:hover { border-color: var(--color-border-strong); }
+.sidebar-plan:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+.sidebar-plan-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); font-size: 13px; }
+.sidebar-plan-status,
+.pb-status { font-size: 11px; font-weight: 700; }
+.sidebar-plan-renews { font-size: 11.5px; color: var(--color-text-secondary); }
+:is(.sidebar-plan-status, .pb-status)[data-tone="success"] { color: var(--color-success); }
+:is(.sidebar-plan-status, .pb-status)[data-tone="warning"] { color: var(--color-warning); }
+:is(.sidebar-plan-status, .pb-status)[data-tone="danger"] { color: var(--color-danger); }
+:is(.sidebar-plan-status, .pb-status)[data-tone="info"] { color: var(--color-info); }
+
+.plan-billing-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.plan-billing-top .panel { display: flex; flex-direction: column; gap: var(--space-3); }
+.pb-eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--color-text-secondary); }
+.pb-plan-name { margin: 2px 0 0; font-size: 22px; font-weight: 700; color: var(--color-text-primary); }
+.pb-price { margin: 2px 0 0; font-size: 14px; color: var(--color-text-primary); }
+.pb-current-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+.pb-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--color-surface-subtle);
+}
+.pb-muted { margin: 0; font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
+.pb-small { font-size: 12px; }
+.pb-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.pb-actions .btn { min-height: 40px; }
+.pb-heading { margin: 0; font-size: 15px; font-weight: 700; color: var(--color-text-primary); }
+.pb-hint { font-size: 12.5px; color: var(--color-text-secondary); }
+
+.pb-usage-row { display: flex; flex-direction: column; gap: 6px; }
+.pb-usage-label { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 13px; color: var(--color-text-primary); }
+.pb-bar { height: 8px; border-radius: 999px; background: var(--color-surface-muted); overflow: hidden; }
+.pb-bar-fill { display: block; height: 100%; border-radius: inherit; }
+.pb-bar-fill--accent { background: var(--color-accent); }
+.pb-bar-fill--success { background: var(--color-success); }
+.pb-bar-fill--warning { background: var(--color-warning); }
+.pb-bar-fill--danger { background: var(--color-danger); }
+.pb-bar-fill--neutral { background: var(--color-border-strong); }
+
+.pb-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.pb-section {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+.pb-section h4 { margin: 0 0 var(--space-2); font-size: 13.5px; font-weight: 700; color: var(--color-text-primary); }
+.pb-section ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.pb-section li { display: flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--color-text-primary); }
+.pb-section li.pb-locked { color: var(--color-text-secondary); }
+.pb-icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.pb-icon--ok { stroke: var(--color-success); stroke-width: 2.6; }
+.pb-icon--lock { stroke: var(--color-text-tertiary); stroke-width: 2; }
+.pb-plan-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.table-scroll { overflow-x: auto; }
+.pb-compare-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: var(--space-3); }
+.pb-compare-table th,
+.pb-compare-table td { padding: 8px 12px; border-top: 1px solid var(--color-border-subtle); text-align: center; color: var(--color-text-primary); }
+.pb-compare-table th[scope="row"],
+.pb-compare-table thead th:first-child { text-align: left; font-weight: 600; }
+.pb-compare-table thead th { vertical-align: bottom; font-size: 13px; }
+.pb-compare-table thead small { display: block; font-size: 11.5px; font-weight: 500; color: var(--color-text-secondary); }
+.pb-compare-section th {
+  text-align: left !important;
+  background: var(--color-surface-subtle);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+.pb-current-col { background: var(--color-accent-soft); }
+.pb-you { display: block; font-size: 10.5px; font-weight: 700; color: var(--color-accent); }
+
+@media (max-width: 900px) {
+  .plan-billing-top { grid-template-columns: minmax(0, 1fr); }
+}

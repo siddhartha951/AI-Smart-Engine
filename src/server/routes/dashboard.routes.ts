@@ -26,6 +26,8 @@ import { emailSenderRouter } from './email-sender.routes';
 import { knowledgeRouter } from './knowledge.routes';
 import { normalizeEscalationMode, normalizeEscalationSensitivity } from '../../modules/support_tickets/escalation';
 import { normalizeRecommendationSettings } from '../../modules/chat/recommendation-policy';
+import { PlanRepository } from '../../modules/plans/plan.repository';
+import { buildStorePlanView } from '../../modules/plans/plan.service';
 
 const router = Router();
 
@@ -75,6 +77,34 @@ router.get('/:storeId/features', enforceStoreAccess, async (req: Request, res: R
         store_id: storeId,
         currency: storeRes.rows[0]?.currency || 'INR',
         features,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Plan & billing (Settings): current plan, usage, limits and what each section includes.
+// Never gated by a feature, so a merchant can always see what to upgrade to.
+router.get('/:storeId/plan', enforceStoreAccess, async (req: Request, res: Response, next) => {
+  try {
+    const db = getDatabaseClient();
+    const [view, plans] = await Promise.all([
+      buildStorePlanView(db, req.params.storeId as string),
+      new PlanRepository(db).listPlans(),
+    ]);
+    // Internal admin notes stay in the admin panel
+    const subscription = view.subscription ? { ...view.subscription, notes: undefined } : null;
+    res.json({
+      success: true,
+      data: {
+        ...view,
+        subscription,
+        plans: plans
+          .filter((p) => p.is_active)
+          .map(({ id, name, tagline, price_inr_monthly, price_usd_monthly, ai_budget_usd, knowledge_doc_limit, features }) => ({
+            id, name, tagline, price_inr_monthly, price_usd_monthly, ai_budget_usd, knowledge_doc_limit, features,
+          })),
       },
     });
   } catch (err) {

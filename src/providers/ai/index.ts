@@ -4,6 +4,7 @@ import { OpenAiProvider } from './openai.provider';
 import { GeminiAiProvider } from './gemini.provider';
 import { getEnvConfig } from '../../config/env';
 import { IDatabaseClient, getDatabaseClient } from '../../database/client';
+import { safeEffectiveLimits } from '../../modules/plans/plan.repository';
 
 export * from './ai.provider';
 export { GeminiAiProvider } from './gemini.provider';
@@ -57,7 +58,9 @@ export class BudgetGuard {
     );
 
     const totalCost = Number(res.rows[0]?.total_cost || 0);
-    return totalCost >= env.AI_MONTHLY_BUDGET_STOP_USD;
+    // A store on a plan uses the plan's (or its custom) AI budget; others keep the platform default
+    const { ai_budget_usd } = await safeEffectiveLimits(this.db, storeId);
+    return totalCost >= (ai_budget_usd ?? env.AI_MONTHLY_BUDGET_STOP_USD);
   }
 
   /**

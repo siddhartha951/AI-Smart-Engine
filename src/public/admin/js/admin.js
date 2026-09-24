@@ -271,6 +271,7 @@ function showSection(sectionId) {
   else if (sectionId === 'merchant-management') loadMerchants();
   else if (sectionId === 'platform-controls') loadPlatformConfig();
   else if (sectionId === 'alerts-section') loadAlerts();
+  else if (sectionId === 'plans-section' && typeof window.loadPlansPage === 'function') window.loadPlansPage();
 }
 
 // ===== Overview =====
@@ -586,6 +587,9 @@ function renderMerchantDetail(data, storeEntitlements = []) {
   if (featuresContainer) {
     if (!s.id) {
       featuresContainer.innerHTML = '<p class="empty-state">No store available for feature configuration</p>';
+    } else if (typeof window.renderStorePlanPanel === 'function') {
+      // Plan assignment + features grouped by section (admin-plans.js)
+      window.renderStorePlanPanel(s.id, featuresContainer);
     } else if (storeEntitlements && storeEntitlements.length > 0) {
       featuresContainer.innerHTML = `
         <div class="features-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px;">

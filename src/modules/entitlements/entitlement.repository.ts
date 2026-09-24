@@ -116,9 +116,29 @@ export class EntitlementRepository {
     adminUserId?: string
   ): Promise<void> {
     for (const [key, enabled] of Object.entries(entitlements)) {
-      if (enabled !== undefined) {
+      // Unknown keys are ignored so a typo can never create a stray entitlement row
+      if (typeof enabled === 'boolean' && (ALL_FEATURE_KEYS as string[]).includes(key)) {
         await this.setFeatureEntitlement(storeId, key as FeatureKey, enabled, adminUserId);
       }
+    }
+  }
+
+  /**
+   * Writes a full feature map without per-feature audit rows. Callers (plan assignment)
+   * record one audit entry for the whole change.
+   */
+  async writeEntitlements(storeId: string, entitlements: Partial<Record<FeatureKey, boolean>>): Promise<void> {
+    for (const key of ALL_FEATURE_KEYS) {
+      const enabled = entitlements[key];
+      if (typeof enabled !== 'boolean') continue;
+      await this.db.query(
+        `INSERT INTO store_feature_entitlements (store_id, feature_key, enabled, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (store_id, feature_key) DO UPDATE SET
+           enabled = EXCLUDED.enabled,
+           updated_at = NOW()`,
+        [storeId, key, enabled]
+      );
     }
   }
 
