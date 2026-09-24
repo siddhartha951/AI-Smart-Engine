@@ -65,6 +65,21 @@ export class PostgresClient implements IDatabaseClient {
   }
 }
 
+/**
+ * Real Postgres rejects a query whose bound parameter count differs from its highest $n
+ * ("bind message supplies 2 parameters, but prepared statement requires 1"); pg-mem does not.
+ * The in-memory client enforces the same rule so such bugs fail in tests, not in production.
+ */
+function assertParamCount(sqlText: string, params?: any[]): void {
+  if (!params) return;
+  const withoutLiterals = sqlText.replace(/'(?:[^']|'')*'/g, "''").replace(/--[^\n]*/g, '');
+  let highest = 0;
+  for (const m of withoutLiterals.matchAll(/\$(\d+)/g)) highest = Math.max(highest, Number(m[1]));
+  if (params.length !== highest) {
+    throw new Error(`bind message supplies ${params.length} parameters, but prepared statement requires ${highest}`);
+  }
+}
+
 export class InMemoryPostgresClient implements IDatabaseClient {
   private memDb: IMemoryDb;
   private adapter: any;
@@ -105,6 +120,7 @@ export class InMemoryPostgresClient implements IDatabaseClient {
   }
 
   async query<T extends QueryResultRow = any>(sqlText: string, params?: any[]): Promise<QueryResult<T>> {
+    assertParamCount(sqlText, params);
     const rawResult: any = await this.adapter.query(sqlText, params);
     if (Array.isArray(rawResult)) {
       const last = rawResult[rawResult.length - 1];

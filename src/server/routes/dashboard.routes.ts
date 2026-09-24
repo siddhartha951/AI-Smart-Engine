@@ -28,6 +28,7 @@ import { normalizeEscalationMode, normalizeEscalationSensitivity } from '../../m
 import { normalizeRecommendationSettings } from '../../modules/chat/recommendation-policy';
 import { PlanRepository } from '../../modules/plans/plan.repository';
 import { buildStorePlanView } from '../../modules/plans/plan.service';
+import { HOME_RANGES, HomeRange, getHomeMetrics, normalizeTzOffset } from '../../modules/home/home-metrics';
 
 const router = Router();
 
@@ -148,6 +149,19 @@ router.put('/:storeId/currency', enforceStoreAccess, async (req: Request, res: R
     );
 
     res.json({ success: true, data: updated.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Home: every KPI for one time window (today / 7d / 30d in the merchant's timezone) plus the
+// previous window for comparison. `tz` is the browser's getTimezoneOffset() in minutes.
+router.get('/:storeId/home', enforceStoreAccess, enforceFeature(FeatureKey.OVERVIEW), async (req: Request, res: Response, next) => {
+  try {
+    const rawRange = String(req.query.range || '7d');
+    const range: HomeRange = (HOME_RANGES as readonly string[]).includes(rawRange) ? (rawRange as HomeRange) : '7d';
+    const data = await getHomeMetrics(getDatabaseClient(), req.params.storeId as string, range, normalizeTzOffset(req.query.tz));
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
