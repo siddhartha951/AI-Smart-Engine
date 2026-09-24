@@ -644,6 +644,35 @@
               <input type="text" id="agent-support" class="form-control" placeholder="e.g. help@getaniwell.com">
               <small class="form-hint">When an agent or support ticket replies to a customer, replies will route to this email address.</small>
             </div>
+            <div class="form-group" id="agent-escalation-panel">
+              <label>Human Support Mode</label>
+              <small class="form-hint" style="margin: 0 0 8px;">Choose when shoppers are handed from the AI assistant to your team.</small>
+              <div id="agent-escalation-locked" class="hidden" style="font-size: 12.5px; padding: 10px 12px; border-radius: 8px; margin-bottom: 8px; background: var(--color-warning-soft); color: var(--color-text-primary);">
+                Support tickets are not enabled for your store, so shoppers see your support contact instead. Contact your administrator to enable tickets.
+              </div>
+              <div class="esc-mode-options" role="radiogroup" aria-label="Human support mode">
+                <label class="esc-mode-option">
+                  <input type="radio" name="agent-escalation-mode" value="contact_only">
+                  <span><strong>Contact only</strong><small>No tickets. When needed, the AI shows your support email and WhatsApp.</small></span>
+                </label>
+                <label class="esc-mode-option">
+                  <input type="radio" name="agent-escalation-mode" value="smart" checked>
+                  <span><strong>Smart (recommended)</strong><small>The AI solves first and offers a ticket only when the shopper is stuck, upset or asks for a person.</small></span>
+                </label>
+                <label class="esc-mode-option">
+                  <input type="radio" name="agent-escalation-mode" value="instant">
+                  <span><strong>Instant</strong><small>The "Need Help?" ticket button is always shown in the chat.</small></span>
+                </label>
+              </div>
+              <div id="agent-escalation-sensitivity-row" style="margin-top: 10px;">
+                <label for="agent-escalation-sensitivity" style="font-size: 12.5px;">When should Smart mode offer a ticket?</label>
+                <select id="agent-escalation-sensitivity" class="form-control">
+                  <option value="early">Early: at the first sign of a problem</option>
+                  <option value="balanced" selected>Balanced: when the shopper is clearly stuck (recommended)</option>
+                  <option value="late">Late: only after several failed attempts</option>
+                </select>
+              </div>
+            </div>
             <div class="form-group">
               <label for="agent-revert-duration">Support Ticket SLA / Revert Duration</label>
               <select id="agent-revert-duration" class="form-control">
@@ -3066,6 +3095,6 @@
     }
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
-  <script type="module" src="js/app.js?v=2.6.0"></script>
+  <script type="module" src="js/app.js?v=2.7.0"></script>
 </body>
 </html>

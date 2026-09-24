@@ -21,6 +21,7 @@ import { MAX_RECOMMENDATIONS } from '../providers/ai/shopper-prompt';
 import { buildKnowledgeContext } from '../modules/knowledge/knowledge-retrieval';
 import { EntitlementRepository } from '../modules/entitlements/entitlement.repository';
 import { FeatureKey } from '../modules/entitlements/entitlement.types';
+import { decideEscalation, normalizeEscalationMode } from '../modules/support_tickets/escalation';
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import adminRoutes from './routes/admin.routes';
@@ -192,6 +193,8 @@ export function createApp(deps: AppDependencies = {}): Express {
               live_tracking_enabled: store.live_tracking_enabled !== false,
               // Widget hides the ticket buttons when the admin has not enabled support tickets
               support_tickets_enabled: ticketsEnabled,
+              // How the widget hands shoppers to humans (admin-disabled tickets always mean contact_only)
+              escalation_mode: ticketsEnabled ? normalizeEscalationMode((assistantSettings as any)?.escalation_mode) : 'contact_only',
             },
           },
         });
@@ -423,7 +426,19 @@ export function createApp(deps: AppDependencies = {}): Express {
             ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
             quick_action_pills: (settings as any)?.quick_action_pills || [],
             support_tickets_enabled: ticketsEnabled,
+            escalation_mode: ticketsEnabled ? normalizeEscalationMode((settings as any)?.escalation_mode) : 'contact_only',
           }
+        });
+
+        // When to hand the shopper to humans: decided here (not guessed in the widget)
+        const escalation = decideEscalation({
+          mode: (settings as any)?.escalation_mode,
+          sensitivity: (settings as any)?.escalation_sensitivity,
+          ticketsEnabled,
+          userMessages: history.filter(m => m.role === 'user').slice(-10).map(m => m.content),
+          previousAssistantMessages: history.filter(m => m.role === 'assistant').slice(-3).map(m => m.content),
+          aiReply: aiRes.content,
+          aiRequestedTicket: Boolean(aiRes.should_escalate_ticket),
         });
 
         // Save AI message and record usage
@@ -546,7 +561,9 @@ export function createApp(deps: AppDependencies = {}): Express {
           data: {
             message: cleanMessage,
             recommendations,
-            should_escalate_ticket: ticketsEnabled && Boolean(aiRes.should_escalate_ticket),
+            // Kept for widgets cached before escalation modes existed
+            should_escalate_ticket: escalation.level === 'offer',
+            escalation: { level: escalation.level, mode: escalation.mode, reasons: escalation.reasons },
             ticket_subject: aiRes.ticket_subject,
             ticket_reason: aiRes.ticket_reason,
             ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',

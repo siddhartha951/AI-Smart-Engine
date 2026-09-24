@@ -2014,3 +2014,22 @@ header h2,
   .tk-email, .tk-subject { max-width: 200px; }
   .tk-stat-value { font-size: 24px; }
 }
+
+/* ===== My Agent: human support (escalation) mode ===== */
+.esc-mode-options { display: grid; gap: 8px; }
+.esc-mode-option {
+  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+  padding: 10px 12px; border: 1px solid var(--color-border-default); border-radius: var(--radius-md);
+  background: var(--color-surface); transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.esc-mode-option:hover { border-color: var(--color-border-strong); }
+.esc-mode-option:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-soft); }
+/* Global .form-group input rules stretch radios; keep them compact next to the text */
+.esc-mode-option input[type="radio"] {
+  flex: 0 0 auto; width: 16px !important; height: 16px; min-height: 0; padding: 0; margin: 2px 0 0;
+  border: none; box-shadow: none; background: none; accent-color: var(--color-accent);
+}
+.esc-mode-option > span { flex: 1 1 auto; min-width: 0; text-align: left; }
+.esc-mode-option strong { display: block; font-size: 13px; color: var(--color-text-primary); }
+.esc-mode-option small { display: block; font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+.esc-mode-option.is-disabled { opacity: 0.5; cursor: not-allowed; }

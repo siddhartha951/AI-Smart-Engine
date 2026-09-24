@@ -143,7 +143,8 @@ describe('Support Tickets: triage, SLA, alerts & macros', () => {
 
   it('rejects widget tickets when an admin has disabled the support tickets feature', async () => {
     await db.query(
-      `INSERT INTO store_feature_entitlements (store_id, feature_key, enabled) VALUES ($1, 'support_tickets', false)`,
+      `INSERT INTO store_feature_entitlements (store_id, feature_key, enabled) VALUES ($1, 'support_tickets', false)
+       ON CONFLICT (store_id, feature_key) DO UPDATE SET enabled = false`,
       [STORE_A_ID]
     );
 

@@ -779,9 +779,12 @@
           this.ticketRevertDuration = json.data.ticket_revert_duration;
         }
 
-        if (shouldEscalate) {
-          const subject = json.data?.ticket_subject || (isHumanQuery ? 'Customer requested support ticket' : 'Inquiry requires store support');
-          const revertDur = json.data?.ticket_revert_duration || this.ticketRevertDuration || 'within 24 hours';
+        const escalation = json.success ? json.data?.escalation : null;
+        const subject = json.data?.ticket_subject || (isHumanQuery ? 'Customer requested support ticket' : 'Inquiry requires store support');
+        const revertDur = json.data?.ticket_revert_duration || this.ticketRevertDuration || 'within 24 hours';
+        if (escalation && escalation.level) {
+          setTimeout(() => this.handleEscalation(escalation, subject, revertDur), 350);
+        } else if (shouldEscalate) {
           setTimeout(() => {
             this.openTicketEscalationPrompt(subject, revertDur);
           }, 350);
@@ -830,23 +833,107 @@
 
     // Older servers send no flag, so only an explicit false disables tickets
     ticketsEnabled() {
-      return this.state.config?.features?.support_tickets_enabled !== false;
+      return this.state.config?.features?.support_tickets_enabled !== false && this.escalationMode() !== 'contact_only';
+    }
+
+    helpChipHtml() {
+      const mode = this.escalationMode();
+      let label = '';
+      if (mode === 'instant') label = '🛎️ Need Human Help? Open Ticket';
+      else if (mode === 'smart' && this.state.showHelpChip) label = '🙋 Still stuck? Talk to our team';
+      else if (mode === 'contact_only' && this.state.showHelpChip) label = '📧 Contact our team';
+      if (!label) return '';
+      return `
+            <div class="chat-action-pills-bar">
+              <button type="button" class="btn-need-help-chip" id="btn-quick-need-help" title="Talk to our team">
+                <span>${label}</span>
+              </button>
+            </div>`;
+    }
+
+    // contact_only | smart | instant. Older servers send none: keep the legacy "instant" behaviour.
+    escalationMode() {
+      const features = this.state.config?.features || {};
+      if (features.support_tickets_enabled === false) return 'contact_only';
+      return ['contact_only', 'smart', 'instant'].includes(features.escalation_mode) ? features.escalation_mode : 'instant';
+    }
+
+    // Applies the server's decision: nothing, a soft "talk to our team" chip, a ticket offer, or contact details
+    handleEscalation(escalation, subject, revertDuration) {
+      const level = escalation.level;
+      if (level === 'contact') {
+        const recent = this.state.messages.slice(-4);
+        if (!recent.some(m => m.isContactCard)) this.showContactCard();
+        return;
+      }
+      if (level === 'soft') {
+        this.setState({ showHelpChip: true });
+        return;
+      }
+      if (level === 'offer') {
+        if (this.escalationMode() === 'instant') {
+          this.openTicketEscalationPrompt(subject, revertDuration);
+          return;
+        }
+        const pending = this.state.messages.slice(-4).some(m => (m.isTicketOffer && !m.offerAnswered) || (m.isTicketPrompt && !m.isTicketSubmitted));
+        if (pending) return;
+        const duration = revertDuration || this.ticketRevertDuration || 'within 24 hours';
+        this.setState({
+          showHelpChip: true,
+          messages: [...this.state.messages, {
+            role: 'assistant',
+            content: `It looks like our team can help with this. Would you like me to create a support ticket? They reply ${duration}.`,
+            isTicketOffer: true,
+            ticketSubject: subject,
+            revertDuration: duration,
+          }],
+        });
+      }
+    }
+
+    answerTicketOffer(msgIdx, accepted) {
+      const messages = [...this.state.messages];
+      const offer = messages[msgIdx];
+      if (!offer || !offer.isTicketOffer || offer.offerAnswered) return;
+      messages[msgIdx] = { ...offer, offerAnswered: accepted ? 'yes' : 'no' };
+      if (!accepted) {
+        messages.push({ role: 'assistant', content: 'No problem! I am here if you need anything else. You can still reach our team anytime with the "Need Help?" button.' });
+      }
+      this.setState({ messages, showHelpChip: true });
+      if (accepted) this.openTicketEscalationPrompt(offer.ticketSubject || 'Customer inquiry via storefront chat', offer.revertDuration);
+    }
+
+    // Store contact details (support email + WhatsApp link from the quick-action pills)
+    supportContacts() {
+      const assistant = this.state.config?.assistant || {};
+      const email = assistant.support_contact && assistant.support_contact !== 'support@store.com' && /@/.test(assistant.support_contact)
+        ? assistant.support_contact : '';
+      const pills = Array.isArray(assistant.quick_action_pills) ? assistant.quick_action_pills : [];
+      const whatsapp = pills.find(p => p && p.enabled !== false && /whatsapp/i.test(`${p.id} ${p.label}`) && p.url);
+      return { email, whatsappUrl: whatsapp ? whatsapp.url : '' };
+    }
+
+    showContactCard() {
+      const { email, whatsappUrl } = this.supportContacts();
+      this.setState({
+        view: 'chat',
+        showHelpChip: true,
+        messages: [...this.state.messages, {
+          role: 'assistant',
+          content: email || whatsappUrl
+            ? 'You can reach our team directly here:'
+            : 'For help from our team, please use the contact details on our store website.',
+          isContactCard: true,
+          contactEmail: email,
+          contactWhatsapp: whatsappUrl,
+        }],
+      });
     }
 
     async openTicketEscalationPrompt(reason = '', revertDuration = '') {
       if (!this.ticketsEnabled()) {
-        // Tickets are not enabled for this store: point to the store's own support contact instead
-        const contact = this.state.config?.assistant?.support_contact;
-        const validContact = contact && contact !== 'support@store.com' ? contact : '';
-        this.setState({
-          view: 'chat',
-          messages: [...this.state.messages, {
-            role: 'assistant',
-            content: validContact
-              ? `For help from our team, please contact us at ${validContact}.`
-              : 'For help from our team, please use the contact details on our store website.',
-          }],
-        });
+        // Tickets are off (admin) or the merchant chose "Contact only": show their contact details instead
+        this.showContactCard();
         return;
       }
       const duration = revertDuration || this.ticketRevertDuration || 'within 24 hours';
@@ -889,7 +976,7 @@
 
       try {
         const transcript = this.state.messages
-          .filter(m => !m.isLoading && !m.isTicketPrompt && typeof m.content === 'string' && m.content.trim())
+          .filter(m => !m.isLoading && !m.isTicketPrompt && !m.isTicketOffer && !m.isContactCard && typeof m.content === 'string' && m.content.trim())
           .map(m => ({ role: m.role, content: m.content }));
 
         const res = await fetch(`${API_BASE_URL}/api/v1/widget/tickets`, {
@@ -2351,7 +2438,7 @@
                 </div>
               </div>
               <div class="header-actions">
-                ${this.state.view === 'chat' && this.ticketsEnabled() ? `
+                ${this.state.view === 'chat' ? `
                   <button type="button" class="btn-need-help-header btn-human-ticket" aria-label="Human Helpdesk" title="Need Human Support? Open Ticket">
                     <span>🛎️ Need Help?</span>
                   </button>
@@ -2633,6 +2720,24 @@
           }
 
           let ticketCardHtml = '';
+          if (m.isTicketOffer) {
+            ticketCardHtml = m.offerAnswered
+              ? `<div style="margin-top: 6px; font-size: 11px; color: #64748b;">${m.offerAnswered === 'yes' ? '✓ You asked for a support ticket' : 'You chose to keep chatting'}</div>`
+              : `
+                <div class="ticket-offer-actions" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                  <button type="button" class="btn-ticket-offer" data-msg-idx="${mIdx}" data-answer="yes" style="background: ${primaryColor}; color: ${secondaryColor}; border: none; border-radius: 16px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">Yes, create a ticket</button>
+                  <button type="button" class="btn-ticket-offer" data-msg-idx="${mIdx}" data-answer="no" style="background: #ffffff; color: #334155; border: 1px solid #cbd5e1; border-radius: 16px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;">No, keep chatting</button>
+                </div>
+              `;
+          }
+          if (m.isContactCard && (m.contactEmail || m.contactWhatsapp)) {
+            ticketCardHtml = `
+              <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                ${m.contactEmail ? `<a class="chat-link" href="mailto:${escapeAttr(m.contactEmail)}" style="font-size: 12.5px;">📧 ${escapeHtml(m.contactEmail)}</a>` : ''}
+                ${m.contactWhatsapp ? `<a class="chat-link" href="${escapeAttr(safeUrl(m.contactWhatsapp))}" target="_blank" rel="noopener noreferrer" style="font-size: 12.5px;">💬 Chat with us on WhatsApp</a>` : ''}
+              </div>
+            `;
+          }
           if (m.isTicketPrompt) {
             if (m.isTicketSubmitted) {
               ticketCardHtml = `
@@ -2679,12 +2784,7 @@
             <div class="chat-messages" style="overflow-y: auto;">
               ${messagesHtml}
             </div>
-            ${this.ticketsEnabled() ? `
-            <div class="chat-action-pills-bar">
-              <button type="button" class="btn-need-help-chip" id="btn-quick-need-help" title="Need Human Support? Open Ticket">
-                <span>🛎️ Need Human Help? Open Ticket</span>
-              </button>
-            </div>` : ''}
+            ${this.helpChipHtml()}
             <form class="chat-input" id="chat-form">
               <input type="text" id="chat-input-text" placeholder="Type a message..." ${isWaiting ? 'disabled' : ''} autocomplete="off" />
               <button type="submit" ${isWaiting ? 'disabled' : ''}>Send</button>
@@ -2763,6 +2863,14 @@
           this.openTicketEscalationPrompt('Customer requested human support via in-chat action chip');
         });
       }
+
+      // Smart-mode ticket offer: the shopper decides
+      this.shadowRoot.querySelectorAll('.btn-ticket-offer').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.answerTicketOffer(parseInt(btn.getAttribute('data-msg-idx'), 10), btn.getAttribute('data-answer') === 'yes');
+        });
+      });
 
       // Inline Ticket Submit Buttons
       this.shadowRoot.querySelectorAll('.btn-submit-ticket').forEach(btn => {

@@ -1,5 +1,5 @@
-import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.6.0';
-import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.6.0';
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.7.0';
+import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.7.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -157,6 +157,30 @@ function showTableError(tbody, text = LOAD_ERROR_TEXT) {
   const cols = tbody.closest('table')?.querySelectorAll('thead th').length || 1;
   tbody.innerHTML = `<tr><td colspan="${cols}" class="text-center text-muted" style="padding: 18px;">${escapeHtml(text)}</td></tr>`;
 }
+
+// My Agent → Human Support Mode. Without the admin's support_tickets entitlement only
+// "Contact only" is possible; sensitivity only applies to Smart mode.
+function applyEscalationPanelState() {
+  const ticketsAllowed = !(state.features && state.features.support_tickets === false);
+  const locked = document.getElementById('agent-escalation-locked');
+  if (locked) locked.classList.toggle('hidden', ticketsAllowed);
+  document.querySelectorAll('input[name="agent-escalation-mode"]').forEach(radio => {
+    const blocked = !ticketsAllowed && radio.value !== 'contact_only';
+    radio.disabled = blocked;
+    radio.closest('.esc-mode-option')?.classList.toggle('is-disabled', blocked);
+    if (blocked && radio.checked) {
+      const contactOnly = document.querySelector('input[name="agent-escalation-mode"][value="contact_only"]');
+      if (contactOnly) contactOnly.checked = true;
+    }
+  });
+  const mode = document.querySelector('input[name="agent-escalation-mode"]:checked')?.value;
+  const sensRow = document.getElementById('agent-escalation-sensitivity-row');
+  if (sensRow) sensRow.style.display = mode === 'smart' ? '' : 'none';
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.name === 'agent-escalation-mode') applyEscalationPanelState();
+});
 
 const FEATURE_DISABLED_MESSAGE = 'This feature is currently not enabled for your store. Please contact your administrator to activate it.';
 
@@ -366,6 +390,10 @@ function setupEventListeners() {
         tone: document.getElementById('agent-tone').value,
         support_contact: document.getElementById('agent-support').value,
         ticket_revert_duration: document.getElementById('agent-revert-duration') ? document.getElementById('agent-revert-duration').value : 'within 24 hours',
+        ...(document.querySelector('input[name="agent-escalation-mode"]') ? {
+          escalation_mode: document.querySelector('input[name="agent-escalation-mode"]:checked')?.value || 'smart',
+          escalation_sensitivity: document.getElementById('agent-escalation-sensitivity')?.value || 'balanced',
+        } : {}),
         ...(document.getElementById('agent-apology-code') ? {
           ticket_apology_discount_code: document.getElementById('agent-apology-code').value.trim(),
           ticket_apology_discount_percent: parseInt(document.getElementById('agent-apology-percent')?.value, 10) || 10,
@@ -1474,6 +1502,13 @@ async function loadSectionData(section) {
         if (document.getElementById('agent-revert-duration') && data.assistant.ticket_revert_duration) {
           document.getElementById('agent-revert-duration').value = data.assistant.ticket_revert_duration;
         }
+        const escMode = ['contact_only', 'smart', 'instant'].includes(data.assistant.escalation_mode) ? data.assistant.escalation_mode : 'smart';
+        const escRadio = document.querySelector(`input[name="agent-escalation-mode"][value="${escMode}"]`);
+        if (escRadio) escRadio.checked = true;
+        if (document.getElementById('agent-escalation-sensitivity')) {
+          document.getElementById('agent-escalation-sensitivity').value = data.assistant.escalation_sensitivity || 'balanced';
+        }
+        applyEscalationPanelState();
         if (document.getElementById('agent-apology-code')) {
           document.getElementById('agent-apology-code').value = data.assistant.ticket_apology_discount_code || '';
           document.getElementById('agent-apology-percent').value = data.assistant.ticket_apology_discount_percent || 10;
@@ -4631,6 +4666,8 @@ async function fetchStoreFeatures() {
         li.style.display = '';
       }
     });
+
+    applyEscalationPanelState();
 
     // If currently active tab is disabled, redirect to first visible
     const activeLink = document.querySelector('.nav-links a.active');

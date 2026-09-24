@@ -24,6 +24,7 @@ import { ShopifyHealthService } from '../../modules/shopify_health/shopify_healt
 import { ticketDashboardRouter } from './ticket.routes';
 import { emailSenderRouter } from './email-sender.routes';
 import { knowledgeRouter } from './knowledge.routes';
+import { normalizeEscalationMode, normalizeEscalationSensitivity } from '../../modules/support_tickets/escalation';
 
 const router = Router();
 
@@ -283,6 +284,17 @@ router.put('/:storeId/agent', enforceStoreAccess, async (req: Request, res: Resp
         await db.query(
           `UPDATE assistant_settings SET ticket_apology_discount_code = $1, ticket_apology_discount_percent = $2 WHERE store_id = $3`,
           [code, percent, storeId]
+        );
+      }
+      // Human-support escalation mode (contact_only | smart | instant) and smart-mode sensitivity
+      if (assistant.escalation_mode !== undefined || assistant.escalation_sensitivity !== undefined) {
+        await db.query(
+          `UPDATE assistant_settings SET escalation_mode = $1, escalation_sensitivity = $2 WHERE store_id = $3`,
+          [
+            assistant.escalation_mode !== undefined ? normalizeEscalationMode(assistant.escalation_mode) : normalizeEscalationMode(old.escalation_mode),
+            assistant.escalation_sensitivity !== undefined ? normalizeEscalationSensitivity(assistant.escalation_sensitivity) : normalizeEscalationSensitivity(old.escalation_sensitivity),
+            storeId,
+          ]
         );
       }
       await auditRepo.logAction(req.user!.id, storeId, 'UPDATE_ASSISTANT_SETTINGS', 'assistant_settings', oldAssistant.rows[0] || {}, assistant);

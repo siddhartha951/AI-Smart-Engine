@@ -166,6 +166,8 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureMetadata> = {
     name: 'Support Tickets & Helpdesk',
     category: 'core',
     description: 'Customer helpdesk tickets and human escalation with AI-generated replies.',
-    defaultEnabled: true,
+    // Admin must switch it on for new stores; migration 036 keeps it on for existing stores.
+    // When off, the widget falls back to "Contact only" (shows the store's support contact).
+    defaultEnabled: false,
   },
 };

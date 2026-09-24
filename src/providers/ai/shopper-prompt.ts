@@ -46,7 +46,7 @@ export function buildShopperSystemPrompt(context: AiRequestContext, outputMode: 
 
   const outputRules = outputMode === 'tools'
     ? `- To show product cards, call recommend_products with your message and the exact product_ids (1 to ${MAX_RECOMMENDATIONS}). Only include products you actually recommend in your message.
-${s.support_tickets_enabled === false ? '' : '- For a support ticket, call escalate_support_ticket.\n'}- For answers with no product (policies, orders, small talk, clarifying questions) just reply with text and no tool call.`
+${ticketsUnavailable(s) ? '' : '- Call escalate_support_ticket only when the shopper asks for a person, or you truly cannot resolve an issue that needs staff.\n'}- For answers with no product (policies, orders, small talk, clarifying questions) just reply with text and no tool call.`
     : `- Respond with JSON only:
   {"message": "...", "recommended_product_ids": [], "should_escalate_ticket": false, "ticket_subject": "", "ticket_reason": ""}
 - recommended_product_ids: 0 to ${MAX_RECOMMENDATIONS} exact ids of products you actually recommend in your message. Use [] when no product fits the question.`;
@@ -72,9 +72,7 @@ ${quickLinksSection}
    - Never repeat products you already recommended earlier in the chat unless the shopper asks about them.
    - Only use products from the catalog below. Never invent products, prices, discounts or stock.
    - For "best sellers / most popular", prefer is_bestseller items with the lowest sales_rank.
-${s.support_tickets_enabled === false
-    ? `4. Human support: support tickets are not available in this chat. If the shopper needs a human (cancellation, refund dispute, damaged/missing item), never promise a ticket; share the store's support contact${s.support_contact ? ` (${s.support_contact})` : ''} or the relevant store link instead.`
-    : `4. Support tickets: if the shopper asks for a human, a ticket, or has an issue staff must handle (cancellation, refund dispute, damaged/missing item), reassure them: "I'll open a support ticket for you right away. Our team will review this chat and reply to your email ${revertDuration}." Never say you cannot create tickets.`}
+${humanSupportRule(s, revertDuration)}
 
 ## Style
 - Reply in the shopper's language and script (Hinglish → Hinglish, Hindi → Hindi).
@@ -89,6 +87,22 @@ ${outputRules}
 ## Available catalog (JSON)
 ${JSON.stringify(buildCatalogSummary(context))}
 `.trim();
+}
+
+/** Admin has not enabled tickets, or the merchant chose "Contact only". */
+export function ticketsUnavailable(s: AiRequestContext['assistantSettings']): boolean {
+  return s.support_tickets_enabled === false || s.escalation_mode === 'contact_only';
+}
+
+function humanSupportRule(s: AiRequestContext['assistantSettings'], revertDuration: string): string {
+  const contact = s.support_contact && s.support_contact !== 'support@store.com' ? ` (${s.support_contact})` : '';
+  if (ticketsUnavailable(s)) {
+    return `4. Human support: support tickets are not available in this chat. If the shopper needs a person (cancellation, refund dispute, damaged/missing item), never promise a ticket; share the store's support contact${contact} or the relevant store link instead.`;
+  }
+  if (s.escalation_mode === 'instant') {
+    return `4. Support tickets: if the shopper asks for a human, a ticket, or has an issue staff must handle (cancellation, refund dispute, damaged/missing item), reassure them: "I'll open a support ticket for you right away. Our team will review this chat and reply to your email ${revertDuration}." Never say you cannot create tickets.`;
+  }
+  return `4. Human support (resolve first): try to solve the problem yourself with the store knowledge, policies and links. Do not offer or promise a support ticket unless the shopper asks for a person, or the issue clearly needs staff (damaged/missing item, refund dispute, payment problem) and you cannot resolve it. When that happens, ASK: "Would you like me to connect you with our team? They reply ${revertDuration}." Never claim a ticket has already been created; the shopper confirms it in the chat.`;
 }
 
 function allowedTopicsLine(topics: string[]): string {

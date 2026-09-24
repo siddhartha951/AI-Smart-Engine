@@ -34,6 +34,8 @@ export interface AiRequestContext {
     ticket_revert_duration?: string;
     /** false when the admin has not enabled support tickets for this store */
     support_tickets_enabled?: boolean;
+    /** contact_only | smart | instant (see modules/support_tickets/escalation.ts) */
+    escalation_mode?: string;
     quick_action_pills?: Array<{
       id: string;
       label: string;

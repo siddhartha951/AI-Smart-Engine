@@ -14,7 +14,7 @@ import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { MockAiProvider } from './mock.ai.provider';
 import { extractAndParseJson, matchBoldProductMentions } from './ai.utils';
-import { buildShopperSystemPrompt, MAX_HISTORY_MESSAGES, MAX_RECOMMENDATIONS } from './shopper-prompt';
+import { buildShopperSystemPrompt, MAX_HISTORY_MESSAGES, MAX_RECOMMENDATIONS, ticketsUnavailable } from './shopper-prompt';
 
 export class OpenAiProvider implements IAiProvider {
   private openai: OpenAI;
@@ -71,7 +71,7 @@ export class OpenAiProvider implements IAiProvider {
             },
           },
           // Ticket tool only exists when the admin has enabled support tickets
-          ...(context.assistantSettings.support_tickets_enabled === false ? [] : [{
+          ...(ticketsUnavailable(context.assistantSettings) ? [] : [{
             type: 'function',
             function: {
               name: 'escalate_support_ticket',
