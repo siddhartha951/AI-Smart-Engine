@@ -4978,21 +4978,28 @@ async function loadOverviewInsights(forceRefresh = false) {
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('Failed to load store insights');
     const { data } = await res.json();
 
     if (data?.what_is_happening) happeningEl.textContent = data.what_is_happening;
     if (data?.why_it_is_happening) whyEl.textContent = data.why_it_is_happening;
-    if (Array.isArray(data?.top_recommended_actions)) {
-      actionsEl.innerHTML = data.top_recommended_actions.map(action => `
+    const actions = Array.isArray(data?.top_recommended_actions) ? data.top_recommended_actions : [];
+    if (actions.length === 0) {
+      actionsEl.innerHTML = '<p class="text-muted" style="margin: 0; font-size: 13px;">No recommended actions right now.</p>';
+    } else {
+      // The module name comes from the AI response: escaped and passed via a data attribute, never inline JS
+      actionsEl.innerHTML = actions.map(action => `
         <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
           <div>
             <div style="font-weight: 500; font-size: 13px; color: var(--text-main);">${escapeHtml(action.title)}</div>
             <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(action.why)}</div>
           </div>
-          <button class="btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="window.navigateToModule('${action.target_module}')">Go →</button>
+          <button type="button" class="btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-insight-module="${escapeHtml(action.target_module || '')}">Go →</button>
         </div>
       `).join('');
+      actionsEl.querySelectorAll('[data-insight-module]').forEach(btn => {
+        btn.addEventListener('click', () => window.navigateToModule(btn.getAttribute('data-insight-module')));
+      });
     }
   } catch (err) {
     console.error('Error loading overview insights:', err);
@@ -5001,6 +5008,11 @@ async function loadOverviewInsights(forceRefresh = false) {
 }
 
 window.navigateToModule = function(moduleName) {
+  // Module names can come from AI responses: only plain section ids are accepted
+  if (!/^[a-z0-9_-]{1,40}$/i.test(String(moduleName || ''))) {
+    showToast('This section is not available in your dashboard.', true);
+    return;
+  }
   const targetMap = {
     'funnel': 'live-analytics',
     'catalogue': 'shopify-connection',
@@ -5375,11 +5387,15 @@ async function loadAiConsumableSuggestions() {
       <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
         <div>
           <div style="font-weight: 500; font-size: 13px; color: var(--text-main);">${escapeHtml(r.title)}</div>
-          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.reasoning)} • Recommended Cycle: ${r.suggested_cycle_days}d</div>
+          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.reasoning)} • Recommended Cycle: ${Number(r.suggested_cycle_days) || 0}d</div>
         </div>
-        <button type="button" class="btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="window.applyConsumableSuggestion('${r.product_id}', ${r.suggested_cycle_days})">Select</button>
+        <button type="button" class="btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-suggest-product="${escapeHtml(r.product_id || '')}" data-suggest-days="${Number(r.suggested_cycle_days) || 0}">Select</button>
       </div>
     `).join('');
+    // AI-provided values go through data attributes, never inline JS
+    list.querySelectorAll('[data-suggest-product]').forEach(btn => {
+      btn.addEventListener('click', () => window.applyConsumableSuggestion(btn.getAttribute('data-suggest-product'), Number(btn.getAttribute('data-suggest-days'))));
+    });
   } catch (err) {
     list.innerHTML = `<div style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</div>`;
   }
@@ -5547,13 +5563,17 @@ async function submitCopilotAsk(customQuestion = '') {
             ${data.suggested_actions.map(act => `
               <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 6px 10px; border-radius: 6px;">
                 <span style="font-size: 12px; color: var(--text-main);">${escapeHtml(act.title)}</span>
-                <button class="btn-secondary btn-sm" style="font-size: 10px; padding: 2px 8px;" onclick="window.navigateToModule('${act.target_module}')">Execute →</button>
+                <button type="button" class="btn-secondary btn-sm" style="font-size: 10px; padding: 2px 8px;" data-copilot-module="${escapeHtml(act.target_module || '')}">Execute →</button>
               </div>
             `).join('')}
           </div>
         </div>
       ` : ''}
     `;
+    // AI-provided module names go through a data attribute, never inline JS
+    resultBox.querySelectorAll('[data-copilot-module]').forEach(btn => {
+      btn.addEventListener('click', () => window.navigateToModule(btn.getAttribute('data-copilot-module')));
+    });
   } catch (err) {
     resultBox.innerHTML = `<span style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</span>`;
   }

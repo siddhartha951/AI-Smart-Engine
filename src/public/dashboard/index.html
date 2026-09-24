@@ -1268,7 +1268,7 @@
 
           <!-- Filter Toolbar -->
           <div class="panel" style="margin-bottom: 20px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0;">
               <label for="tickets-status-filter" style="font-size: 13px; font-weight: 600; margin: 0;">Status Filter:</label>
               <select id="tickets-status-filter" class="form-select form-select-sm" style="width: 140px;">
                 <option value="all" selected>All Tickets</option>
@@ -1277,7 +1277,7 @@
                 <option value="resolved">Resolved</option>
               </select>
               <label for="tickets-category-filter" style="font-size: 13px; font-weight: 600; margin: 0 0 0 8px;">Category:</label>
-              <select id="tickets-category-filter" class="form-select form-select-sm" style="width: 210px;">
+              <select id="tickets-category-filter" class="form-select form-select-sm" style="width: 210px; max-width: 100%;">
                 <option value="all" selected>All Categories</option>
                 <option value="return_refund">🔄 Return &amp; Refund</option>
                 <option value="order_tracking">📦 Order Tracking &amp; Delay</option>
