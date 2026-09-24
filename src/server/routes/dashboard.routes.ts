@@ -23,6 +23,7 @@ import { EntitlementRepository } from '../../modules/entitlements/entitlement.re
 import { ShopifyHealthService } from '../../modules/shopify_health/shopify_health.service';
 import { ticketDashboardRouter } from './ticket.routes';
 import { emailSenderRouter } from './email-sender.routes';
+import { knowledgeRouter } from './knowledge.routes';
 
 const router = Router();
 
@@ -943,6 +944,9 @@ router.put('/:storeId/email', enforceStoreAccess, async (req: Request, res: Resp
 
 // Sending identity, sender domains (DKIM/SPF/DMARC) and test email live in email-sender.routes.ts
 router.use('/:storeId/email', enforceStoreAccess, emailSenderRouter);
+
+// Merchant knowledge documents (PDF/TXT/CSV uploads) live in knowledge.routes.ts
+router.use('/:storeId/agent/knowledge', enforceStoreAccess, knowledgeRouter);
 
 // 6. Live Analytics & Funnel Tracking (Phase 2)
 router.get('/:storeId/analytics/live', enforceStoreAccess, enforceFeature(FeatureKey.LIVE_PULSE), async (req: Request, res: Response, next) => {

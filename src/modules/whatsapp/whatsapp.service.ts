@@ -14,6 +14,7 @@ import { EventRepository } from '../events/event.repository';
 import { encryptString, decryptString } from '../../utils/crypto';
 import { WhatsAppConfig } from '../../database/types';
 import { ValidationError } from '../../utils/errors';
+import { buildKnowledgeContext } from '../knowledge/knowledge-retrieval';
 
 export class WhatsAppService {
   private db: IDatabaseClient;
@@ -468,7 +469,12 @@ export class WhatsAppService {
         assistant_name: assistantSettings?.assistant_name || `${brandName} Assistant`,
         allowed_topics: assistantSettings?.allowed_topics || ['products', 'policies', 'orders'],
         custom_prompt: assistantSettings?.custom_prompt,
-        knowledge_base: assistantSettings?.knowledge_base,
+        knowledge_base: await buildKnowledgeContext(
+          storeId,
+          assistantSettings?.knowledge_base || '',
+          chatHistory.filter(m => m.role === 'user').slice(-3).map(m => m.content).join('\n') || cleanText,
+          this.db
+        ),
         support_contact: assistantSettings?.support_contact,
       },
     });

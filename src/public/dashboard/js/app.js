@@ -1,4 +1,5 @@
-import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.3.0';
+import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.4.0';
+import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.4.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -254,6 +255,14 @@ function setupEventListeners() {
     escapeHtml,
   });
 
+  // My Agent → knowledge documents (server-side PDF/TXT/CSV extraction)
+  initKnowledgeDocs({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    showToast,
+    escapeHtml,
+  });
+
   // Login submit is handled at module top level (see above) so it can never
   // be skipped by a failure in the feature sections below.
 
@@ -343,54 +352,6 @@ function setupEventListeners() {
       saveAgentSettings(payload);
     }
   });
-
-  // Document Upload for Agent Knowledge Base
-  const docUploadInput = document.getElementById('agent-doc-upload');
-  if (docUploadInput) {
-    docUploadInput.addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-
-      const fileName = file.name;
-      const ext = fileName.split('.').pop().toLowerCase();
-      showToast(`Loading document: ${fileName}...`);
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        let extracted = '';
-        const raw = reader.result;
-        if (ext === 'pdf') {
-          if (typeof raw === 'string') {
-            const matches = raw.match(/\(([^()]+)\)/g);
-            if (matches && matches.length > 5) {
-              extracted = matches.map(m => m.slice(1, -1)).join(' ');
-            } else {
-              extracted = raw.replace(/[^\x20-\x7E\t\n\r]/g, ' ').replace(/\s+/g, ' ');
-            }
-          }
-          if (!extracted || extracted.trim().length < 20) {
-            extracted = `Brand & product notes extracted from ${fileName}.`;
-          }
-        } else {
-          extracted = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
-        }
-
-        const kbEl = document.getElementById('agent-knowledge-base');
-        if (kbEl) {
-          const existing = kbEl.value.trim();
-          const header = `\n--- Document: ${fileName} ---\n`;
-          kbEl.value = existing ? (existing + '\n' + header + extracted).trim() : (header + extracted).trim();
-          showToast(`Loaded ${fileName}! Click "Save Agent Settings" to persist.`);
-        }
-      };
-
-      if (ext === 'pdf' && reader.readAsBinaryString) {
-        reader.readAsBinaryString(file);
-      } else {
-        reader.readAsText(file);
-      }
-    });
-  }
 
   // 1b. Auto-Scan & Learn Storefront Website
   const btnScanWebsite = document.getElementById('btn-scan-website');
@@ -1489,6 +1450,7 @@ async function loadSectionData(section) {
         if (document.getElementById('agent-knowledge-base')) {
           document.getElementById('agent-knowledge-base').value = data.assistant.knowledge_base || '';
         }
+        loadKnowledgeDocs();
 
         // Populate Quick Action Pills
         try {

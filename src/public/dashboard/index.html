@@ -670,10 +670,12 @@
               <small class="form-hint">Explain exactly how the agent should speak, rules for recommending items, or special sales promotions.</small>
             </div>
 
-            <div class="form-group">
-              <label for="agent-doc-upload">Train with Documents / Catalog (Upload PDF or Text File)</label>
-              <input type="file" id="agent-doc-upload" class="form-control" accept=".pdf,.txt,.md,.json">
-              <small class="form-hint">Upload product catalog sheets, brand story, or FAQs to train your agent automatically.</small>
+            <div class="form-group" id="agent-knowledge-docs-panel">
+              <label for="agent-doc-upload">Knowledge Documents (your own training material)</label>
+              <input type="file" id="agent-doc-upload" class="form-control" accept=".pdf,.txt,.md,.csv,.xlsx,.xls">
+              <small class="form-hint">Upload product guides, FAQs, ingredient sheets or brand story (PDF, TXT, MD, CSV, XLSX, max 10MB). Saved instantly, kept separate from the website scan, and treated as the most trusted source when the AI answers.</small>
+              <div id="agent-doc-upload-status" class="form-hint" style="display: none; margin-top: 6px;"></div>
+              <ul id="agent-knowledge-docs" style="list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px;"></ul>
             </div>
 
             <div class="form-group" style="background: rgba(99, 102, 241, 0.05); border: 1px dashed rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 16px; margin-bottom: 16px;">
@@ -3064,6 +3066,6 @@
     }
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
-  <script type="module" src="js/app.js?v=2.3.0"></script>
+  <script type="module" src="js/app.js?v=2.4.0"></script>
 </body>
 </html>

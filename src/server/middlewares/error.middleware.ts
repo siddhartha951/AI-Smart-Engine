@@ -28,6 +28,13 @@ export function errorHandler(
       .join('; ');
   }
 
+  // body-parser rejects oversized JSON with a plain Error tagged `type`
+  if ((err as { type?: string }).type === 'entity.too.large') {
+    statusCode = 413;
+    errorCode = 'PAYLOAD_TOO_LARGE';
+    message = 'This is too much text to save at once. Upload long documents as files under Knowledge Documents instead.';
+  }
+
   logger.error(
     `Request Error: ${err.message}`,
     err,

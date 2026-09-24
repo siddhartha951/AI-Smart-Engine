@@ -16,6 +16,9 @@ import path from 'path';
 import fs from 'fs';
 import { getShopifyAdapter, ShopifyProduct } from '../providers/shopify';
 import { getAiProvider, BudgetGuard } from '../providers/ai';
+import { matchBoldProductMentions } from '../providers/ai/ai.utils';
+import { MAX_RECOMMENDATIONS } from '../providers/ai/shopper-prompt';
+import { buildKnowledgeContext } from '../modules/knowledge/knowledge-retrieval';
 import authRoutes from './routes/auth.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import adminRoutes from './routes/admin.routes';
@@ -64,6 +67,8 @@ export function createApp(deps: AppDependencies = {}): Express {
   );
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({
+    // Agent settings carry the knowledge-base text, which easily exceeds the 100kb default
+    limit: '2mb',
     verify: (req: any, res, buf) => {
       req.rawBody = buf;
     }
@@ -353,8 +358,12 @@ export function createApp(deps: AppDependencies = {}): Express {
           'hai', 'hain', 'ho', 'mera', 'meri', 'mere', 'kya', 'kaun', 'kaunsa', 'kaunsi', 'ko', 'ke', 'ki', 'liye', 'karo', 'kare', 'mujhe', 'hum', 'chahiye', 'batao', 'dikhaye', 'dikhao'
         ]);
 
-        const cleanMsg = message.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-        const extractedKeywords = cleanMsg.split(/\s+/).filter(t => t.length > 2 && !stopWords.has(t));
+        const toKeywords = (text: string) => text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+          .split(/\s+/).filter(t => t.length > 2 && !stopWords.has(t));
+        const extractedKeywords = toKeywords(message);
+        // Earlier shopper turns carry the topic of short follow-ups ("is it safe for puppies?")
+        const recentUserTurns = history.filter(m => m.role === 'user').slice(-3).map(m => m.content);
+        const contextKeywords = [...new Set([...extractedKeywords, ...toKeywords(recentUserTurns.slice(0, -1).join(' '))])].slice(0, 10);
 
         // Detect explicit bestsellers / popular products intent
         const isBestsellerQuery = /\b(best[\s_-]*seller|top[\s_-]*seller|bestseller|popular|trending|most[\s_-]*popular)\b/i.test(message);
@@ -371,12 +380,19 @@ export function createApp(deps: AppDependencies = {}): Express {
           const adapter = getShopifyAdapter();
           catalogSubset = await adapter.searchProducts(storeId, {
             budget_max: budgetMax,
-            keywords: searchKeywords,
+            keywords: isBestsellerQuery ? searchKeywords : contextKeywords,
             bestseller_only: isBestsellerQuery,
           });
         } catch (catalogErr) {
           console.warn(`[WidgetChat] Catalog lookup failed for store ${storeId}, continuing without products:`, catalogErr);
         }
+
+        const knowledgeContext = await buildKnowledgeContext(
+          storeId,
+          (settings as any)?.knowledge_base || '',
+          recentUserTurns.join('\n'),
+          db
+        );
 
         // Query AI Provider
         const aiProvider = getAiProvider();
@@ -389,7 +405,7 @@ export function createApp(deps: AppDependencies = {}): Express {
             assistant_name: settings?.assistant_name || 'Assistant',
             allowed_topics: settings?.allowed_topics || [],
             custom_prompt: (settings as any)?.custom_prompt || '',
-            knowledge_base: (settings as any)?.knowledge_base || '',
+            knowledge_base: knowledgeContext,
             support_contact: settings?.support_contact || '',
             ticket_revert_duration: (settings as any)?.ticket_revert_duration || 'within 24 hours',
             quick_action_pills: (settings as any)?.quick_action_pills || [],
@@ -416,104 +432,58 @@ export function createApp(deps: AppDependencies = {}): Express {
           aiRes.estimated_cost_usd
         );
 
-        // Save recommendations if any with high-precision text alignment
-        let targetProductIds = aiRes.recommended_product_ids || [];
+        // Product cards = exactly what the AI recommended. Only when it named products in
+        // **bold** without passing ids do we resolve those names (incl. products outside the subset).
+        let targetProductIds = (aiRes.recommended_product_ids || []).slice(0, MAX_RECOMMENDATIONS);
         const boldMatches = Array.from(aiRes.content.matchAll(/\*\*([^*]+)\*\*/g))
           .map(m => m[1].toLowerCase().trim())
-          .filter(t => t.length > 3 && !t.includes('http') && !t.includes('key ingredient') && !t.includes('specific benefit'));
+          .filter(t => t.length > 3 && !t.includes('http'));
 
-        // If the AI explicitly emphasized/recommended specific products in text, search DB if not in subset
-        if (boldMatches.length > 0) {
+        if (targetProductIds.length === 0 && boldMatches.length > 0) {
           try {
-            const db = getDatabaseClient();
-            for (const bold of boldMatches) {
+            for (const bold of boldMatches.slice(0, MAX_RECOMMENDATIONS)) {
               const cleanWords = bold.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
-              if (cleanWords.length > 0) {
-                const searchClauses = cleanWords.map((_, i) => `(LOWER(title) LIKE $${i + 2} OR array_to_string(tags, ' ') ILIKE $${i + 2})`);
-                const dbRes = await db.query(
-                  `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND price > 0 AND (${searchClauses.join(' OR ')}) LIMIT 4`,
-                  [storeId, ...cleanWords.map(w => `%${w}%`)]
-                );
-                for (const row of dbRes.rows) {
-                  const prodId = row.shopify_id || row.id;
-                  if (!catalogSubset.some(p => p.id === prodId)) {
-                    catalogSubset.push({
-                      id: prodId,
-                      variant_id: row.variant_id || '',
-                      title: row.title,
-                      handle: row.handle,
-                      description: row.description || '',
-                      tags: row.tags || [],
-                      is_bestseller: row.is_bestseller || false,
-                      sales_rank: row.sales_rank || 999,
-                      price: parseFloat(row.price || '0'),
-                      compare_at_price: parseFloat(row.compare_at_price || '0'),
-                      currency: row.currency || 'INR',
-                      in_stock: row.in_stock,
-                      category: row.category,
-                      image_url: row.image_url,
-                      product_url: row.product_url,
-                    });
-                  }
+              if (cleanWords.length === 0) continue;
+              // Every word of the bold name must appear in the title
+              const clauses = cleanWords.map((_, i) => `LOWER(title) LIKE $${i + 2}`);
+              const dbRes = await db.query(
+                `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND price > 0 AND ${clauses.join(' AND ')} LIMIT 2`,
+                [storeId, ...cleanWords.map(w => `%${w}%`)]
+              );
+              for (const row of dbRes.rows) {
+                const prodId = row.shopify_id || row.id;
+                if (!catalogSubset.some(p => p.id === prodId)) {
+                  catalogSubset.push({
+                    id: prodId,
+                    variant_id: row.variant_id || '',
+                    title: row.title,
+                    handle: row.handle,
+                    description: row.description || '',
+                    tags: row.tags || [],
+                    is_bestseller: row.is_bestseller || false,
+                    sales_rank: row.sales_rank || 999,
+                    price: parseFloat(row.price || '0'),
+                    compare_at_price: parseFloat(row.compare_at_price || '0'),
+                    currency: row.currency || 'INR',
+                    in_stock: row.in_stock,
+                    category: row.category,
+                    image_url: row.image_url,
+                    product_url: row.product_url,
+                  });
                 }
               }
             }
           } catch (dbErr) {
             console.warn('[WidgetChat] Supplemental product lookup warning:', dbErr);
           }
-        }
-
-        // Score products against the AI's actual generated answer
-        if (catalogSubset.length > 0) {
-          const lowerContent = aiRes.content.toLowerCase();
-          const scored = catalogSubset.map(p => {
-            const fullTitle = p.title.toLowerCase();
-            const shortTitle = fullTitle.split(/[:\-|–]/)[0].trim();
-            const titleTokens = fullTitle.split(/[^a-z0-9]+/).filter(w => w.length > 2 && !stopWords.has(w));
-            let score = 0;
-
-            // 1. Direct bold title match (highest confidence)
-            for (const bold of boldMatches) {
-              if (fullTitle.includes(bold) || bold.includes(shortTitle) || shortTitle.includes(bold)) {
-                score += 150;
-              } else {
-                const boldTokens = bold.split(/[^a-z0-9]+/).filter(w => w.length > 2 && !stopWords.has(w));
-                const overlap = boldTokens.filter(bt => titleTokens.some(tt => tt.includes(bt) || bt.includes(tt)));
-                if (overlap.length >= 2) {
-                  score += overlap.length * 30;
-                }
-              }
-            }
-
-            // 2. Exact title or short title mentioned in assistant text
-            if (lowerContent.includes(fullTitle)) score += 80;
-            else if (shortTitle.length > 3 && lowerContent.includes(shortTitle)) score += 60;
-
-            // 3. Token overlap with assistant text
-            const textOverlap = titleTokens.filter(tt => lowerContent.includes(tt));
-            score += textOverlap.length * 10;
-
-            return { product: p, score };
-          });
-
-          const highlyRanked = scored.filter(sp => sp.score >= 40).sort((a, b) => b.score - a.score);
-          if (highlyRanked.length > 0) {
-            targetProductIds = highlyRanked.slice(0, 4).map(sp => sp.product.id);
-          } else if (targetProductIds.length === 0 && extractedKeywords.length > 0) {
-            // Fallback: match by specific user keywords
-            const kwMatches = catalogSubset.filter(p => {
-              const fullTitle = p.title.toLowerCase();
-              return extractedKeywords.some(kw => fullTitle.includes(kw));
-            });
-            if (kwMatches.length > 0) {
-              targetProductIds = kwMatches.slice(0, 4).map(p => p.id);
-            }
-          }
+          targetProductIds = matchBoldProductMentions(aiRes.content, catalogSubset, MAX_RECOMMENDATIONS);
         }
 
         const recommendations = [];
         if (targetProductIds.length > 0) {
-          const validProducts = catalogSubset.filter(p => targetProductIds.includes(p.id));
+          const validProducts = targetProductIds
+            .map(id => catalogSubset.find(p => p.id === id))
+            .filter((p): p is ShopifyProduct => Boolean(p));
           for (const p of validProducts) {
             const rec = await chatRepo.addRecommendation(storeId, session_id, {
               productId: p.id,

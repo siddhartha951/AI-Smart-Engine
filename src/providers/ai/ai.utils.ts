@@ -54,3 +54,41 @@ export function extractAndParseJson<T = any>(raw: string): T {
     throw new Error(`Failed to extract valid JSON from LLM response: ${cleaned.slice(0, 150)}...`);
   }
 }
+
+/**
+ * Maps **bold** product names in an assistant reply to catalog ids, in the order
+ * mentioned. Deliberately strict: a loose word overlap would attach cards for
+ * products the assistant never recommended.
+ */
+export function matchBoldProductMentions(
+  content: string,
+  products: Array<{ id: string; title: string }>,
+  max = 3
+): string[] {
+  const bolds = Array.from((content || '').matchAll(/\*\*([^*]{3,120})\*\*/g))
+    .map(m => m[1].toLowerCase().trim())
+    .filter(b => b.length > 3 && !b.includes('http'));
+  const words = (t: string) => t.split(/[^a-z0-9]+/).filter(w => w.length > 2);
+
+  const ids: string[] = [];
+  for (const bold of bolds) {
+    let best: { id: string; score: number } | null = null;
+    for (const p of products) {
+      const title = p.title.toLowerCase();
+      const shortTitle = title.split(/[:\-|–(]/)[0].trim();
+      let score = 0;
+      if (title === bold || shortTitle === bold) score = 3;
+      else if (title.includes(bold) || (shortTitle.length > 3 && bold.includes(shortTitle))) score = 2;
+      else {
+        const boldWords = words(bold);
+        const titleWords = new Set(words(title));
+        const overlap = boldWords.filter(w => titleWords.has(w)).length;
+        if (boldWords.length > 0 && overlap >= 2 && overlap / boldWords.length >= 0.6) score = 1;
+      }
+      if (score > 0 && (!best || score > best.score)) best = { id: p.id, score };
+    }
+    if (best && !ids.includes(best.id)) ids.push(best.id);
+    if (ids.length >= max) break;
+  }
+  return ids;
+}

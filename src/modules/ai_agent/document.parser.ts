@@ -17,10 +17,31 @@ import { ParsedDocument } from './ai_agent.types';
 /** pdf-parse's callable signature: buffer in, extracted text out. */
 type PdfParseFn = (buffer: Buffer) => Promise<{ text?: string }>;
 
+type PdfParseClass = new (options: { data: Uint8Array }) => {
+  getText(): Promise<{ text?: string }>;
+  destroy(): Promise<void>;
+};
+
 async function loadPdfParser(): Promise<PdfParseFn> {
   const mod = (await import('pdf-parse')) as unknown as
-    | { default?: unknown }
+    | { default?: unknown; PDFParse?: unknown }
     | PdfParseFn;
+
+  // pdf-parse v2 (installed): class API `new PDFParse({ data }).getText()`
+  const PDFParse = typeof mod === 'object' ? (mod as { PDFParse?: unknown }).PDFParse : undefined;
+  if (typeof PDFParse === 'function') {
+    const Parser = PDFParse as PdfParseClass;
+    return async (buffer: Buffer) => {
+      const parser = new Parser({ data: new Uint8Array(buffer) });
+      try {
+        return await parser.getText();
+      } finally {
+        await parser.destroy().catch(() => undefined);
+      }
+    };
+  }
+
+  // pdf-parse v1: default-exported function
   const candidate =
     typeof mod === 'function'
       ? mod
@@ -58,12 +79,12 @@ export function documentTypeFor(fileName: string, mimeType: string): ParsedDocum
   return 'xlsx';
 }
 
-function capText(text: string): { text: string; truncated: boolean } {
+function capText(text: string, maxChars = MAX_DOC_CHARS): { text: string; truncated: boolean } {
   const cleaned = text.replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  if (cleaned.length <= MAX_DOC_CHARS) {
+  if (cleaned.length <= maxChars) {
     return { text: cleaned, truncated: false };
   }
-  return { text: cleaned.slice(0, MAX_DOC_CHARS), truncated: true };
+  return { text: cleaned.slice(0, maxChars), truncated: true };
 }
 
 /** Minimal RFC-4180-ish CSV parser (handles quoted fields). No dependency needed. */
@@ -116,7 +137,7 @@ function csvRowsToText(rows: string[][], maxRows = 500): { text: string; dropped
   return { text, dropped };
 }
 
-async function parsePdf(buffer: Buffer, fileName: string): Promise<ParsedDocument> {
+async function parsePdf(buffer: Buffer, fileName: string, maxChars: number): Promise<ParsedDocument> {
   let pdfParse: PdfParseFn;
   try {
     pdfParse = await loadPdfParser();
@@ -133,25 +154,27 @@ async function parsePdf(buffer: Buffer, fileName: string): Promise<ParsedDocumen
     logger.warn('AI agent: PDF parse failed', { fileName });
     throw new ValidationError('Could not read this PDF. Please upload a text-based PDF (not a scanned image).');
   }
-  const { text, truncated } = capText(result.text || '');
+  // pdf-parse v2 appends "-- 1 of 3 --" page markers; they are noise for the AI
+  const pageText = (result.text || '').replace(/^\s*--\s*\d+\s+of\s+\d+\s*--\s*$/gm, '');
+  const { text, truncated } = capText(pageText, maxChars);
   if (!text) {
     throw new ValidationError('This PDF contains no readable text. Please upload a text-based PDF.');
   }
   return { fileName, mimeType: 'application/pdf', documentType: 'pdf', text, truncated };
 }
 
-function parseCsv(buffer: Buffer, fileName: string, mimeType: string): ParsedDocument {
+function parseCsv(buffer: Buffer, fileName: string, mimeType: string, maxChars: number): ParsedDocument {
   const raw = buffer.toString('utf-8');
   const { rows, rowCount } = parseCsvText(raw);
   if (rowCount === 0) {
     throw new ValidationError('This CSV appears to be empty.');
   }
   const { text: rowText, dropped } = csvRowsToText(rows);
-  const { text, truncated } = capText(rowText);
+  const { text, truncated } = capText(rowText, maxChars);
   return { fileName, mimeType, documentType: 'csv', text, truncated: truncated || dropped, rowCount };
 }
 
-function parseXlsx(buffer: Buffer, fileName: string, mimeType: string): ParsedDocument {
+function parseXlsx(buffer: Buffer, fileName: string, mimeType: string, maxChars: number): ParsedDocument {
   let workbook;
   try {
     workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -182,7 +205,7 @@ function parseXlsx(buffer: Buffer, fileName: string, mimeType: string): ParsedDo
     }
   }
   if (sheetNames.length > 5) dropped = true;
-  const { text, truncated } = capText(sections.join('\n\n'));
+  const { text, truncated } = capText(sections.join('\n\n'), maxChars);
   if (!text) {
     throw new ValidationError('This spreadsheet contains no readable data.');
   }
@@ -196,13 +219,15 @@ function parseXlsx(buffer: Buffer, fileName: string, mimeType: string): ParsedDo
 export async function parseDocument(
   buffer: Buffer,
   fileName: string,
-  mimeType: string
+  mimeType: string,
+  options: { maxChars?: number } = {}
 ): Promise<ParsedDocument> {
   if (!isAllowedUpload(fileName, mimeType)) {
     throw new ValidationError('Only PDF, CSV, and XLSX documents are supported.');
   }
+  const maxChars = options.maxChars ?? MAX_DOC_CHARS;
   const docType = documentTypeFor(fileName, mimeType);
-  if (docType === 'pdf') return parsePdf(buffer, fileName);
-  if (docType === 'csv') return parseCsv(buffer, fileName, mimeType);
-  return parseXlsx(buffer, fileName, mimeType);
+  if (docType === 'pdf') return parsePdf(buffer, fileName, maxChars);
+  if (docType === 'csv') return parseCsv(buffer, fileName, mimeType, maxChars);
+  return parseXlsx(buffer, fileName, mimeType, maxChars);
 }

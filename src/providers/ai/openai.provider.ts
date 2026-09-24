@@ -13,7 +13,8 @@ import {
 import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { MockAiProvider } from './mock.ai.provider';
-import { extractAndParseJson } from './ai.utils';
+import { extractAndParseJson, matchBoldProductMentions } from './ai.utils';
+import { buildShopperSystemPrompt, MAX_HISTORY_MESSAGES, MAX_RECOMMENDATIONS } from './shopper-prompt';
 
 export class OpenAiProvider implements IAiProvider {
   private openai: OpenAI;
@@ -31,76 +32,11 @@ export class OpenAiProvider implements IAiProvider {
   ): Promise<AiResponse> {
     const env = getEnvConfig();
 
-    const customPromptSection = context.assistantSettings.custom_prompt?.trim()
-      ? `\nMerchant Persona & Custom Instructions:\n${context.assistantSettings.custom_prompt.trim()}\n`
-      : '';
-
-    const knowledgeBaseSection = context.assistantSettings.knowledge_base?.trim()
-      ? `\nStore Knowledge Base & Training Material:\n${context.assistantSettings.knowledge_base.trim()}\n`
-      : '';
-
-    const quickLinks = (context.assistantSettings.quick_action_pills || []).filter(p => p.enabled !== false && (p.url || p.image_url));
-    const quickLinksSection = quickLinks.length > 0
-      ? `\nStore Quick Navigation & Action Links:\n${quickLinks.map(p => `- ${p.label}: ${p.url || p.image_url}`).join('\n')}\n`
-      : '';
-
-    const catalogSummary = (context.catalogSubset || []).map(p => ({
-      id: p.id,
-      title: p.title,
-      price: p.price,
-      currency: p.currency || 'INR',
-      category: p.category || '',
-      is_bestseller: p.is_bestseller || false,
-      tags: p.tags || [],
-      key_benefits_or_description: p.description ? p.description.slice(0, 350) : '',
-    }));
-
-    const revertDuration = context.assistantSettings.ticket_revert_duration || 'within 24 hours';
-
-    const systemPrompt = `
-You are "${context.assistantSettings.assistant_name}", an AI shopping assistant for a Shopify store.
-Your goal is to help customers find products, answer questions about the store, and provide a great shopping experience.
-${customPromptSection}
-${knowledgeBaseSection}
-${quickLinksSection}
-Strict Rules:
-1. ONLY recommend products from the "Available Catalog Subset" below.
-2. NEVER invent or hallucinate products, prices, or stock.
-3. If the user asks for something not in the subset, politely explain what is available or suggest closest alternative.
-4. You may discuss topics: ${context.assistantSettings.allowed_topics.join(', ')}.
-5. Store Policies to reference if asked: 
-   - Delivery: ${context.storePolicies.delivery_policy}
-   - Returns: ${context.storePolicies.returns_policy}
-   - FAQ: ${context.storePolicies.faq_content}
-6. If the shopper asks about order tracking, returns, shipping, size guides, or human support, provide a concise, warm answer and share the exact store action link from the "Store Quick Navigation & Action Links" above.
-7. SUPPORT TICKETING & HUMAN ESCALATION:
-   - You have an integrated customer support ticketing system.
-   - If the customer asks to open/create a support ticket, asks for human support, or has an inquiry requiring staff assistance (such as order cancellation, refund dispute, or complex issue):
-     a. NEVER say "I am unable to create tickets directly" or "I don't have access to create tickets".
-     b. Reassure the customer warmly: "I will open a support ticket for you right away. Our team will review this chat transcript and revert to your email ${revertDuration}."
-     c. Call the 'escalate_support_ticket' function tool.
-
-CRITICAL DISPLAY & FORMATTING GUIDELINES:
-1. STRUCTURE YOUR ANSWER BEAUTIFULLY:
-   - Start with 1 warm, empathetic sentence addressing the customer's specific question or problem.
-   - If recommending product(s), explain WHY they help using 2 to 3 concise, clear bullet points (e.g. • Key benefit 1, • Key benefit 2).
-   - End with a friendly, short 1-line closing or call-to-action (e.g. "Check out the option below! Let me know if you need help with anything else.").
-2. AVOID REPETITION & BULKY TEXT:
-   - DO NOT repeat the entire product title or long product subtitle inside the text (the full title and direct purchase card appear below automatically!).
-   - Use clean spacing and line breaks between your greeting, bullet points, and closing.
-   - DO NOT output raw markdown image tags or markdown links.
-3. TOOL CALL & PRODUCT RECOMMENDATION ALIGNMENT:
-   - When you recommend or mention a specific product (e.g. **Aniwell Itch Relief Formula**), you MUST pass the EXACT product_id for that specific product in the recommend_products tool call.
-   - NEVER pass an unrelated product ID (such as a chew toy, treat, or accessory) if you are recommending a health, allergy, or skin care item.
-   - If the shopper asks general questions like "what are your best products?" or "recommend something", prioritize items marked with is_bestseller: true.
-
-Available Catalog Subset (JSON):
-${JSON.stringify(catalogSummary, null, 2)}
-`;
+    const systemPrompt = buildShopperSystemPrompt(context, 'tools');
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
-      ...chatHistory.map((m) => ({
+      ...chatHistory.slice(-MAX_HISTORY_MESSAGES).map((m) => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),
@@ -110,13 +46,13 @@ ${JSON.stringify(catalogSummary, null, 2)}
       const response = await this.openai.chat.completions.create({
         model: env.OPENAI_MODEL || 'gpt-4o-mini',
         messages,
-        temperature: 0.7,
+        temperature: 0.4,
         tools: [
           {
             type: 'function',
             function: {
               name: 'recommend_products',
-              description: 'Recommend specific products to the user based on their request. Use this whenever you mention products.',
+              description: 'Show 1-3 product cards for the products you recommend in your message. Do not call this for policy, order, greeting or clarifying-question replies.',
               parameters: {
                 type: 'object',
                 properties: {
@@ -173,20 +109,25 @@ ${JSON.stringify(catalogSummary, null, 2)}
       let ticketReason: string | undefined;
 
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-        const toolCall = choice.message.tool_calls[0];
-        if (toolCall.type === 'function' && toolCall.function.name === 'recommend_products') {
-          const args = JSON.parse(toolCall.function.arguments);
-          finalContent = args.message;
-          
-          // Ensure recommended IDs actually exist in the subset
-          const validIds = context.catalogSubset.map(p => p.id);
-          recommendedIds = (args.product_ids || []).filter((id: string) => validIds.includes(id));
-        } else if (toolCall.type === 'function' && toolCall.function.name === 'escalate_support_ticket') {
-          const args = JSON.parse(toolCall.function.arguments);
-          finalContent = args.message;
-          shouldEscalateTicket = true;
-          ticketSubject = args.subject;
-          ticketReason = args.reason;
+        // The model may emit both tools in one turn (ticket + product); honour each
+        const validIds = new Set(context.catalogSubset.map(p => p.id));
+        for (const toolCall of choice.message.tool_calls) {
+          if (toolCall.type !== 'function') continue;
+          let args: any = {};
+          try {
+            args = JSON.parse(toolCall.function.arguments || '{}');
+          } catch {
+            continue;
+          }
+          if (toolCall.function.name === 'recommend_products') {
+            if (args.message) finalContent = args.message;
+            recommendedIds = [...new Set<string>((args.product_ids || []).filter((id: string) => validIds.has(id)))];
+          } else if (toolCall.function.name === 'escalate_support_ticket') {
+            if (args.message) finalContent = args.message;
+            shouldEscalateTicket = true;
+            ticketSubject = args.subject;
+            ticketReason = args.reason;
+          }
         }
       }
 
@@ -197,43 +138,11 @@ ${JSON.stringify(catalogSummary, null, 2)}
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 
-      // If function was not called or recommendedIds is empty, match products mentioned in text
+      // Tool not called: only attach cards for products the model explicitly named in **bold**
       if (recommendedIds.length === 0 && context.catalogSubset.length > 0) {
-        const boldMatches = Array.from(finalContent.matchAll(/\*\*([^*]+)\*\*/g)).map(m => m[1].toLowerCase().trim());
-        const lowerContent = finalContent.toLowerCase();
-
-        // 1. High precision: Bold title match or token overlap with bold recommendations
-        const scoredProducts = context.catalogSubset.map(p => {
-          const title = p.title.toLowerCase();
-          const shortTitle = title.split(/[:\-|–]/)[0].trim();
-          let score = 0;
-
-          for (const bold of boldMatches) {
-            if (bold.length > 3 && (title.includes(bold) || bold.includes(shortTitle))) {
-              score += 100;
-            } else {
-              // Word token overlap with bold text
-              const boldTokens = bold.split(/\s+/).filter(w => w.length > 2);
-              const titleTokens = title.split(/\s+/).filter(w => w.length > 2);
-              const overlap = boldTokens.filter(bt => titleTokens.some(tt => tt.includes(bt) || bt.includes(tt)));
-              if (overlap.length >= 2) {
-                score += overlap.length * 25;
-              }
-            }
-          }
-
-          if (score === 0 && (lowerContent.includes(shortTitle) || lowerContent.includes(title))) {
-            score += 50;
-          }
-
-          return { product: p, score };
-        });
-
-        const matched = scoredProducts.filter(sp => sp.score > 0).sort((a, b) => b.score - a.score);
-        if (matched.length > 0) {
-          recommendedIds = matched.slice(0, 4).map(m => m.product.id);
-        }
+        recommendedIds = matchBoldProductMentions(finalContent, context.catalogSubset);
       }
+      recommendedIds = recommendedIds.slice(0, MAX_RECOMMENDATIONS);
 
       // Safety fallback: if model indicated in plain text that it will create a ticket
       if (!shouldEscalateTicket) {
