@@ -1,7 +1,8 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
-import { initHome, loadHome } from './home.js?v=2.11.0';
+import { initHome, loadHome } from './home.js?v=2.12.0';
+import { initAdsHub, isAdsTab, adsTabFeature, adsFeatureKeys, pickAdsTab, rememberAdsTab, syncAdsTabs, ADS_TABS } from './ads-hub.js?v=2.12.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -370,6 +371,15 @@ function setupEventListeners() {
     setCurrency: (currency) => { if (currency) state.activeStoreCurrency = currency; },
   });
 
+  // Ads hub: one "Ads" item with sub-tabs in the new view
+  initAdsHub({
+    escapeHtml,
+    isNewLayout: () => currentLayout() === 'new',
+    isFeatureOn: (key) => !state.features || state.features[key] !== false,
+    planNameFor: (key) => planNameFor(state.planSummary, key),
+    openTab: (target) => openAdsHub(target),
+  });
+
   // New view (Home) or classic view (Growth Copilot + Overview), remembered per browser
   applyLayout(currentLayout());
   document.getElementById('layout-toggle')?.addEventListener('click', () => {
@@ -406,6 +416,12 @@ function setupEventListeners() {
       const a = e.target.closest('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
+      // New view: the Ads item (and any ad page) opens inside the Ads hub
+      if (target === 'ads' || (currentLayout() === 'new' && isAdsTab(target))) {
+        openAdsHub(target === 'ads' ? null : target);
+        closeMobileSidebar();
+        return;
+      }
       // Locked feature: explain which plan unlocks it instead of opening an empty module
       if (a.classList.contains('nav-locked')) {
         showLockedFeature(target);
@@ -1442,6 +1458,8 @@ function showSection(sectionName) {
     }
   }
 
+  syncAdsTabs(sectionName);
+
   // Manage live telemetry polling
   if (sectionName === 'live-analytics') {
     startLiveAnalyticsPolling();
@@ -1464,6 +1482,10 @@ async function loadSectionData(section) {
     if (section === 'home') {
       await loadHome();
       return;
+    }
+
+    if (section === 'ads') {
+      section = currentAdsTab() || pickAdsTab(null) || 'meta-ads';
     }
 
     if (section === 'growth-copilot') {
@@ -4266,20 +4288,14 @@ async function loadAttributedOrders() {
   if (!tbody) return;
 
   try {
-    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/overview`, {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/orders?limit=20`, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('Failed to load attributed orders');
+    const { data } = await res.json();
+    const orders = data?.orders || [];
 
-    // Fetch list of recent orders from events
-    const eventsRes = await fetch(`/api/v1/dashboard/${state.activeStoreId}/live/activity?limit=20`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    if (!eventsRes.ok) return;
-    const eventsData = await eventsRes.json();
-    const purchaseEvents = (eventsData.data?.feed || []).filter(item => item.type === 'purchase_completed');
-
-    if (purchaseEvents.length === 0) {
+    if (orders.length === 0) {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
@@ -4290,30 +4306,30 @@ async function loadAttributedOrders() {
       return;
     }
 
-    tbody.innerHTML = purchaseEvents.map(p => {
-      const orderId = p.metadata?.order_id || p.id;
-      const orderNum = p.metadata?.order_number ? `#${p.metadata.order_number}` : 'Order';
-      const rev = p.metadata?.total_price ? `${getCurrencySymbol(state.activeStoreCurrency)}${Number(p.metadata.total_price).toFixed(2)}` : '--';
-      const firstTouch = p.metadata?.utm_source || 'direct';
-      const lastTouch = p.metadata?.utm_campaign || 'storefront';
-      const isAi = p.metadata?.session_id ? '✨ Yes' : 'No';
-
+    tbody.innerHTML = orders.map(o => {
+      const orderNum = o.order_number ? `#${escapeHtml(o.order_number)}` : 'Order';
+      const rev = `${getCurrencySymbol(o.currency || state.activeStoreCurrency)}${Number(o.revenue || 0).toFixed(2)}`;
+      const first = o.first_touch_campaign ? `${o.first_touch} · ${o.first_touch_campaign}` : o.first_touch;
+      const last = o.last_touch_campaign ? `${o.last_touch} · ${o.last_touch_campaign}` : o.last_touch;
       return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
           <td style="padding: 12px; font-weight: 600; color: var(--text-main); font-family: var(--font-mono);">${orderNum}</td>
-          <td style="padding: 12px; color: #10b981; font-weight: 600;">${rev}</td>
-          <td style="padding: 12px; color: var(--text-main); text-transform: capitalize;">${escapeHtml(firstTouch)}</td>
-          <td style="padding: 12px; color: var(--text-muted);">${escapeHtml(lastTouch)}</td>
-          <td style="padding: 12px;">${isAi}</td>
-          <td style="padding: 12px; color: var(--text-muted);">Connected</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">${escapeHtml(rev)}</td>
+          <td style="padding: 12px; color: var(--text-main); text-transform: capitalize;">${escapeHtml(first)}</td>
+          <td style="padding: 12px; color: var(--text-muted);">${escapeHtml(last)}</td>
+          <td style="padding: 12px;">${o.is_ai_assisted ? 'Yes' : 'No'}</td>
+          <td style="padding: 12px; color: var(--text-muted);">${Number(o.touchpoints || 0)}</td>
           <td style="padding: 12px;">
-            <button class="btn-secondary btn-sm" onclick="openCustomerJourneyModal('${orderId}')" style="padding: 4px 10px; font-size: 12px;">
-              View Journey 🔍
+            <button class="btn-secondary btn-sm" data-journey-order="${escapeHtml(o.order_id)}" style="padding: 4px 10px; font-size: 12px;">
+              View journey
             </button>
           </td>
         </tr>
       `;
     }).join('');
+    tbody.querySelectorAll('[data-journey-order]').forEach(btn => {
+      btn.addEventListener('click', () => window.openCustomerJourneyModal(btn.getAttribute('data-journey-order')));
+    });
   } catch (err) {
     console.error('Failed to load attributed orders:', err);
     showTableError(tbody);
@@ -4636,6 +4652,10 @@ window.executeGrowthAction = async function(actionId, targetModule, _targetId) {
   } catch (_) {}
 
   targetModule = resolveLayoutTarget(targetModule);
+  if (currentLayout() === 'new' && isAdsTab(targetModule)) {
+    openAdsHub(targetModule);
+    return;
+  }
   const navLink = document.querySelector(`.nav-links a[data-target="${targetModule}"]`);
   if (navLink && navLink.classList.contains('nav-locked')) {
     showLockedFeature(targetModule);
@@ -4769,6 +4789,16 @@ function applyLayout(layout) {
   const btn = document.getElementById('layout-toggle');
   if (btn) btn.textContent = layout === 'classic' ? 'Switch to new view' : 'Switch to classic view';
   const active = document.querySelector('.nav-links a.active');
+  const activeTarget = active ? active.getAttribute('data-target') : null;
+  const openAd = currentAdsTab();
+  syncAdsTabs(openAd);
+  if (state.token && state.activeStoreId && openAd) {
+    if (layout === 'new' && activeTarget !== 'ads') { openAdsHub(openAd); return; }
+    if (layout === 'classic' && activeTarget === 'ads') {
+      document.querySelector(`.nav-links a[data-target="${openAd}"]`)?.click();
+      return;
+    }
+  }
   if (active && isNavLinkVisible(active)) return;
   // The open tab does not exist in this layout: open the layout's landing tab instead
   const target = layout === 'classic' ? 'growth-copilot' : 'home';
@@ -4785,8 +4815,39 @@ function applyLayout(layout) {
 
 // Opens a sidebar tab by its data-target, respecting locks and the current layout
 function openNavTarget(target) {
-  const link = document.querySelector(`.nav-links a[data-target="${resolveLayoutTarget(target)}"]`);
+  const resolved = resolveLayoutTarget(target);
+  if (currentLayout() === 'new' && isAdsTab(resolved)) {
+    openAdsHub(resolved);
+    return;
+  }
+  const link = document.querySelector(`.nav-links a[data-target="${resolved}"]`);
   if (link) link.click();
+}
+
+// The ad page currently on screen, if any
+function currentAdsTab() {
+  const tab = ADS_TABS.find(t => sections[t.target] && sections[t.target].classList.contains('active'));
+  return tab ? tab.target : null;
+}
+
+// Opens an ad page inside the Ads hub (new view); locked tabs explain which plan unlocks them
+function openAdsHub(requested) {
+  const target = pickAdsTab(requested);
+  if (!target) {
+    showLockedFeature('meta-ads');
+    return;
+  }
+  const feature = adsTabFeature(target);
+  if (state.features && state.features[feature] === false) {
+    showLockedFeature(target);
+    return;
+  }
+  if (!showSection(target)) return;
+  document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
+  const hubLink = document.querySelector(`.nav-links a[data-target="${currentLayout() === 'new' ? 'ads' : target}"]`);
+  if (hubLink) hubLink.classList.add('active');
+  rememberAdsTab(target);
+  loadSectionData(target);
 }
 
 // A feature outside the store's plan: say which plan includes it and show Plan & billing
@@ -4825,8 +4886,9 @@ async function fetchStoreFeatures() {
       const a = li.querySelector('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
-      const featKey = NAV_FEATURE_MAP[target];
-      const locked = !!(featKey && state.features[featKey] === false);
+      const featKeys = target === 'ads' ? adsFeatureKeys() : (NAV_FEATURE_MAP[target] ? [NAV_FEATURE_MAP[target]] : []);
+      const featKey = featKeys[0];
+      const locked = featKeys.length > 0 && featKeys.every(k => state.features[k] === false);
       li.style.display = '';
       a.classList.toggle('nav-locked', locked);
       a.querySelector('.nav-lock-badge')?.remove();
@@ -4842,6 +4904,7 @@ async function fetchStoreFeatures() {
     });
 
     applyEscalationPanelState();
+    syncAdsTabs(currentAdsTab());
 
     // If the active tab is locked, move to the first tab the store can use
     const activeLink = document.querySelector('.nav-links a.active');
@@ -4917,6 +4980,10 @@ window.navigateToModule = function(moduleName) {
     'growth': 'growth-copilot',
   };
   const target = resolveLayoutTarget(targetMap[moduleName] || moduleName);
+  if (currentLayout() === 'new' && isAdsTab(target)) {
+    openAdsHub(target);
+    return;
+  }
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
   if (link) {
     // A locked tab explains which plan unlocks it (handled by the nav click handler)
