@@ -281,5 +281,6 @@ export function initHome(options) {
       return;
     }
     if (e.target.closest('#home-insights-refresh')) renderInsights(true);
+    if (e.target.closest('#home-run-audit')) ctx.runAudit();
   });
 }
