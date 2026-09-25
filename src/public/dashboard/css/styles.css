@@ -1637,6 +1637,12 @@ header h2,
     padding: 0;
   }
 
+  /* Stack the top bar above the content; in a row it squeezed the page to ~150px */
+  #dashboard-view {
+    flex-direction: column;
+    gap: 0;
+  }
+
   .mobile-top-bar {
     display: flex;
   }
@@ -1953,7 +1959,7 @@ header h2,
 .tk-stat--done { border-top-color: var(--color-success); }
 .tk-stat--done .tk-stat-value { color: var(--color-success); }
 
-.tk-table-wrap { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tk-table-wrap { position: relative; padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tk-table { width: 100%; min-width: 760px; border-collapse: collapse; }
 .tk-table thead th {
   text-align: left;

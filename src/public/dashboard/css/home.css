@@ -288,3 +288,5 @@ body[data-layout="new"] .toast { bottom: 88px; }
 @media (max-width: 640px) {
   body[data-layout="new"] .toast { bottom: 76px; }
 }
+/* Room under the last row so the floating Ask AI button never covers it */
+body[data-layout="new"] .dashboard-content { padding-bottom: 96px; }
