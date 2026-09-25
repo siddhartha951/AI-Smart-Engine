@@ -1,6 +1,7 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
+import { initHome, loadHome } from './home.js?v=2.11.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -132,6 +133,7 @@ const views = {
 };
 
 const sections = {
+  'home': document.getElementById('home'),
   'growth-copilot': document.getElementById('growth-copilot'),
   'overview': document.getElementById('overview'),
   'live-analytics': document.getElementById('live-analytics'),
@@ -242,6 +244,7 @@ const FEATURE_DISABLED_MESSAGE = 'This feature is currently not enabled for your
 // Shopify connection is core infrastructure (catalog sync, chat grounding), not a paid module,
 // so it is intentionally not mapped: disabling "catalogue" must not hide the connect screen.
 const NAV_FEATURE_MAP = {
+  'home': 'overview',
   'growth-copilot': 'growth_copilot',
   'overview': 'overview',
   'live-analytics': 'live_pulse',
@@ -352,6 +355,28 @@ function setupEventListeners() {
     getToken: () => state.token,
     showToast,
     escapeHtml,
+  });
+
+  // Home (Overview + Growth Copilot in one page, one time window)
+  initHome({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    escapeHtml,
+    openSection: (target) => openNavTarget(target),
+    loadErrorText: LOAD_ERROR_TEXT,
+    isFeatureOn: (key) => !state.features || state.features[key] !== false,
+    planNameFor: (key) => planNameFor(state.planSummary, key),
+    getCurrency: () => state.activeStoreCurrency,
+    setCurrency: (currency) => { if (currency) state.activeStoreCurrency = currency; },
+  });
+
+  // New view (Home) or classic view (Growth Copilot + Overview), remembered per browser
+  applyLayout(currentLayout());
+  document.getElementById('layout-toggle')?.addEventListener('click', () => {
+    const next = currentLayout() === 'classic' ? 'new' : 'classic';
+    storageSet(LAYOUT_KEY, next);
+    applyLayout(next);
+    showToast(next === 'classic' ? 'Classic view on. Switch back any time from the sidebar.' : 'New view on.');
   });
 
   // Settings → Plan & billing, sidebar plan card, locked-feature hints
@@ -1436,6 +1461,11 @@ async function loadSectionData(section) {
   }
 
   try {
+    if (section === 'home') {
+      await loadHome();
+      return;
+    }
+
     if (section === 'growth-copilot') {
       await loadGrowthCopilotData();
       return;
@@ -4605,6 +4635,7 @@ window.executeGrowthAction = async function(actionId, targetModule, _targetId) {
     });
   } catch (_) {}
 
+  targetModule = resolveLayoutTarget(targetModule);
   const navLink = document.querySelector(`.nav-links a[data-target="${targetModule}"]`);
   if (navLink && navLink.classList.contains('nav-locked')) {
     showLockedFeature(targetModule);
@@ -4711,9 +4742,50 @@ document.addEventListener('DOMContentLoaded', () => {
 // PHASE 17: AI INTELLIGENCE LAYER & MERCHANT ANALYTICS MODULE
 // =========================================================================
 
-// Opens a sidebar tab by its data-target, respecting locks
-function openNavTarget(target) {
+// ---- Dashboard layout: new (Home) or classic (Growth Copilot + Overview) ----
+const LAYOUT_KEY = 'dashboard_layout';
+
+function currentLayout() {
+  return storageGet(LAYOUT_KEY) === 'classic' ? 'classic' : 'new';
+}
+
+// Overview and Home show the same store numbers; send links to whichever the layout shows
+function resolveLayoutTarget(target) {
+  const layout = currentLayout();
+  if (layout === 'new' && target === 'overview') return 'home';
+  if (layout === 'classic' && target === 'home') return 'overview';
+  return target;
+}
+
+function isNavLinkVisible(link) {
+  const li = link && link.closest('li');
+  if (!li) return false;
+  const only = li.getAttribute('data-layout-only');
+  return !only || only === currentLayout();
+}
+
+function applyLayout(layout) {
+  document.body.setAttribute('data-layout', layout);
+  const btn = document.getElementById('layout-toggle');
+  if (btn) btn.textContent = layout === 'classic' ? 'Switch to new view' : 'Switch to classic view';
+  const active = document.querySelector('.nav-links a.active');
+  if (active && isNavLinkVisible(active)) return;
+  // The open tab does not exist in this layout: open the layout's landing tab instead
+  const target = layout === 'classic' ? 'growth-copilot' : 'home';
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
+  if (!link) return;
+  if (state.token && state.activeStoreId) {
+    link.click();
+  } else {
+    document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
+    link.classList.add('active');
+    showSection(target);
+  }
+}
+
+// Opens a sidebar tab by its data-target, respecting locks and the current layout
+function openNavTarget(target) {
+  const link = document.querySelector(`.nav-links a[data-target="${resolveLayoutTarget(target)}"]`);
   if (link) link.click();
 }
 
@@ -4775,7 +4847,7 @@ async function fetchStoreFeatures() {
     const activeLink = document.querySelector('.nav-links a.active');
     if (activeLink && activeLink.classList.contains('nav-locked')) {
       const firstOpen = Array.from(document.querySelectorAll('.nav-links a[data-target]'))
-        .find(a => !a.classList.contains('nav-locked'));
+        .find(a => !a.classList.contains('nav-locked') && isNavLinkVisible(a));
       if (firstOpen) firstOpen.click();
     }
   } catch (err) {
@@ -4844,7 +4916,7 @@ window.navigateToModule = function(moduleName) {
     'attribution': 'ad-intelligence',
     'growth': 'growth-copilot',
   };
-  const target = targetMap[moduleName] || moduleName;
+  const target = resolveLayoutTarget(targetMap[moduleName] || moduleName);
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
   if (link) {
     // A locked tab explains which plan unlocks it (handled by the nav click handler)

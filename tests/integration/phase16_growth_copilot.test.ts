@@ -53,6 +53,9 @@ describe('Phase 16: AI Merchant Growth Copilot & Action Center', () => {
 
   // 1. Overview
   it('1. loads growth overview with real multi-module data and zero division safety', async () => {
+    // The overview reports the store's own currency
+    await db.query(`UPDATE stores SET currency = 'GBP' WHERE id = $1`, [STORE_A_ID]);
+
     // Seed an order in order_attributions
     await db.query(
       `INSERT INTO order_attributions (

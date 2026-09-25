@@ -253,7 +253,8 @@ export class GrowthRepository {
       [storeId]
     );
     const store = storeRes.rows[0] || {};
-    const currency = store.currency || 'GBP';
+    // Same fallback as the rest of the dashboard (/features, /home) so pages never disagree
+    const currency = store.currency || 'INR';
 
     // 2. Orders & Revenue from order_attributions
     const ordersRes = await this.db.query(
@@ -430,7 +431,8 @@ export class GrowthRepository {
          AND e.type = 'purchase_completed'
          AND e.payload->>'total_price' IS NOT NULL
          AND e.payload->>'total_price' <> ''`,
-      [storeId, storeId]
+      // Exactly one bound value: Postgres rejects extra parameters (this broke every Growth Copilot endpoint)
+      [storeId]
     );
     const emailRecovered = emailRecoveredRes.rows[0] || {};
     const emailRecoveredShoppers = parseInt(emailRecovered.recovered_shoppers || '0', 10);
