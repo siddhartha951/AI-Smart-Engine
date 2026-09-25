@@ -205,3 +205,88 @@ body[data-layout="new"] #growth-copilot .copilot-kpis { display: none; }
 @media (max-width: 900px) {
   .home-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ===== Hub tab bar (new view: Ads, Marketing, Settings) ===== */
+.hub-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+  overflow-x: auto;
+}
+.hub-tabs[hidden] { display: none; }
+.hub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.hub-tab:hover { color: var(--color-text-primary); }
+.hub-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+.hub-tab.locked { color: var(--color-text-tertiary); }
+.hub-tab:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: -2px; }
+.hub-lock {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* ===== Floating Ask AI (new view) ===== */
+.ask-ai-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.ask-ai-fab svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ask-ai-fab:hover { background: var(--color-accent-hover); }
+.ask-ai-fab:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
+.ask-ai-fab.is-current { display: none; }
+.ask-ai-fab-lock {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.ask-ai-fab-lock[hidden] { display: none; }
+@media (max-width: 640px) {
+  .ask-ai-fab { right: 16px; bottom: 16px; min-height: 44px; padding: 0 14px 0 12px; }
+}
+/* Keep toasts above the floating Ask AI button */
+body[data-layout="new"] .toast { bottom: 88px; }
+@media (max-width: 640px) {
+  body[data-layout="new"] .toast { bottom: 76px; }
+}
+/* Room under the last row so the floating Ask AI button never covers it */
+body[data-layout="new"] .dashboard-content { padding-bottom: 96px; }

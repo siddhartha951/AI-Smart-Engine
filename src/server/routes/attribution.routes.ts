@@ -75,6 +75,45 @@ attributionRouter.get('/campaigns', async (req: Request, res: Response, next: Ne
   }
 });
 
+// GET /api/v1/dashboard/:storeId/attribution/orders?limit=20
+// Most recent attributed orders for the "Attributed orders" table (each opens its journey)
+attributionRouter.get('/orders', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '20'), 10) || 20, 1), 100);
+    const db = (req as any).db || getDatabaseClient();
+    const result = await db.query(
+      `SELECT order_id, order_number, order_revenue, currency, first_touch_source, first_touch_campaign,
+              last_touch_source, last_touch_campaign, is_ai_assisted, touchpoint_count, order_created_at
+       FROM order_attributions
+       WHERE store_id = $1
+       ORDER BY order_created_at DESC
+       LIMIT $2`,
+      [storeId, limit]
+    );
+    res.json({
+      success: true,
+      data: {
+        orders: result.rows.map((r: any) => ({
+          order_id: r.order_id,
+          order_number: r.order_number,
+          revenue: Number(r.order_revenue || 0),
+          currency: r.currency,
+          first_touch: r.first_touch_source || 'direct',
+          first_touch_campaign: r.first_touch_campaign,
+          last_touch: r.last_touch_source || 'direct',
+          last_touch_campaign: r.last_touch_campaign,
+          is_ai_assisted: r.is_ai_assisted === true,
+          touchpoints: Number(r.touchpoint_count || 0),
+          created_at: r.order_created_at,
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/v1/dashboard/:storeId/attribution/journey/:orderId
 attributionRouter.get('/journey/:orderId', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {

@@ -1,7 +1,8 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
-import { initHome, loadHome } from './home.js?v=2.11.0';
+import { initHome, loadHome } from './home.js?v=2.13.0';
+import { HUBS, initHubs, isHub, hubOf, hubTabFeature, hubFeatureKeys, pickHubTab, rememberHubTab, syncHubTabs } from './hubs.js?v=2.13.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -368,6 +369,34 @@ function setupEventListeners() {
     planNameFor: (key) => planNameFor(state.planSummary, key),
     getCurrency: () => state.activeStoreCurrency,
     setCurrency: (currency) => { if (currency) state.activeStoreCurrency = currency; },
+    runAudit: () => {
+      if (state.features && state.features.ai_store_analysis === false) {
+        const plan = planNameFor(state.planSummary, 'ai_store_analysis');
+        showToast(plan ? `The AI store audit is available on the ${plan} plan.` : FEATURE_DISABLED_MESSAGE, !plan);
+        openNavTarget('plan-billing');
+        return;
+      }
+      openStoreAuditModal();
+    },
+  });
+
+  // Hubs: Ads, Marketing and Settings each group several pages behind one item (new view)
+  initHubs({
+    escapeHtml,
+    isNewLayout: () => currentLayout() === 'new',
+    isFeatureOn: (key) => !state.features || state.features[key] !== false,
+    planNameFor: (key) => planNameFor(state.planSummary, key),
+    openTab: (target) => openHub(hubOf(target), target),
+  });
+
+  // Floating Ask AI (new view)
+  document.getElementById('ask-ai-fab')?.addEventListener('click', () => {
+    if (state.features && state.features.ai_agent_chat === false) {
+      showLockedFeature('ai-agent');
+      return;
+    }
+    openNavTarget('ai-agent');
+    setTimeout(() => document.getElementById('ai-agent-input')?.focus(), 150);
   });
 
   // New view (Home) or classic view (Growth Copilot + Overview), remembered per browser
@@ -406,6 +435,12 @@ function setupEventListeners() {
       const a = e.target.closest('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
+      // New view: a hub item (and any page inside a hub) opens inside that hub
+      if (isHub(target) || (currentLayout() === 'new' && hubOf(target))) {
+        openHub(isHub(target) ? target : hubOf(target), isHub(target) ? null : target);
+        closeMobileSidebar();
+        return;
+      }
       // Locked feature: explain which plan unlocks it instead of opening an empty module
       if (a.classList.contains('nav-locked')) {
         showLockedFeature(target);
@@ -1442,6 +1477,9 @@ function showSection(sectionName) {
     }
   }
 
+  syncHubTabs(sectionName);
+  document.getElementById('ask-ai-fab')?.classList.toggle('is-current', sectionName === 'ai-agent');
+
   // Manage live telemetry polling
   if (sectionName === 'live-analytics') {
     startLiveAnalyticsPolling();
@@ -1464,6 +1502,10 @@ async function loadSectionData(section) {
     if (section === 'home') {
       await loadHome();
       return;
+    }
+
+    if (isHub(section)) {
+      section = currentHubTab(section) || pickHubTab(section, null) || HUBS[section][0].target;
     }
 
     if (section === 'growth-copilot') {
@@ -4266,20 +4308,14 @@ async function loadAttributedOrders() {
   if (!tbody) return;
 
   try {
-    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/overview`, {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/attribution/orders?limit=20`, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('Failed to load attributed orders');
+    const { data } = await res.json();
+    const orders = data?.orders || [];
 
-    // Fetch list of recent orders from events
-    const eventsRes = await fetch(`/api/v1/dashboard/${state.activeStoreId}/live/activity?limit=20`, {
-      headers: { 'Authorization': `Bearer ${state.token}` }
-    });
-    if (!eventsRes.ok) return;
-    const eventsData = await eventsRes.json();
-    const purchaseEvents = (eventsData.data?.feed || []).filter(item => item.type === 'purchase_completed');
-
-    if (purchaseEvents.length === 0) {
+    if (orders.length === 0) {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" style="text-align: center; padding: 25px; color: var(--text-muted);">
@@ -4290,30 +4326,30 @@ async function loadAttributedOrders() {
       return;
     }
 
-    tbody.innerHTML = purchaseEvents.map(p => {
-      const orderId = p.metadata?.order_id || p.id;
-      const orderNum = p.metadata?.order_number ? `#${p.metadata.order_number}` : 'Order';
-      const rev = p.metadata?.total_price ? `${getCurrencySymbol(state.activeStoreCurrency)}${Number(p.metadata.total_price).toFixed(2)}` : '--';
-      const firstTouch = p.metadata?.utm_source || 'direct';
-      const lastTouch = p.metadata?.utm_campaign || 'storefront';
-      const isAi = p.metadata?.session_id ? '✨ Yes' : 'No';
-
+    tbody.innerHTML = orders.map(o => {
+      const orderNum = o.order_number ? `#${escapeHtml(o.order_number)}` : 'Order';
+      const rev = `${getCurrencySymbol(o.currency || state.activeStoreCurrency)}${Number(o.revenue || 0).toFixed(2)}`;
+      const first = o.first_touch_campaign ? `${o.first_touch} · ${o.first_touch_campaign}` : o.first_touch;
+      const last = o.last_touch_campaign ? `${o.last_touch} · ${o.last_touch_campaign}` : o.last_touch;
       return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
           <td style="padding: 12px; font-weight: 600; color: var(--text-main); font-family: var(--font-mono);">${orderNum}</td>
-          <td style="padding: 12px; color: #10b981; font-weight: 600;">${rev}</td>
-          <td style="padding: 12px; color: var(--text-main); text-transform: capitalize;">${escapeHtml(firstTouch)}</td>
-          <td style="padding: 12px; color: var(--text-muted);">${escapeHtml(lastTouch)}</td>
-          <td style="padding: 12px;">${isAi}</td>
-          <td style="padding: 12px; color: var(--text-muted);">Connected</td>
+          <td style="padding: 12px; color: #10b981; font-weight: 600;">${escapeHtml(rev)}</td>
+          <td style="padding: 12px; color: var(--text-main); text-transform: capitalize;">${escapeHtml(first)}</td>
+          <td style="padding: 12px; color: var(--text-muted);">${escapeHtml(last)}</td>
+          <td style="padding: 12px;">${o.is_ai_assisted ? 'Yes' : 'No'}</td>
+          <td style="padding: 12px; color: var(--text-muted);">${Number(o.touchpoints || 0)}</td>
           <td style="padding: 12px;">
-            <button class="btn-secondary btn-sm" onclick="openCustomerJourneyModal('${orderId}')" style="padding: 4px 10px; font-size: 12px;">
-              View Journey 🔍
+            <button class="btn-secondary btn-sm" data-journey-order="${escapeHtml(o.order_id)}" style="padding: 4px 10px; font-size: 12px;">
+              View journey
             </button>
           </td>
         </tr>
       `;
     }).join('');
+    tbody.querySelectorAll('[data-journey-order]').forEach(btn => {
+      btn.addEventListener('click', () => window.openCustomerJourneyModal(btn.getAttribute('data-journey-order')));
+    });
   } catch (err) {
     console.error('Failed to load attributed orders:', err);
     showTableError(tbody);
@@ -4636,6 +4672,10 @@ window.executeGrowthAction = async function(actionId, targetModule, _targetId) {
   } catch (_) {}
 
   targetModule = resolveLayoutTarget(targetModule);
+  if (currentLayout() === 'new' && hubOf(targetModule)) {
+    openHub(hubOf(targetModule), targetModule);
+    return;
+  }
   const navLink = document.querySelector(`.nav-links a[data-target="${targetModule}"]`);
   if (navLink && navLink.classList.contains('nav-locked')) {
     showLockedFeature(targetModule);
@@ -4769,6 +4809,17 @@ function applyLayout(layout) {
   const btn = document.getElementById('layout-toggle');
   if (btn) btn.textContent = layout === 'classic' ? 'Switch to new view' : 'Switch to classic view';
   const active = document.querySelector('.nav-links a.active');
+  const activeTarget = active ? active.getAttribute('data-target') : null;
+  // Stay on the same page when it sits inside a hub (new view) or has its own item (classic)
+  const openPage = currentHubTab();
+  syncHubTabs(openPage);
+  if (state.token && state.activeStoreId && openPage) {
+    if (layout === 'new' && activeTarget !== hubOf(openPage)) { openHub(hubOf(openPage), openPage); return; }
+    if (layout === 'classic' && isHub(activeTarget)) {
+      document.querySelector(`.nav-links a[data-target="${openPage}"]`)?.click();
+      return;
+    }
+  }
   if (active && isNavLinkVisible(active)) return;
   // The open tab does not exist in this layout: open the layout's landing tab instead
   const target = layout === 'classic' ? 'growth-copilot' : 'home';
@@ -4785,8 +4836,44 @@ function applyLayout(layout) {
 
 // Opens a sidebar tab by its data-target, respecting locks and the current layout
 function openNavTarget(target) {
-  const link = document.querySelector(`.nav-links a[data-target="${resolveLayoutTarget(target)}"]`);
+  const resolved = resolveLayoutTarget(target);
+  if (currentLayout() === 'new' && hubOf(resolved)) {
+    openHub(hubOf(resolved), resolved);
+    return;
+  }
+  const link = document.querySelector(`.nav-links a[data-target="${resolved}"]`);
   if (link) link.click();
+}
+
+// The hub page currently on screen (optionally only within one hub), if any
+function currentHubTab(hub) {
+  const hubs = hub ? [hub] : Object.keys(HUBS);
+  for (const h of hubs) {
+    const tab = HUBS[h].find(t => sections[t.target] && sections[t.target].classList.contains('active'));
+    if (tab) return tab.target;
+  }
+  return null;
+}
+
+// Opens a page inside its hub (new view); locked tabs explain which plan unlocks them
+function openHub(hub, requested) {
+  if (!isHub(hub)) return;
+  const target = pickHubTab(hub, requested);
+  if (!target) {
+    showLockedFeature(HUBS[hub][0].target);
+    return;
+  }
+  const feature = hubTabFeature(target);
+  if (feature && state.features && state.features[feature] === false) {
+    showLockedFeature(target);
+    return;
+  }
+  if (!showSection(target)) return;
+  document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
+  const hubLink = document.querySelector(`.nav-links a[data-target="${currentLayout() === 'new' ? hub : target}"]`);
+  if (hubLink) hubLink.classList.add('active');
+  rememberHubTab(target);
+  loadSectionData(target);
 }
 
 // A feature outside the store's plan: say which plan includes it and show Plan & billing
@@ -4825,8 +4912,9 @@ async function fetchStoreFeatures() {
       const a = li.querySelector('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
-      const featKey = NAV_FEATURE_MAP[target];
-      const locked = !!(featKey && state.features[featKey] === false);
+      const featKeys = isHub(target) ? hubFeatureKeys(target) : (NAV_FEATURE_MAP[target] ? [NAV_FEATURE_MAP[target]] : []);
+      const featKey = featKeys[0];
+      const locked = featKeys.length > 0 && featKeys.every(k => state.features[k] === false);
       li.style.display = '';
       a.classList.toggle('nav-locked', locked);
       a.querySelector('.nav-lock-badge')?.remove();
@@ -4842,6 +4930,13 @@ async function fetchStoreFeatures() {
     });
 
     applyEscalationPanelState();
+    syncHubTabs(currentHubTab());
+    const fabLock = document.getElementById('ask-ai-fab-lock');
+    if (fabLock) {
+      const off = state.features.ai_agent_chat === false;
+      fabLock.hidden = !off;
+      fabLock.textContent = off ? (planNameFor(planSummary, 'ai_agent_chat') || 'Locked') : '';
+    }
 
     // If the active tab is locked, move to the first tab the store can use
     const activeLink = document.querySelector('.nav-links a.active');
@@ -4883,21 +4978,28 @@ async function loadOverviewInsights(forceRefresh = false) {
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('Failed to load store insights');
     const { data } = await res.json();
 
     if (data?.what_is_happening) happeningEl.textContent = data.what_is_happening;
     if (data?.why_it_is_happening) whyEl.textContent = data.why_it_is_happening;
-    if (Array.isArray(data?.top_recommended_actions)) {
-      actionsEl.innerHTML = data.top_recommended_actions.map(action => `
+    const actions = Array.isArray(data?.top_recommended_actions) ? data.top_recommended_actions : [];
+    if (actions.length === 0) {
+      actionsEl.innerHTML = '<p class="text-muted" style="margin: 0; font-size: 13px;">No recommended actions right now.</p>';
+    } else {
+      // The module name comes from the AI response: escaped and passed via a data attribute, never inline JS
+      actionsEl.innerHTML = actions.map(action => `
         <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
           <div>
             <div style="font-weight: 500; font-size: 13px; color: var(--text-main);">${escapeHtml(action.title)}</div>
             <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(action.why)}</div>
           </div>
-          <button class="btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="window.navigateToModule('${action.target_module}')">Go →</button>
+          <button type="button" class="btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-insight-module="${escapeHtml(action.target_module || '')}">Go →</button>
         </div>
       `).join('');
+      actionsEl.querySelectorAll('[data-insight-module]').forEach(btn => {
+        btn.addEventListener('click', () => window.navigateToModule(btn.getAttribute('data-insight-module')));
+      });
     }
   } catch (err) {
     console.error('Error loading overview insights:', err);
@@ -4906,6 +5008,11 @@ async function loadOverviewInsights(forceRefresh = false) {
 }
 
 window.navigateToModule = function(moduleName) {
+  // Module names can come from AI responses: only plain section ids are accepted
+  if (!/^[a-z0-9_-]{1,40}$/i.test(String(moduleName || ''))) {
+    showToast('This section is not available in your dashboard.', true);
+    return;
+  }
   const targetMap = {
     'funnel': 'live-analytics',
     'catalogue': 'shopify-connection',
@@ -4917,6 +5024,10 @@ window.navigateToModule = function(moduleName) {
     'growth': 'growth-copilot',
   };
   const target = resolveLayoutTarget(targetMap[moduleName] || moduleName);
+  if (currentLayout() === 'new' && hubOf(target)) {
+    openHub(hubOf(target), target);
+    return;
+  }
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
   if (link) {
     // A locked tab explains which plan unlocks it (handled by the nav click handler)
@@ -5276,11 +5387,15 @@ async function loadAiConsumableSuggestions() {
       <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
         <div>
           <div style="font-weight: 500; font-size: 13px; color: var(--text-main);">${escapeHtml(r.title)}</div>
-          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.reasoning)} • Recommended Cycle: ${r.suggested_cycle_days}d</div>
+          <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(r.reasoning)} • Recommended Cycle: ${Number(r.suggested_cycle_days) || 0}d</div>
         </div>
-        <button type="button" class="btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="window.applyConsumableSuggestion('${r.product_id}', ${r.suggested_cycle_days})">Select</button>
+        <button type="button" class="btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;" data-suggest-product="${escapeHtml(r.product_id || '')}" data-suggest-days="${Number(r.suggested_cycle_days) || 0}">Select</button>
       </div>
     `).join('');
+    // AI-provided values go through data attributes, never inline JS
+    list.querySelectorAll('[data-suggest-product]').forEach(btn => {
+      btn.addEventListener('click', () => window.applyConsumableSuggestion(btn.getAttribute('data-suggest-product'), Number(btn.getAttribute('data-suggest-days'))));
+    });
   } catch (err) {
     list.innerHTML = `<div style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</div>`;
   }
@@ -5448,13 +5563,17 @@ async function submitCopilotAsk(customQuestion = '') {
             ${data.suggested_actions.map(act => `
               <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 6px 10px; border-radius: 6px;">
                 <span style="font-size: 12px; color: var(--text-main);">${escapeHtml(act.title)}</span>
-                <button class="btn-secondary btn-sm" style="font-size: 10px; padding: 2px 8px;" onclick="window.navigateToModule('${act.target_module}')">Execute →</button>
+                <button type="button" class="btn-secondary btn-sm" style="font-size: 10px; padding: 2px 8px;" data-copilot-module="${escapeHtml(act.target_module || '')}">Execute →</button>
               </div>
             `).join('')}
           </div>
         </div>
       ` : ''}
     `;
+    // AI-provided module names go through a data attribute, never inline JS
+    resultBox.querySelectorAll('[data-copilot-module]').forEach(btn => {
+      btn.addEventListener('click', () => window.navigateToModule(btn.getAttribute('data-copilot-module')));
+    });
   } catch (err) {
     resultBox.innerHTML = `<span style="color: var(--danger); font-size: 12px;">${escapeHtml(err.message)}</span>`;
   }
