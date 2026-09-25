@@ -100,34 +100,74 @@ describe('Shopify data, order tracking in chat, learning and store-wide AI', () 
   });
 
   describe('orders sync', () => {
-    it('imports every page, keeps the cursor and marks the feed working', async () => {
-      stubShopify([
-        (url) => {
-          if (!url.pathname.endsWith('/orders.json')) return null;
-          if (url.searchParams.get('page_info') === 'p2') return { status: 200, body: { orders: [shopifyOrder(1003, { updated_at: daysAgo(0.5) })] } };
-          expect(url.searchParams.get('order')).toBe('updated_at asc');
-          return {
-            status: 200,
-            body: { orders: [shopifyOrder(1001), shopifyOrder(1002)] },
-            headers: { Link: `<https://${SHOP}/admin/api/2025-10/orders.json?limit=250&page_info=p2>; rel="next"` },
-          };
-        },
-      ]);
+    /** Live pass = order=updated_at asc; history pass = order=created_at desc (newest first, paged) */
+    const syncHandlers = (history: Record<string, { orders: any[]; next?: string }>, live: any[] = []): Handler[] => [
+      (url) => (url.pathname.endsWith('/shop.json') ? { status: 200, body: { shop: { iana_timezone: 'America/New_York' } } } : null),
+      (url) => {
+        if (!url.pathname.endsWith('/orders.json')) return null;
+        const pageInfo = url.searchParams.get('page_info');
+        if (!pageInfo && url.searchParams.get('order') === 'updated_at asc') return { status: 200, body: { orders: live } };
+        const key = pageInfo || 'first';
+        if (!pageInfo) expect(url.searchParams.get('order')).toBe('created_at desc');
+        const page = history[key] || { orders: [] };
+        return {
+          status: 200,
+          body: { orders: page.orders },
+          headers: page.next ? { Link: `<https://${SHOP}/admin/api/2025-10/orders.json?limit=250&page_info=${page.next}>; rel="next"` } : {},
+        };
+      },
+    ];
+    const syncState = async () => {
+      const row = (await db.query(`SELECT * FROM shopify_sync_state WHERE store_id = $1 AND resource = 'orders'`, [STORE_A_ID])).rows[0];
+      return { ...row, details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details };
+    };
+
+    it('brings in today first, then the whole history newest first, and records the shop timezone', async () => {
+      stubShopify(syncHandlers(
+        { first: { orders: [shopifyOrder(1002, { created_at: daysAgo(1) }), shopifyOrder(1001, { created_at: daysAgo(2) })], next: 'p2' }, p2: { orders: [shopifyOrder(1000, { created_at: daysAgo(40) })] } },
+        [shopifyOrder(1003, { created_at: new Date().toISOString(), updated_at: new Date().toISOString() })],
+      ));
       const result = await syncStoreOrders(STORE_A_ID, { db });
-      expect(result).toMatchObject({ status: 'ok', synced: 3, complete: true });
+      expect(result).toMatchObject({ status: 'ok', synced: 4, complete: true });
 
       const rows = (await db.query('SELECT shopify_order_id FROM shopify_orders WHERE store_id = $1 ORDER BY shopify_order_id', [STORE_A_ID])).rows;
-      expect(rows.map((r: any) => r.shopify_order_id)).toEqual(['1001', '1002', '1003']);
-      const state = (await db.query(`SELECT * FROM shopify_sync_state WHERE store_id = $1 AND resource = 'orders'`, [STORE_A_ID])).rows[0];
+      expect(rows.map((r: any) => r.shopify_order_id)).toEqual(['1000', '1001', '1002', '1003']);
+      const state = await syncState();
       expect(state.status).toBe('ok');
       expect(state.backfill_done).toBe(true);
-      expect(Number(state.records_synced)).toBe(3);
+      expect(state.details.history_before).toBe('done');
+      expect(state.details.live_cursor).toBeTruthy();
+      expect(state.details.shop_timezone).toBe('America/New_York');
+      expect(Number(state.records_synced)).toBe(4);
+      expect((await db.query('SELECT timezone FROM stores WHERE id = $1', [STORE_A_ID])).rows[0].timezone).toBe('America/New_York');
 
       // Running again only updates (no duplicates)
       await syncStoreOrders(STORE_A_ID, { db });
-      expect(Number((await db.query('SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [STORE_A_ID])).rows[0].n)).toBe(3);
+      expect(Number((await db.query('SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [STORE_A_ID])).rows[0].n)).toBe(4);
       // Store B is untouched
       expect(Number((await db.query('SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [STORE_B_ID])).rows[0].n)).toBe(0);
+    });
+
+    it('a long history continues from where the last run stopped', async () => {
+      stubShopify(syncHandlers({
+        first: { orders: [shopifyOrder(1102, { created_at: daysAgo(1) })], next: 'h2' },
+        h2: { orders: [shopifyOrder(1101, { created_at: daysAgo(10) })], next: 'h3' },
+        h3: { orders: [shopifyOrder(1100, { created_at: daysAgo(20) })] },
+      }));
+      const first = await syncStoreOrders(STORE_A_ID, { db, maxPages: 1 });
+      expect(first.complete).toBe(false);
+      const mid = await syncState();
+      expect(mid.backfill_done).toBe(false);
+      // Resume point = the oldest order imported so far
+      expect(new Date(mid.details.history_before).getTime()).toBeLessThan(Date.now() - 0.5 * 24 * 3600 * 1000);
+
+      vi.unstubAllGlobals();
+      const { calls: seen } = stubShopify(syncHandlers({ first: { orders: [shopifyOrder(1101, { created_at: daysAgo(10) }), shopifyOrder(1100, { created_at: daysAgo(20) })] } }));
+      const second = await syncStoreOrders(STORE_A_ID, { db });
+      expect(second.complete).toBe(true);
+      const historyCall = seen.find((c) => c.url.includes('created_at+desc') || c.url.includes('created_at%20desc'));
+      expect(historyCall && new URL(historyCall.url).searchParams.get('created_at_max')).toBe(mid.details.history_before);
+      expect(Number((await db.query('SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [STORE_A_ID])).rows[0].n)).toBe(3);
     });
 
     it('a 403 marks orders as blocked by read_orders, and Settings says so', async () => {
@@ -254,6 +294,14 @@ describe('Shopify data, order tracking in chat, learning and store-wide AI', () 
       const funnel = await dash('get', '/analytics/funnel?days=7');
       expect(funnel.body.data.store_orders).toMatchObject({ orders: 2 });
       expect(funnel.body.data.checkout_tracking).toBe(false);
+    });
+
+    it('Ask AI "today" counts every order of the store day (not only paid, no 250 cap)', async () => {
+      const today = await executeAgentTool(STORE_A_ID, 'get_today_overview', {});
+      expect(today.ok).toBe(true);
+      expect((today.data as any).shopify).toMatchObject({ orders_today: 2, revenue_today: 1900, cancelled_today: 1, source: 'synced' });
+      const summary = await executeAgentTool(STORE_A_ID, 'get_shopify_summary', {});
+      expect((summary.data as any)).toMatchObject({ orders: 2, revenue: 1900 });
     });
 
     it('Ask AI store tools answer from the synced orders', async () => {

@@ -30,6 +30,8 @@ import { PlanRepository } from '../../modules/plans/plan.repository';
 import { buildStorePlanView } from '../../modules/plans/plan.service';
 import { HOME_RANGES, HomeRange, getHomeMetrics, normalizeTzOffset, resolveWindows } from '../../modules/home/home-metrics';
 import { ShopifyOrdersRepository } from '../../modules/shopify_data/orders.repository';
+import { resolveStoreOffset } from '../../modules/shopify_data/store-time';
+import { coverageNote } from '../../modules/shopify_data/mirror-coverage';
 import { helpdeskRouter } from './helpdesk.routes';
 import { isFreshdeskActive } from '../../modules/helpdesk/freshdesk-sync.service';
 import { shopifyDataRouter } from './shopify-data.routes';
@@ -165,14 +167,20 @@ router.put('/:storeId/currency', enforceStoreAccess, async (req: Request, res: R
   }
 });
 
-// Home: every KPI for one time window (today / 7d / 30d in the merchant's timezone) plus the
-// previous window for comparison. `tz` is the browser's getTimezoneOffset() in minutes.
+// Home: every KPI for one time window (today / 7d / 30d) plus the previous window for comparison.
+// Days follow the Shopify store's timezone once the orders sync has read it (so "today" matches
+// Shopify admin); before that, `tz` = the browser's getTimezoneOffset() in minutes.
 router.get('/:storeId/home', enforceStoreAccess, enforceFeature(FeatureKey.OVERVIEW), async (req: Request, res: Response, next) => {
   try {
     const rawRange = String(req.query.range || '7d');
     const range: HomeRange = (HOME_RANGES as readonly string[]).includes(rawRange) ? (rawRange as HomeRange) : '7d';
-    const data = await getHomeMetrics(getDatabaseClient(), req.params.storeId as string, range, normalizeTzOffset(req.query.tz));
-    res.json({ success: true, data });
+    const db = getDatabaseClient();
+    const storeId = req.params.storeId as string;
+    const { offset, timezone } = await resolveStoreOffset(db, storeId, normalizeTzOffset(req.query.tz));
+    const data = await getHomeMetrics(db, storeId, range, offset);
+    // While the order history is importing, older windows are incomplete: say so on the card
+    const importNote = data.revenue_source === 'shopify' ? await coverageNote(db, storeId, data.previous_window.from).catch(() => null) : null;
+    res.json({ success: true, data: { ...data, timezone, import_note: importNote } });
   } catch (err) {
     next(err);
   }
@@ -1055,8 +1063,9 @@ router.get('/:storeId/analytics/live', enforceStoreAccess, enforceFeature(Featur
     const db = getDatabaseClient();
     const analyticsRepo = new AnalyticsRepository(db);
 
-    // "Today" starts at the merchant's local midnight (browser offset, as on Home)
-    const { current: today } = resolveWindows('today', normalizeTzOffset(req.query.tz));
+    // "Today" starts at midnight in the Shopify store's timezone (browser offset until it is known), as on Home
+    const { offset } = await resolveStoreOffset(db, storeId, normalizeTzOffset(req.query.tz));
+    const { current: today } = resolveWindows('today', offset);
     const [activeShoppers, feed, storeRes, todayOrders] = await Promise.all([
       analyticsRepo.getActiveShoppersCount(storeId, 5),
       analyticsRepo.getLiveActivityFeed(storeId, 30),

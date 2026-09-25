@@ -1,10 +1,10 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
-import { initHome, loadHome } from './home.js?v=2.15.0';
+import { initHome, loadHome } from './home.js?v=2.16.0';
 import { HUBS, initHubs, isHub, hubOf, hubTabFeature, hubFeatureKeys, pickHubTab, rememberHubTab, syncHubTabs } from './hubs.js?v=2.14.0';
 import { initHelpdesk, loadHelpdesk } from './helpdesk.js?v=2.14.0';
-import { initShopifyData, loadShopifyData } from './shopify-data.js?v=2.15.0';
+import { initShopifyData, loadShopifyData } from './shopify-data.js?v=2.16.0';
 import { initGoalBrief, loadGoalBrief } from './growth-brief.js?v=2.15.0';
 import { initLearning, loadLearning } from './learning.js?v=2.15.0';
 
