@@ -9,6 +9,8 @@ import { prioritizeForGoal, storeOrderRules } from '../../src/modules/growth/gro
 import { numericId, pixelPayload } from '../../src/modules/shopify_data/pixel';
 import { customerInsights, discountPerformance, productPerformance, salesTotals } from '../../src/modules/shopify_data/order-analytics';
 import { rowToOrder } from '../../src/modules/shopify_data/orders.repository';
+import { tzOffsetMinutes } from '../../src/modules/shopify_data/store-time';
+import { covers } from '../../src/modules/shopify_data/mirror-coverage';
 
 const rawOrder = {
   id: 5001,
@@ -60,6 +62,23 @@ describe('order mapper', () => {
   it('net revenue = total minus refunds', () => {
     const stored = rowToOrder({ ...mapShopifyOrder(rawOrder)!, line_items: '[]', discount_codes: '[]', payment_gateways: '[]' });
     expect(stored.net_revenue).toBe(1300);
+  });
+});
+
+describe('store timezone', () => {
+  it('gives getTimezoneOffset-style minutes for the Shopify zone', () => {
+    expect(tzOffsetMinutes('Asia/Kolkata', new Date('2026-09-25T12:00:00Z'))).toBe(-330);
+    expect(tzOffsetMinutes('America/New_York', new Date('2026-09-25T12:00:00Z'))).toBe(240);
+    expect(tzOffsetMinutes('America/New_York', new Date('2026-01-15T12:00:00Z'))).toBe(300);
+    expect(tzOffsetMinutes('UTC')).toBe(0);
+    expect(tzOffsetMinutes('Not/AZone')).toBeNull();
+  });
+
+  it('synced orders are trusted only when fresh and imported back far enough', () => {
+    expect(covers({ fresh: true, completeFrom: 'all' }, '2026-01-01T00:00:00Z')).toBe(true);
+    expect(covers({ fresh: true, completeFrom: '2026-09-01T00:00:00Z' }, '2026-09-20T00:00:00Z')).toBe(true);
+    expect(covers({ fresh: true, completeFrom: '2026-09-01T00:00:00Z' }, '2026-08-01T00:00:00Z')).toBe(false);
+    expect(covers({ fresh: false, completeFrom: 'all' }, '2026-09-20T00:00:00Z')).toBe(false);
   });
 });
 

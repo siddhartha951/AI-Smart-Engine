@@ -7,7 +7,11 @@
  * explaining what is missing; they never contain fabricated metrics.
  */
 import { MetaAdsService } from '../meta_ads/meta_ads.service';
-import { fetchShopifyOrders } from './shopify_orders.service';
+import { getDatabaseClient } from '../../database/client';
+import { resolveWindows } from '../home/home-metrics';
+import { resolveStoreOffset } from '../shopify_data/store-time';
+import { ordersForPeriod } from '../shopify_data/orders-for-period';
+import { productPerformance, salesTotals } from '../shopify_data/order-analytics';
 import { ShopifyHealthService } from '../shopify_health/shopify_health.service';
 import { AgentToolName, AgentToolResult } from './ai_agent.types';
 import { TenantIsolationError } from '../../utils/errors';
@@ -112,18 +116,24 @@ function defaultRange(daysBack = 30): { since: string; until: string } {
   return { since: fmt(since), until: fmt(until) };
 }
 
+/** Start / end of a YYYY-MM-DD day in the store's timezone (offset = minutes, getTimezoneOffset sign) */
+function dayBounds(ymd: string, offset: number, end = false): Date {
+  const [y, m, d] = ymd.split('-').map((n) => parseInt(n, 10));
+  const midnightUtc = Date.UTC(y, (m || 1) - 1, d || 1) + offset * 60000;
+  return new Date(end ? midnightUtc + 24 * 60 * 60 * 1000 - 1 : midnightUtc);
+}
+
 async function getTodayOverview(storeId: string, _args: ToolArgs): Promise<AgentToolResult> {
   requireStore(storeId);
-  const today = new Date().toISOString().slice(0, 10);
+  // "Today" = the Shopify store's day (same as Shopify admin), not the UTC day
+  const db = getDatabaseClient();
+  const { offset, timezone } = await resolveStoreOffset(db, storeId, 0);
+  const { current } = resolveWindows('today', offset);
+  const today = current.fromDate;
 
   const metaAllowed = await new EntitlementRepository().isFeatureEnabled(storeId, FeatureKey.META_ADS).catch(() => false);
-  const [shopify, meta] = await Promise.all([
-    fetchShopifyOrders(storeId, {
-      createdAtMin: `${today}T00:00:00Z`,
-      createdAtMax: `${today}T23:59:59Z`,
-      limit: 250,
-      financialStatus: 'paid',
-    }),
+  const [period, meta] = await Promise.all([
+    ordersForPeriod(storeId, current.from, current.to, { db }),
     (async () => {
       if (!metaAllowed) return null;
       try {
@@ -140,13 +150,24 @@ async function getTodayOverview(storeId: string, _args: ToolArgs): Promise<Agent
     ok: true,
     data: {
       date: today,
-      shopify: shopify.connected
-        ? {
-            connected: true,
-            orders_today: shopify.orders.length,
-            revenue_today: round2(shopify.orders.reduce((s, o) => s + o.total_price, 0)),
-            currency: shopify.currency,
-          }
+      timezone: timezone || 'UTC (store timezone not known yet)',
+      so_far_until: current.to.toISOString(),
+      shopify: period.connected
+        ? (() => {
+            const t = salesTotals(period.orders);
+            return {
+              connected: true,
+              orders_today: t.orders,
+              revenue_today: t.revenue,
+              revenue_definition: 'order totals minus refunds; cancelled and test orders excluded',
+              average_order_value: t.average_order_value,
+              discounts_today: t.discounts,
+              cancelled_today: t.cancelled,
+              currency: period.orders.find((o) => o.currency)?.currency || null,
+              source: period.source,
+              ...(period.incomplete ? { note: 'Not every order could be read from Shopify; the real numbers may be higher.' } : {}),
+            };
+          })()
         : { connected: false, note: await withScopeGuidance('Shopify is not connected for this store.', storeId) },
       meta_ads: meta
         ? {
@@ -223,43 +244,38 @@ async function getShopifySummary(storeId: string, args: ToolArgs): Promise<Agent
   const range = defaultRange(30);
   const since = args.since ? String(args.since) : range.since;
   const until = args.until ? String(args.until) : range.until;
-  const limit = Math.min(Math.max(parseInt(String(args.limit || '100'), 10) || 100, 1), 250);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+    return { ok: false, note: 'Dates must be YYYY-MM-DD.' };
+  }
 
-  const { connected, orders, currency } = await fetchShopifyOrders(storeId, {
-    createdAtMin: `${since}T00:00:00Z`,
-    createdAtMax: `${until}T23:59:59Z`,
-    limit,
-    financialStatus: 'paid',
-  });
-  if (!connected) {
+  // Whole days in the store's timezone, every order (not only "paid"), all pages
+  const db = getDatabaseClient();
+  const { offset, timezone } = await resolveStoreOffset(db, storeId, 0);
+  const period = await ordersForPeriod(storeId, dayBounds(since, offset), dayBounds(until, offset, true), { db });
+  if (!period.connected) {
     return {
       ok: false,
       note: await withScopeGuidance('Shopify is not connected for this store.', storeId),
     };
   }
-  const revenue = round2(orders.reduce((s, o) => s + o.total_price, 0));
-  const productSales = new Map<string, { title: string; quantity: number; revenue: number }>();
-  for (const o of orders) {
-    for (const item of o.top_items) {
-      const entry = productSales.get(item.title) || { title: item.title, quantity: 0, revenue: 0 };
-      entry.quantity += item.quantity;
-      entry.revenue = round2(entry.revenue + item.quantity * item.price);
-      productSales.set(item.title, entry);
-    }
-  }
-  const topProducts = [...productSales.values()]
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 10);
+  const t = salesTotals(period.orders);
   return {
     ok: true,
     data: {
       since,
       until,
-      orders: orders.length,
-      revenue,
-      currency,
-      average_order_value: orders.length > 0 ? round2(revenue / orders.length) : 0,
-      top_products: topProducts,
+      timezone: timezone || 'UTC',
+      orders: t.orders,
+      revenue: t.revenue,
+      revenue_definition: 'order totals minus refunds; cancelled and test orders excluded',
+      currency: period.orders.find((o) => o.currency)?.currency || null,
+      average_order_value: t.average_order_value,
+      discounts: t.discounts,
+      refunded: t.refunded,
+      cancelled_orders: t.cancelled,
+      top_products: productPerformance(period.orders).slice(0, 10).map((p) => ({ title: p.title, quantity: p.units, revenue: p.revenue })),
+      source: period.source,
+      ...(period.incomplete ? { note: 'Not every order in this period could be read; the real numbers may be higher. Use a shorter period.' } : {}),
     },
   };
 }

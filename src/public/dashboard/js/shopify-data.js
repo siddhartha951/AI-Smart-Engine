@@ -133,7 +133,9 @@ function renderSyncs(d) {
     syncCard('Shopify orders', orders, [
       `${esc(Number(d.orders.mirrored).toLocaleString())} orders synced${d.orders.latest_order_name ? ` · latest ${esc(d.orders.latest_order_name)} (${esc(when(d.orders.latest_order_at))})` : ''}`,
       `Last sync: ${esc(when(orders?.last_success_at))} · refreshes every 5 minutes`,
-      orders && !orders.backfill_done && orders.status === 'ok' ? 'Importing order history… more arrives every few minutes.' : '',
+      orders && !orders.backfill_done && orders.status === 'ok'
+        ? `Importing older orders${orders.details?.history_before && orders.details.history_before !== 'done' ? `: complete back to ${esc(new Date(orders.details.history_before).toLocaleDateString())}` : ''}. Today's orders are already included.`
+        : '',
     ], { action: 'orders', label: 'Sync orders now' }),
     syncCard('Order webhooks (instant updates)', hooks, [
       hookDetails.last_received_at ? `Last webhook received: ${esc(when(hookDetails.last_received_at))}` : 'No webhook received yet.',

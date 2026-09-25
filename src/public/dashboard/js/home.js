@@ -93,7 +93,10 @@ function renderKpis(d) {
     : kpiCard('roas', 'ROAS', `${Number(k.roas.value).toFixed(2)}x`, `on ${esc(money(k.ad_spend.value, c))} spend`, delta(k.roas));
 
   el.innerHTML = [
-    kpiCard('revenue', 'Revenue', esc(money(k.revenue.value, c)), esc(REVENUE_SOURCE_NOTE[d.revenue_source] || ''), delta(k.revenue)),
+    kpiCard('revenue', 'Revenue', esc(money(k.revenue.value, c)),
+      esc(REVENUE_SOURCE_NOTE[d.revenue_source] || '') + (d.timezone ? ` <span class="home-kpi-tz">· ${esc(d.timezone)} time</span>` : '')
+        + (d.import_note ? `<br><span class="home-kpi-import">${esc(d.import_note)}</span>` : ''),
+      delta(k.revenue)),
     kpiCard('orders', 'Orders', esc(number(k.orders.value)), `Avg. order ${esc(money(k.average_order_value.value, c))}`, delta(k.orders)),
     kpiCard('conversion_rate', 'Conversion rate', `${Number(k.conversion_rate.value).toFixed(1)}%`, `${esc(number(d.activity.visitors.value))} visitors`, delta(k.conversion_rate)),
     kpiCard('ai_assisted_revenue', 'AI-assisted sales', esc(money(k.ai_assisted_revenue.value, c)), 'Helped by your AI assistant', delta(k.ai_assisted_revenue)),
