@@ -11,6 +11,7 @@ import { executeAgentTool } from '../../src/modules/ai_agent/ai_agent.tools';
 import { GrowthService } from '../../src/modules/growth/growth.service';
 import { learningContext } from '../../src/modules/learning/learning.service';
 import { resetRateLimits } from '../../src/modules/ai_agent/rate_limiter';
+import { storeOrderTelemetry } from '../../src/modules/shopify_data/order-analytics';
 
 const STORE_A_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const STORE_B_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
@@ -146,6 +147,20 @@ describe('Shopify data, order tracking in chat, learning and store-wide AI', () 
       expect(Number((await db.query('SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [STORE_A_ID])).rows[0].n)).toBe(4);
       // Store B is untouched
       expect(Number((await db.query('SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [STORE_B_ID])).rows[0].n)).toBe(0);
+    });
+
+    it('a live-only run (every minute) brings new orders and leaves the history where it was', async () => {
+      stubShopify(syncHandlers({ first: { orders: [shopifyOrder(1202, { created_at: daysAgo(1) })], next: 'x2' } }));
+      await syncStoreOrders(STORE_A_ID, { db, maxPages: 1 });
+      const before = (await syncState()).details.history_before;
+
+      vi.unstubAllGlobals();
+      const { calls } = stubShopify(syncHandlers({}, [shopifyOrder(1203, { created_at: new Date().toISOString(), updated_at: new Date().toISOString() })]));
+      const quick = await syncStoreOrders(STORE_A_ID, { db, skipHistory: true });
+      expect(quick).toMatchObject({ status: 'ok', synced: 1, complete: false });
+      expect(calls.some((c) => c.url.includes('created_at+desc'))).toBe(false);
+      expect((await syncState()).details.history_before).toBe(before);
+      expect((await db.query(`SELECT 1 FROM shopify_orders WHERE store_id = $1 AND shopify_order_id = '1203'`, [STORE_A_ID])).rows).toHaveLength(1);
     });
 
     it('a long history continues from where the last run stopped', async () => {
@@ -286,6 +301,36 @@ describe('Shopify data, order tracking in chat, learning and store-wide AI', () 
       expect(res.body.data.revenue_source).toBe('shopify');
       expect(res.body.data.kpis.orders.value).toBe(2);
       expect(res.body.data.kpis.revenue.value).toBe(1900);
+    });
+
+    it('Home says "syncing", hides comparisons against a half-imported period, and conversion needs the pixel', async () => {
+      const done = await dash('get', '/home?range=30d&tz=0');
+      expect(done.body.data.sync).toMatchObject({ importing: false, orders_synced: 3 });
+      expect(done.body.data.previous_incomplete).toBe(false);
+      expect(done.body.data.conversion_tracking).toBe(false);
+
+      // Pretend the history import only reached 10 days ago
+      const row = (await db.query(`SELECT details FROM shopify_sync_state WHERE store_id = $1 AND resource = 'orders'`, [STORE_A_ID])).rows[0];
+      const details = typeof row.details === 'string' ? JSON.parse(row.details) : row.details;
+      details.history_before = daysAgo(10);
+      await db.query(`UPDATE shopify_sync_state SET details = $2::jsonb, backfill_done = false WHERE store_id = $1 AND resource = 'orders'`, [STORE_A_ID, JSON.stringify(details)]);
+
+      const importing = await dash('get', '/home?range=30d&tz=0');
+      expect(importing.body.data.sync.importing).toBe(true);
+      expect(importing.body.data.sync.complete_back_to).toBeTruthy();
+      expect(importing.body.data.previous_incomplete).toBe(true);
+      expect(importing.body.data.kpis.revenue.change_pct).toBeNull();
+      expect(importing.body.data.kpis.orders.change_pct).toBeNull();
+      expect(importing.body.data.import_note).toMatch(/still importing/);
+      // Today is fully imported, so today keeps its comparison
+      const today = await dash('get', '/home?range=today&tz=0');
+      expect(today.body.data.previous_incomplete).toBe(false);
+    });
+
+    it('Growth Copilot totals are exact from the database, not a capped list', async () => {
+      const t = await storeOrderTelemetry(db, STORE_A_ID);
+      expect(t!.totals).toMatchObject({ orders: 2, revenue: 1900, cancelled: 1, refunded: 100 });
+      expect(t!.complete_30d).toBe(true);
     });
 
     it('Live Pulse shows today\'s Shopify orders', async () => {

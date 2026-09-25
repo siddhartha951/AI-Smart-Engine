@@ -72,7 +72,7 @@ async function recordShopTimezone(db: IDatabaseClient, storeId: string, creds: A
 
 export async function syncStoreOrders(
   storeId: string,
-  opts: { db?: IDatabaseClient; fetcher?: OrdersFetcher; maxPages?: number; now?: Date } = {}
+  opts: { db?: IDatabaseClient; fetcher?: OrdersFetcher; maxPages?: number; now?: Date; skipHistory?: boolean } = {}
 ): Promise<OrdersSyncResult> {
   const db = opts.db || getDatabaseClient();
   const fetcher = opts.fetcher || adminGet;
@@ -149,6 +149,11 @@ export async function syncStoreOrders(
 
   // ---------- 2. History pass: back in time from where it stopped ----------
   let complete = Boolean(previous?.backfill_done && details.history_before === 'done');
+  if (!complete && opts.skipHistory) {
+    // Quick live-only run (every minute): keep today current, leave the history for the full run
+    await saveProgress({ status: 'ok', blocked_scope: null, last_error: null, last_run_at: now, last_success_at: now, cursor_updated_at: liveCursor });
+    return { status: 'ok', synced, complete: false };
+  }
   if (!complete) {
     const floor = details.history_floor || new Date(nowDate.getTime() - HISTORY_DAYS * DAY).toISOString();
     details.history_floor = floor;
@@ -201,14 +206,14 @@ export async function syncStoreOrders(
 }
 
 /** Every store with Shopify credentials, one after another (called by the scheduler). */
-export async function syncAllStoresOrders(db: IDatabaseClient = getDatabaseClient()): Promise<void> {
+export async function syncAllStoresOrders(db: IDatabaseClient = getDatabaseClient(), opts: { skipHistory?: boolean } = {}): Promise<void> {
   const res = await db.query(
     `SELECT s.id FROM stores s JOIN store_credentials c ON c.store_id = s.id
      WHERE s.status = 'active' AND c.encrypted_admin_token IS NOT NULL`
   );
   for (const row of res.rows) {
     try {
-      const result = await syncStoreOrders(row.id, { db });
+      const result = await syncStoreOrders(row.id, { db, skipHistory: opts.skipHistory });
       if (result.synced > 0) logger.info(`Orders sync: store ${row.id} mirrored ${result.synced} orders (${result.status})`);
     } catch (err) {
       logger.warn(`Orders sync failed for store ${row.id}: ${(err as Error)?.message || err}`);

@@ -1,6 +1,6 @@
 /**
  * Keeps every store's data fresh without the merchant pressing anything:
- *   - Shopify orders: every 5 minutes (new and updated orders)
+ *   - Shopify orders: new and changed orders every minute; order history import every 5 minutes
  *   - Meta ad spend:  every hour (last 30 days, for ROAS)
  *   - Webhooks:       every 6 hours, re-registers any that are missing
  *
@@ -35,8 +35,14 @@ export class ShopifyDataScheduler {
   }
 
   start(): void {
-    const ordersEvery = parseInt(process.env.SHOPIFY_ORDERS_SYNC_INTERVAL_MS || String(5 * MINUTE), 10);
-    this.every('orders', ordersEvery, () => syncAllStoresOrders(this.db));
+    const ordersEvery = parseInt(process.env.SHOPIFY_ORDERS_SYNC_INTERVAL_MS || String(MINUTE), 10);
+    // Every tick brings in new/changed orders; every 5th tick also continues the history import.
+    // One job name, so a live run and a history run never write the same store at the same time.
+    let tick = 0;
+    this.every('orders', ordersEvery, () => {
+      tick += 1;
+      return syncAllStoresOrders(this.db, { skipHistory: tick % 5 !== 0 });
+    });
     this.every('meta_spend', 60 * MINUTE, () => syncAllStoresMetaSpend(this.db));
     this.every('webhooks', 6 * 60 * MINUTE, () => this.repairWebhooks());
     // First pass shortly after boot, so a fresh deploy fills the dashboard quickly

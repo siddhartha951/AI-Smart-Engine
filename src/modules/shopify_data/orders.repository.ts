@@ -143,13 +143,50 @@ export class ShopifyOrdersRepository {
     return { orders: Number(r.orders || 0), revenue: Number(r.revenue || 0), discounts: Number(r.discounts || 0) };
   }
 
+  /**
+   * Exact totals for a window, computed in the database (no row limit), in the same shape
+   * as salesTotals(): big stores have tens of thousands of orders a month.
+   */
+  async windowSummary(storeId: string, from: Date, to: Date) {
+    const res = await this.db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN cancelled_at IS NULL AND is_test = false THEN 1 ELSE 0 END), 0) AS orders,
+         COALESCE(SUM(CASE WHEN cancelled_at IS NULL AND is_test = false THEN total_price - total_refunded ELSE 0 END), 0) AS revenue,
+         COALESCE(SUM(CASE WHEN cancelled_at IS NULL AND is_test = false THEN total_price + total_discounts ELSE 0 END), 0) AS gross,
+         COALESCE(SUM(CASE WHEN cancelled_at IS NULL AND is_test = false THEN total_discounts ELSE 0 END), 0) AS discounts,
+         COALESCE(SUM(CASE WHEN cancelled_at IS NULL AND is_test = false THEN total_refunded ELSE 0 END), 0) AS refunded,
+         COALESCE(SUM(CASE WHEN cancelled_at IS NOT NULL AND is_test = false THEN 1 ELSE 0 END), 0) AS cancelled,
+         COALESCE(SUM(CASE WHEN cancelled_at IS NULL AND is_test = false AND item_count <= 1 THEN 1 ELSE 0 END), 0) AS single_item
+       FROM shopify_orders
+       WHERE store_id = $1 AND created_at_shop >= $2::timestamptz AND created_at_shop <= $3::timestamptz`,
+      [storeId, from.toISOString(), to.toISOString()]
+    );
+    const r = res.rows[0] || {};
+    const n = (v: unknown) => Number(v || 0);
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const orders = n(r.orders);
+    const revenue = n(r.revenue);
+    const refunded = n(r.refunded);
+    return {
+      orders,
+      revenue: r2(revenue),
+      average_order_value: orders ? r2(revenue / orders) : 0,
+      discounts: r2(n(r.discounts)),
+      discount_share_pct: n(r.gross) > 0 ? r2((n(r.discounts) / n(r.gross)) * 100) : 0,
+      refunded: r2(refunded),
+      refund_rate_pct: revenue + refunded > 0 ? r2((refunded / (revenue + refunded)) * 100) : 0,
+      cancelled: n(r.cancelled),
+      single_item_share_pct: orders ? r2((n(r.single_item) / orders) * 100) : 0,
+    };
+  }
+
   /** Every order in the window (newest first), capped for safety. Includes cancelled/test so callers can report them. */
-  async listInWindow(storeId: string, from: Date, to: Date, limit = 5000): Promise<StoredOrder[]> {
+  async listInWindow(storeId: string, from: Date, to: Date, limit = 60000): Promise<StoredOrder[]> {
     const res = await this.db.query(
       `SELECT * FROM shopify_orders
        WHERE store_id = $1 AND created_at_shop >= $2::timestamptz AND created_at_shop <= $3::timestamptz
        ORDER BY created_at_shop DESC LIMIT $4`,
-      [storeId, from.toISOString(), to.toISOString(), Math.max(1, Math.min(limit, 20000))]
+      [storeId, from.toISOString(), to.toISOString(), Math.max(1, Math.min(limit, 100000))]
     );
     return res.rows.map(rowToOrder);
   }

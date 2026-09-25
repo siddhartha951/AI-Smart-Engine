@@ -54,6 +54,8 @@ export interface HomeMetrics {
   };
   agent_active: boolean;
   has_ad_spend_history: boolean;
+  /** False until the Shopify checkout pixel sends events: conversion cannot be measured per shopper */
+  conversion_tracking: boolean;
 }
 
 /** Normalises the browser's getTimezoneOffset() value (minutes, UTC minus local). */
@@ -198,8 +200,8 @@ async function windowTotals(
     orders: Number(o.orders || 0),
     aiRevenue,
     visitors: Number(f.visitors || 0),
-    // With Shopify orders, conversion = orders / tracked visitors (capped at 100% below)
-    purchasers: source === 'shopify' ? Number(o.orders || 0) : Number(f.purchasers || 0),
+    // Tracked shoppers who bought (checkout pixel / webhook-matched), over tracked shoppers
+    purchasers: Number(f.purchasers || 0),
     spend: Number(spend.rows[0]?.n || 0),
     chats,
     leads,
@@ -219,12 +221,13 @@ export async function getHomeMetrics(
 ): Promise<HomeMetrics> {
   const { current, previous } = resolveWindows(range, tzOffsetMinutes, now);
 
-  const [storeRes, shopifyOrderCount, attributionCount, spendHistory, assistant] = await Promise.all([
+  const [storeRes, shopifyOrderCount, attributionCount, spendHistory, assistant, pixelEvents] = await Promise.all([
     db.query('SELECT currency FROM stores WHERE id = $1', [storeId]),
     count(db, 'SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [storeId]).catch(() => 0),
     count(db, 'SELECT COUNT(*) AS n FROM order_attributions WHERE store_id = $1', [storeId]),
     count(db, 'SELECT COUNT(*) AS n FROM ad_spend WHERE store_id = $1', [storeId]),
     db.query('SELECT is_active FROM assistant_settings WHERE store_id = $1', [storeId]),
+    db.query(`SELECT 1 FROM events WHERE store_id = $1 AND payload->>'source' = 'shopify_pixel' LIMIT 1`, [storeId]).catch(() => ({ rows: [] as any[] })),
   ]);
 
   // One revenue source per store (never mixed between windows), matching the Growth Copilot
@@ -271,5 +274,6 @@ export async function getHomeMetrics(
     },
     agent_active: assistant.rows[0]?.is_active !== false,
     has_ad_spend_history: spendHistory > 0,
+    conversion_tracking: pixelEvents.rows.length > 0,
   };
 }

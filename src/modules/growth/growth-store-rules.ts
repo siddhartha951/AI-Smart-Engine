@@ -32,8 +32,8 @@ export function storeOrderRules(t: StoreOrderTelemetry): GrowthOpportunity[] {
   const cur = t.currency;
   const aov = t.totals.average_order_value || 0;
 
-  // Revenue falling week on week
-  if (t.prev7.revenue > 0 && t.last7.revenue < t.prev7.revenue * 0.8 && t.prev7.orders >= 5) {
+  // Revenue falling week on week (only when both weeks are fully imported)
+  if (t.complete_14d !== false && t.prev7.revenue > 0 && t.last7.revenue < t.prev7.revenue * 0.8 && t.prev7.orders >= 5) {
     const drop = t.prev7.revenue - t.last7.revenue;
     out.push({
       action_key: 'revenue_decline_week',

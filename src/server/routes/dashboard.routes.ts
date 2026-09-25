@@ -32,6 +32,7 @@ import { HOME_RANGES, HomeRange, getHomeMetrics, normalizeTzOffset, resolveWindo
 import { ShopifyOrdersRepository } from '../../modules/shopify_data/orders.repository';
 import { resolveStoreOffset } from '../../modules/shopify_data/store-time';
 import { coverageNote } from '../../modules/shopify_data/mirror-coverage';
+import { SyncStateRepository } from '../../modules/shopify_data/sync-state.repository';
 import { helpdeskRouter } from './helpdesk.routes';
 import { isFreshdeskActive } from '../../modules/helpdesk/freshdesk-sync.service';
 import { shopifyDataRouter } from './shopify-data.routes';
@@ -178,9 +179,24 @@ router.get('/:storeId/home', enforceStoreAccess, enforceFeature(FeatureKey.OVERV
     const storeId = req.params.storeId as string;
     const { offset, timezone } = await resolveStoreOffset(db, storeId, normalizeTzOffset(req.query.tz));
     const data = await getHomeMetrics(db, storeId, range, offset);
-    // While the order history is importing, older windows are incomplete: say so on the card
+    // While the order history is importing, the previous window is incomplete: no fake "+424%"
     const importNote = data.revenue_source === 'shopify' ? await coverageNote(db, storeId, data.previous_window.from).catch(() => null) : null;
-    res.json({ success: true, data: { ...data, timezone, import_note: importNote } });
+    if (importNote) {
+      for (const key of ['revenue', 'orders', 'average_order_value'] as const) data.kpis[key].change_pct = null;
+    }
+    const orders = await new SyncStateRepository(db).get(storeId, 'orders').catch(() => null);
+    const historyBefore = orders?.details?.history_before;
+    const sync = orders
+      ? {
+          status: orders.status,
+          importing: orders.status === 'ok' && !orders.backfill_done,
+          complete_back_to: historyBefore && historyBefore !== 'done' ? historyBefore : null,
+          orders_synced: orders.records_synced,
+          last_sync_at: orders.last_success_at,
+          error: orders.status === 'ok' ? null : orders.last_error,
+        }
+      : null;
+    res.json({ success: true, data: { ...data, timezone, import_note: importNote, previous_incomplete: Boolean(importNote), sync } });
   } catch (err) {
     next(err);
   }
