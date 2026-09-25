@@ -18,6 +18,7 @@ export const HUBS = {
   ],
   settings: [
     { target: 'shopify-connection', feature: null, label: 'Shopify connection' },
+    { target: 'helpdesk-settings', feature: 'freshdesk', label: 'Helpdesk' },
     { target: 'plan-billing', feature: null, label: 'Plan & billing' },
   ],
 };

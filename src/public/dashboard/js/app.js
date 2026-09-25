@@ -2,7 +2,8 @@ import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
 import { initHome, loadHome } from './home.js?v=2.13.0';
-import { HUBS, initHubs, isHub, hubOf, hubTabFeature, hubFeatureKeys, pickHubTab, rememberHubTab, syncHubTabs } from './hubs.js?v=2.13.0';
+import { HUBS, initHubs, isHub, hubOf, hubTabFeature, hubFeatureKeys, pickHubTab, rememberHubTab, syncHubTabs } from './hubs.js?v=2.14.0';
+import { initHelpdesk, loadHelpdesk } from './helpdesk.js?v=2.14.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -151,7 +152,8 @@ const sections = {
   'meta-ads': document.getElementById('meta-ads'),
   'ads-explorer': document.getElementById('ads-explorer'),
   'ai-agent': document.getElementById('ai-agent'),
-  'plan-billing': document.getElementById('plan-billing')
+  'plan-billing': document.getElementById('plan-billing'),
+  'helpdesk-settings': document.getElementById('helpdesk-settings')
 };
 
 const LOAD_ERROR_TEXT = "We couldn't load this data right now. Please refresh the page or try again in a moment.";
@@ -261,6 +263,7 @@ const NAV_FEATURE_MAP = {
   'meta-ads': 'meta_ads',
   'ads-explorer': 'ads_explorer',
   'ai-agent': 'ai_agent_chat',
+  'helpdesk-settings': 'freshdesk',
 };
 
 let adStudioState = {
@@ -408,6 +411,15 @@ function setupEventListeners() {
     showToast(next === 'classic' ? 'Classic view on. Switch back any time from the sidebar.' : 'New view on.');
   });
 
+  // Settings → Helpdesk (built-in inbox or the store's Freshdesk)
+  initHelpdesk({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    loadErrorText: LOAD_ERROR_TEXT,
+    // Connecting / disconnecting Freshdesk shows or hides the Support Tickets page
+    onChanged: () => fetchStoreFeatures(),
+  });
+
   // Settings → Plan & billing, sidebar plan card, locked-feature hints
   initPlanBilling({
     getStoreId: () => state.activeStoreId,
@@ -438,6 +450,12 @@ function setupEventListeners() {
       // New view: a hub item (and any page inside a hub) opens inside that hub
       if (isHub(target) || (currentLayout() === 'new' && hubOf(target))) {
         openHub(isHub(target) ? target : hubOf(target), isHub(target) ? null : target);
+        closeMobileSidebar();
+        return;
+      }
+      // Tickets live in Freshdesk for this store: the built-in ticket page stays hidden
+      if (target === 'support-tickets' && state.helpdeskProvider === 'freshdesk') {
+        showToast('Support tickets for your store are handled in Freshdesk.');
         closeMobileSidebar();
         return;
       }
@@ -1567,6 +1585,11 @@ async function loadSectionData(section) {
 
     if (section === 'plan-billing') {
       await loadPlanBilling();
+      return;
+    }
+
+    if (section === 'helpdesk-settings') {
+      await loadHelpdesk();
       return;
     }
 
@@ -4799,7 +4822,7 @@ function resolveLayoutTarget(target) {
 
 function isNavLinkVisible(link) {
   const li = link && link.closest('li');
-  if (!li) return false;
+  if (!li || li.style.display === 'none') return false;
   const only = li.getAttribute('data-layout-only');
   return !only || only === currentLayout();
 }
@@ -4929,6 +4952,11 @@ async function fetchStoreFeatures() {
       }
     });
 
+    // With Freshdesk connected, tickets are handled there: hide the built-in ticket page
+    state.helpdeskProvider = json.data?.helpdesk?.provider === 'freshdesk' ? 'freshdesk' : 'built_in';
+    const ticketsItem = document.querySelector('.nav-links a[data-target="support-tickets"]')?.closest('li');
+    if (ticketsItem) ticketsItem.style.display = state.helpdeskProvider === 'freshdesk' ? 'none' : '';
+
     applyEscalationPanelState();
     syncHubTabs(currentHubTab());
     const fabLock = document.getElementById('ask-ai-fab-lock');
@@ -4940,7 +4968,8 @@ async function fetchStoreFeatures() {
 
     // If the active tab is locked, move to the first tab the store can use
     const activeLink = document.querySelector('.nav-links a.active');
-    if (activeLink && activeLink.classList.contains('nav-locked')) {
+    const ticketsNowHidden = activeLink?.getAttribute('data-target') === 'support-tickets' && state.helpdeskProvider === 'freshdesk';
+    if (activeLink && (activeLink.classList.contains('nav-locked') || ticketsNowHidden)) {
       const firstOpen = Array.from(document.querySelectorAll('.nav-links a[data-target]'))
         .find(a => !a.classList.contains('nav-locked') && isNavLinkVisible(a));
       if (firstOpen) firstOpen.click();

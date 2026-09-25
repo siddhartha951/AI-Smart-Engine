@@ -5,6 +5,7 @@ import { verifyJwt, requireAdminOnly, requireSuperAdmin } from '../middlewares/a
 import { PlanRepository } from '../../modules/plans/plan.repository';
 import { buildStorePlanView } from '../../modules/plans/plan.service';
 import {
+  ALWAYS_INCLUDED_FEATURES,
   BILLING_CYCLES,
   FEATURE_LABELS,
   FEATURE_SECTIONS,
@@ -92,7 +93,12 @@ router.get('/plans', async (_req: Request, res: Response, next: NextFunction) =>
     const [plans, counts] = await Promise.all([repo.listPlans(), repo.countStoresByPlan()]);
     res.json({
       success: true,
-      data: { plans: plans.map((p) => withPrices(p, counts[p.id] || 0)), sections: sectionsForClient },
+      data: {
+        plans: plans.map((p) => withPrices(p, counts[p.id] || 0)),
+        sections: sectionsForClient,
+        // In every plan; the admin switches them per store instead
+        always_included: ALWAYS_INCLUDED_FEATURES,
+      },
     });
   } catch (err) {
     next(err);

@@ -73,6 +73,7 @@ export function matchBoldProductMentions(
   const ids: string[] = [];
   for (const bold of bolds) {
     let best: { id: string; score: number } | null = null;
+    let ties = 0;
     for (const p of products) {
       const title = p.title.toLowerCase();
       const shortTitle = title.split(/[:\-|–(]/)[0].trim();
@@ -85,8 +86,16 @@ export function matchBoldProductMentions(
         const overlap = boldWords.filter(w => titleWords.has(w)).length;
         if (boldWords.length > 0 && overlap >= 2 && overlap / boldWords.length >= 0.6) score = 1;
       }
-      if (score > 0 && (!best || score > best.score)) best = { id: p.id, score };
+      if (score > 0 && (!best || score > best.score)) {
+        best = { id: p.id, score };
+        ties = 1;
+      } else if (best && score === best.score) {
+        ties += 1;
+      }
     }
+    // A bold phrase shared by several titles (the brand name, "Itch Relief Formula") names no
+    // single product; picking the first match would attach an arbitrary card
+    if (best && best.score < 3 && ties > 2) continue;
     if (best && !ids.includes(best.id)) ids.push(best.id);
     if (ids.length >= max) break;
   }

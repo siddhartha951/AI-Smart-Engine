@@ -376,6 +376,21 @@ export class WhatsAppRepository {
     return res.rows;
   }
 
+  /** The latest `limit` messages of a conversation, oldest first (the AI reply context). */
+  async getRecentMessages(storeId: string, conversationId: string, limit = 8): Promise<WhatsAppMessage[]> {
+    if (!storeId) throw new TenantIsolationError('store_id is required');
+
+    const res = await this.db.query<WhatsAppMessage>(
+      `SELECT * FROM whatsapp_messages
+       WHERE store_id = $1 AND conversation_id = $2
+       ORDER BY created_at DESC
+       LIMIT $3`,
+      [storeId, conversationId, limit]
+    );
+
+    return res.rows.reverse();
+  }
+
   async updateMessageStatus(wamid: string, status: string, errorMessage?: string | null): Promise<boolean> {
     if (!wamid) return false;
 

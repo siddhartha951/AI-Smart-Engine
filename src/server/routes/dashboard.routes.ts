@@ -29,6 +29,8 @@ import { normalizeRecommendationSettings } from '../../modules/chat/recommendati
 import { PlanRepository } from '../../modules/plans/plan.repository';
 import { buildStorePlanView } from '../../modules/plans/plan.service';
 import { HOME_RANGES, HomeRange, getHomeMetrics, normalizeTzOffset } from '../../modules/home/home-metrics';
+import { helpdeskRouter } from './helpdesk.routes';
+import { isFreshdeskActive } from '../../modules/helpdesk/freshdesk-sync.service';
 
 const router = Router();
 
@@ -68,9 +70,10 @@ router.get('/:storeId/features', enforceStoreAccess, async (req: Request, res: R
     const storeId = req.params.storeId as string;
     const db = getDatabaseClient();
     const repo = new EntitlementRepository(db);
-    const [features, storeRes] = await Promise.all([
+    const [features, storeRes, freshdesk] = await Promise.all([
       repo.getStoreEntitlements(storeId),
       db.query('SELECT currency FROM stores WHERE id = $1', [storeId]),
+      isFreshdeskActive(db, storeId).catch(() => false),
     ]);
     res.json({
       success: true,
@@ -78,6 +81,8 @@ router.get('/:storeId/features', enforceStoreAccess, async (req: Request, res: R
         store_id: storeId,
         currency: storeRes.rows[0]?.currency || 'INR',
         features,
+        // Where support tickets go; with Freshdesk the built-in ticket page is hidden
+        helpdesk: { provider: freshdesk ? 'freshdesk' : 'built_in' },
       },
     });
   } catch (err) {
@@ -1657,6 +1662,7 @@ router.use('/:storeId/ai-agent', enforceStoreAccess, enforceFeature(FeatureKey.A
 
 // 16. Customer Support Tickets & Human Escalation Desk
 router.use('/:storeId/tickets', enforceStoreAccess, enforceFeature(FeatureKey.SUPPORT_TICKETS), ticketDashboardRouter);
+router.use('/:storeId/helpdesk', enforceStoreAccess, enforceFeature(FeatureKey.FRESHDESK), helpdeskRouter);
 
 export default router;
 

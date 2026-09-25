@@ -51,7 +51,7 @@ export interface FeatureSection {
 export const FEATURE_SECTIONS: FeatureSection[] = [
   { id: 'home', name: 'Home & analytics', features: ['overview', 'live_pulse', 'funnel', 'growth_copilot'] },
   { id: 'assistant', name: 'AI Assistant', features: ['widget', 'catalogue'] },
-  { id: 'inbox', name: 'Inbox & customers', features: ['leads', 'support_tickets'] },
+  { id: 'inbox', name: 'Inbox & customers', features: ['leads', 'support_tickets', 'freshdesk'] },
   { id: 'marketing', name: 'Marketing', features: ['email_automation', 'smart_reorder', 'whatsapp'] },
   { id: 'ads', name: 'Ads', features: ['meta_ads', 'ads_explorer', 'ad_creative', 'ad_intelligence'] },
   { id: 'ai_tools', name: 'AI tools', features: ['ai_agent_chat', 'ai_store_analysis'] },
@@ -67,6 +67,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   catalogue: 'Shopify catalog and variants',
   leads: 'Leads and opt-ins',
   support_tickets: 'Support tickets',
+  freshdesk: 'Freshdesk integration',
   email_automation: 'Email recovery',
   smart_reorder: 'Smart reorder reminders',
   whatsapp: 'WhatsApp',
@@ -77,6 +78,18 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   ai_agent_chat: 'Ask AI (business analyst)',
   ai_store_analysis: 'AI store audit',
 };
+
+/**
+ * Features every plan includes. The admin still switches them per store (store feature
+ * switches), but they cannot be taken out of a plan.
+ */
+export const ALWAYS_INCLUDED_FEATURES: FeatureKey[] = ['freshdesk'];
+
+/** A plan's feature list plus the always-included features, in catalogue order. */
+export function withAlwaysIncluded(features: FeatureKey[]): FeatureKey[] {
+  const set = new Set<FeatureKey>([...features, ...ALWAYS_INCLUDED_FEATURES]);
+  return ALL_FEATURE_KEYS.filter((key) => set.has(key));
+}
 
 export function isFeatureKey(value: unknown): value is FeatureKey {
   return typeof value === 'string' && (ALL_FEATURE_KEYS as string[]).includes(value);

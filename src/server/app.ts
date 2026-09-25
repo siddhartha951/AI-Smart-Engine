@@ -17,7 +17,7 @@ import fs from 'fs';
 import { getShopifyAdapter, ShopifyProduct } from '../providers/shopify';
 import { getAiProvider, BudgetGuard } from '../providers/ai';
 import { matchBoldProductMentions } from '../providers/ai/ai.utils';
-import { MAX_RECOMMENDATIONS } from '../providers/ai/shopper-prompt';
+import { CATALOG_SCAN_LIMIT, filterRelevantCards, isSellableProduct, selectCatalogForPrompt } from '../modules/chat/product-relevance';
 import { buildKnowledgeContext } from '../modules/knowledge/knowledge-retrieval';
 import { EntitlementRepository } from '../modules/entitlements/entitlement.repository';
 import { FeatureKey } from '../modules/entitlements/entitlement.types';
@@ -411,19 +411,32 @@ export function createApp(deps: AppDependencies = {}): Express {
         const maxBudgetMatch = message.match(/under\s*\$?(\d+)/i);
         const budgetMax = maxBudgetMatch ? parseInt(maxBudgetMatch[1], 10) : undefined;
 
-        // Fetch catalog subset — a catalog failure (e.g. store has not
-        // connected Shopify yet) must never break the chat conversation.
-        let catalogSubset: ShopifyProduct[] = [];
+        // The store's whole buyable catalogue, ranked for this question below. A catalog failure
+        // (e.g. store has not connected Shopify yet) must never break the chat conversation.
+        let fullCatalog: ShopifyProduct[] = [];
         try {
           const adapter = getShopifyAdapter();
-          catalogSubset = await adapter.searchProducts(storeId, {
-            budget_max: budgetMax,
-            keywords: isBestsellerQuery ? searchKeywords : contextKeywords,
-            bestseller_only: isBestsellerQuery,
-          });
+          fullCatalog = adapter.listCatalog
+            ? await adapter.listCatalog(storeId, CATALOG_SCAN_LIMIT)
+            : await adapter.searchProducts(storeId, {
+                budget_max: budgetMax,
+                keywords: isBestsellerQuery ? searchKeywords : contextKeywords,
+                bestseller_only: isBestsellerQuery,
+              });
         } catch (catalogErr) {
           console.warn(`[WidgetChat] Catalog lookup failed for store ${storeId}, continuing without products:`, catalogErr);
         }
+
+        // Most relevant products first (whole-word, catalogue-weighted matching), service items and
+        // products for another audience (dog vs cat) left out, small catalogues sent whole
+        const previousUserTurns = recentUserTurns.slice(0, -1);
+        const selection = selectCatalogForPrompt(fullCatalog, {
+          message,
+          recentUserTurns: previousUserTurns,
+          budgetMax,
+          bestsellerOnly: isBestsellerQuery,
+        });
+        const catalogSubset: ShopifyProduct[] = selection.products;
 
         const ticketsEnabled = await new EntitlementRepository(db)
           .isFeatureEnabled(storeId, FeatureKey.SUPPORT_TICKETS)
@@ -431,10 +444,11 @@ export function createApp(deps: AppDependencies = {}): Express {
 
         const recSettings = normalizeRecommendationSettings(settings);
 
+        // The product a question is about pulls in the knowledge passages that name it (e.g. its ingredients)
         const knowledgeContext = await buildKnowledgeContext(
           storeId,
           (settings as any)?.knowledge_base || '',
-          recentUserTurns.join('\n'),
+          [...recentUserTurns, ...selection.focusTitles].join('\n'),
           db
         );
 
@@ -444,6 +458,7 @@ export function createApp(deps: AppDependencies = {}): Express {
           storeId,
           sessionId: session_id,
           catalogSubset,
+          catalogDetail: { detailed: selection.detailed, focus: selection.focus },
           storePolicies: policies || { delivery_policy: '', returns_policy: '', faq_content: '' },
           assistantSettings: {
             assistant_name: settings?.assistant_name || 'Assistant',
@@ -485,49 +500,28 @@ export function createApp(deps: AppDependencies = {}): Express {
         // Product cards = exactly what the AI recommended. Only when it named products in
         // **bold** without passing ids do we resolve those names (incl. products outside the subset).
         let targetProductIds = (aiRes.recommended_product_ids || []).slice(0, recSettings.maxRecommendations);
-        const boldMatches = Array.from(aiRes.content.matchAll(/\*\*([^*]+)\*\*/g))
-          .map(m => m[1].toLowerCase().trim())
-          .filter(t => t.length > 3 && !t.includes('http'));
 
-        if (targetProductIds.length === 0 && boldMatches.length > 0) {
-          try {
-            for (const bold of boldMatches.slice(0, MAX_RECOMMENDATIONS)) {
-              const cleanWords = bold.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
-              if (cleanWords.length === 0) continue;
-              // Every word of the bold name must appear in the title
-              const clauses = cleanWords.map((_, i) => `LOWER(title) LIKE $${i + 2}`);
-              const dbRes = await db.query(
-                `SELECT * FROM products WHERE store_id = $1 AND in_stock = true AND price > 0 AND ${clauses.join(' AND ')} LIMIT 2`,
-                [storeId, ...cleanWords.map(w => `%${w}%`)]
-              );
-              for (const row of dbRes.rows) {
-                const prodId = row.shopify_id || row.id;
-                if (!catalogSubset.some(p => p.id === prodId)) {
-                  catalogSubset.push({
-                    id: prodId,
-                    variant_id: row.variant_id || '',
-                    title: row.title,
-                    handle: row.handle,
-                    description: row.description || '',
-                    tags: row.tags || [],
-                    is_bestseller: row.is_bestseller || false,
-                    sales_rank: row.sales_rank || 999,
-                    price: parseFloat(row.price || '0'),
-                    compare_at_price: parseFloat(row.compare_at_price || '0'),
-                    currency: row.currency || 'INR',
-                    in_stock: row.in_stock,
-                    category: row.category,
-                    image_url: row.image_url,
-                    product_url: row.product_url,
-                  });
-                }
-              }
-            }
-          } catch (dbErr) {
-            console.warn('[WidgetChat] Supplemental product lookup warning:', dbErr);
+        if (targetProductIds.length === 0 && /\*\*[^*]+\*\*/.test(aiRes.content)) {
+          // Only named in **bold**: resolve against the whole catalogue (it may sit outside the prompt
+          // subset of a large store). Ambiguous names such as the brand alone resolve to nothing.
+          const named = matchBoldProductMentions(aiRes.content, fullCatalog.filter(isSellableProduct), recSettings.maxRecommendations);
+          for (const id of named) {
+            const product = fullCatalog.find(p => p.id === id);
+            if (product && !catalogSubset.some(p => p.id === id)) catalogSubset.push(product);
           }
-          targetProductIds = matchBoldProductMentions(aiRes.content, catalogSubset, recSettings.maxRecommendations);
+          targetProductIds = named;
         }
+
+        // Last check: every card relates to the question or is named in the reply; a question
+        // about one product ("what are its ingredients") shows at most that product
+        targetProductIds = filterRelevantCards({
+          productIds: targetProductIds,
+          products: catalogSubset,
+          message,
+          recentUserTurns: previousUserTurns,
+          reply: aiRes.content,
+          intent: selection.intent,
+        }).slice(0, recSettings.maxRecommendations);
 
         // A bare greeting never gets product cards, whatever the model returned
         if (/^\s*(hi+|hello+|hey+|hola|namaste|good\s+(morning|afternoon|evening))[\s!.,?]*$/i.test(message)) {

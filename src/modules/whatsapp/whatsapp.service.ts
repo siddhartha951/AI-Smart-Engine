@@ -6,7 +6,7 @@ import {
   WhatsAppProviderType,
 } from '../../providers/whatsapp';
 import { getAiProvider, IAiProvider, BudgetGuard, ChatMessage } from '../../providers/ai';
-import { getShopifyAdapter, IShopifyCatalogAdapter } from '../../providers/shopify';
+import { getShopifyAdapter, IShopifyCatalogAdapter, ShopifyProduct } from '../../providers/shopify';
 import { getPurchaseAdapter, IPurchaseAdapter, FakePurchaseAdapter } from '../../providers/purchase';
 import { MerchantRepository } from '../merchant/merchant.repository';
 import { VisitorRepository } from '../visitor/visitor.repository';
@@ -15,6 +15,8 @@ import { encryptString, decryptString } from '../../utils/crypto';
 import { WhatsAppConfig } from '../../database/types';
 import { ValidationError } from '../../utils/errors';
 import { buildKnowledgeContext } from '../knowledge/knowledge-retrieval';
+import { logger } from '../../utils/logger';
+import { CATALOG_SCAN_LIMIT, selectCatalogForPrompt } from '../chat/product-relevance';
 
 export class WhatsAppService {
   private db: IDatabaseClient;
@@ -442,24 +444,37 @@ export class WhatsAppService {
       this.merchantRepo.getStorePolicies(storeId),
     ]);
 
-    // Search catalogue products grounded in query
-    const searchWords = cleanText.split(/\s+/).filter(w => w.length > 2);
-    const catalogSubset = await this.shopifyAdapter.searchProducts(storeId, {
-      keywords: searchWords.length > 0 ? searchWords : undefined,
-    });
-
-    // Build chat history from recent messages
-    const recentMessages = await this.repo.getMessages(storeId, conversation.id, 8);
+    // Build chat history from the LATEST messages (oldest first). getMessages() returns the
+    // oldest rows, which froze the reply context after 8 messages.
+    const recentMessages = await this.repo.getRecentMessages(storeId, conversation.id, 8);
     const chatHistory: ChatMessage[] = recentMessages.map(m => ({
       role: m.direction === 'inbound' ? 'user' : 'assistant',
       content: m.content,
     }));
+    const previousUserTurns = chatHistory
+      .filter(m => m.role === 'user')
+      .map(m => m.content)
+      .filter(c => c !== cleanText)
+      .slice(-2);
+
+    // Same product ranking as the web widget: whole catalogue, most relevant first
+    let fullCatalog: ShopifyProduct[] = [];
+    try {
+      fullCatalog = this.shopifyAdapter.listCatalog
+        ? await this.shopifyAdapter.listCatalog(storeId, CATALOG_SCAN_LIMIT)
+        : await this.shopifyAdapter.searchProducts(storeId, {});
+    } catch (catalogErr: any) {
+      logger.warn(`WhatsApp catalog lookup failed for store ${storeId}: ${catalogErr?.message || catalogErr}`);
+    }
+    const selection = selectCatalogForPrompt(fullCatalog, { message: cleanText, recentUserTurns: previousUserTurns });
+    const catalogSubset = selection.products.slice(0, 20);
 
     // Generate response using existing IAiProvider
     const aiResponse = await this.aiProvider.generateResponse(chatHistory, {
       storeId,
       sessionId: conversation.id,
-      catalogSubset: catalogSubset.slice(0, 4),
+      catalogSubset,
+      catalogDetail: { detailed: Math.min(selection.detailed, catalogSubset.length), focus: selection.focus },
       storePolicies: {
         delivery_policy: storePolicies?.delivery_policy || '',
         returns_policy: storePolicies?.returns_policy || '',
@@ -472,7 +487,10 @@ export class WhatsAppService {
         knowledge_base: await buildKnowledgeContext(
           storeId,
           assistantSettings?.knowledge_base || '',
-          chatHistory.filter(m => m.role === 'user').slice(-3).map(m => m.content).join('\n') || cleanText,
+          [
+            chatHistory.filter(m => m.role === 'user').slice(-3).map(m => m.content).join('\n') || cleanText,
+            ...selection.focusTitles,
+          ].join('\n'),
           this.db
         ),
         support_contact: assistantSettings?.support_contact,

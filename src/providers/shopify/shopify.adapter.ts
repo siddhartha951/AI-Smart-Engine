@@ -20,6 +20,8 @@ export interface ShopifyProduct {
   variants?: ProductVariant[];
   /** Option groups, e.g. [{ name: 'Size', values: ['S', 'M'] }] */
   options?: ProductOption[];
+  /** false for draft / archived products (not buyable on the storefront) */
+  is_active?: boolean;
 }
 
 export interface ProductSearchQuery {
@@ -32,6 +34,8 @@ export interface ProductSearchQuery {
 
 export interface IShopifyCatalogAdapter {
   searchProducts(storeId: string, query: ProductSearchQuery): Promise<ShopifyProduct[]>;
+  /** The store's buyable catalogue (active, in stock, priced) for the assistant to rank itself. */
+  listCatalog?(storeId: string, limit?: number): Promise<ShopifyProduct[]>;
   getProductDetails(storeId: string, productId: string): Promise<ShopifyProduct | null>;
   syncAllProducts?(storeId: string): Promise<{ count: number; products: ShopifyProduct[] }>;
   validateConnection?(storeId: string): Promise<boolean>;
