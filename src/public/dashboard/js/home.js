@@ -8,11 +8,19 @@ let loadSeq = 0;
 
 const RANGE_LABELS = { today: 'yesterday', '7d': 'previous 7 days', '30d': 'previous 30 days' };
 const RANGE_KEY = 'home_range';
+const REFRESH_MS = 60 * 1000; // Home numbers follow new Shopify orders without a reload
+let refreshTimer = null;
+
+const REVENUE_SOURCE_NOTE = {
+  shopify: 'From your Shopify orders',
+  orders: 'From tracked orders',
+  storefront_events: 'From storefront purchase events',
+};
 
 const KPI_DEFS = {
-  revenue: 'Total value of orders placed in this period. Uses your synced Shopify orders; if orders are not synced yet, storefront purchase events.',
+  revenue: 'Total value of orders placed in this period, minus refunds (cancelled and test orders are left out). Uses your synced Shopify orders; if orders are not synced yet, storefront purchase events.',
   orders: 'Number of orders placed in this period. Average order value = revenue ÷ orders.',
-  conversion_rate: 'Share of storefront visitors in this period who completed a purchase.',
+  conversion_rate: 'Orders in this period ÷ storefront visitors tracked by your assistant (capped at 100%).',
   ai_assisted_revenue: 'Revenue from orders where the shopper was helped by your AI assistant (chat or a recommended product).',
   roas: 'Return on ad spend: revenue in this period ÷ ad spend recorded for the same days.',
 };
@@ -85,7 +93,7 @@ function renderKpis(d) {
     : kpiCard('roas', 'ROAS', `${Number(k.roas.value).toFixed(2)}x`, `on ${esc(money(k.ad_spend.value, c))} spend`, delta(k.roas));
 
   el.innerHTML = [
-    kpiCard('revenue', 'Revenue', esc(money(k.revenue.value, c)), d.revenue_source === 'storefront_events' ? 'From storefront purchase events' : '', delta(k.revenue)),
+    kpiCard('revenue', 'Revenue', esc(money(k.revenue.value, c)), esc(REVENUE_SOURCE_NOTE[d.revenue_source] || ''), delta(k.revenue)),
     kpiCard('orders', 'Orders', esc(number(k.orders.value)), `Avg. order ${esc(money(k.average_order_value.value, c))}`, delta(k.orders)),
     kpiCard('conversion_rate', 'Conversion rate', `${Number(k.conversion_rate.value).toFixed(1)}%`, `${esc(number(d.activity.visitors.value))} visitors`, delta(k.conversion_rate)),
     kpiCard('ai_assisted_revenue', 'AI-assisted sales', esc(money(k.ai_assisted_revenue.value, c)), 'Helped by your AI assistant', delta(k.ai_assisted_revenue)),
@@ -214,12 +222,27 @@ function setRangeButtons() {
   });
 }
 
-export async function loadHome() {
+function homeVisible() {
+  const section = document.getElementById('home');
+  return Boolean(section && !section.classList.contains('hidden') && document.visibilityState === 'visible');
+}
+
+/** Refreshes the numbers every minute while Home is on screen (no AI calls, no spinners). */
+function scheduleRefresh() {
+  if (refreshTimer) return;
+  refreshTimer = setInterval(() => {
+    if (homeVisible()) loadHome({ quiet: true });
+  }, REFRESH_MS);
+}
+
+export async function loadHome(opts = {}) {
   if (!ctx || !ctx.getStoreId()) return;
+  const quiet = opts.quiet === true;
   const seq = ++loadSeq;
   setRangeButtons();
+  scheduleRefresh();
   const kpis = document.getElementById('home-kpis');
-  if (kpis) kpis.setAttribute('aria-busy', 'true');
+  if (kpis && !quiet) kpis.setAttribute('aria-busy', 'true');
   try {
     const tz = new Date().getTimezoneOffset();
     const res = await fetch(`/api/v1/dashboard/${ctx.getStoreId()}/home?range=${encodeURIComponent(range)}&tz=${tz}`, {
@@ -238,12 +261,12 @@ export async function loadHome() {
     renderActivity(data);
     renderCompare(data);
   } catch (_) {
-    if (seq !== loadSeq) return;
+    if (seq !== loadSeq || quiet) return; // a failed background refresh keeps the last numbers
     if (kpis) kpis.innerHTML = `<div class="home-empty home-empty--wide"><p>${esc(ctx.loadErrorText)}</p></div>`;
   } finally {
     if (kpis && seq === loadSeq) kpis.removeAttribute('aria-busy');
   }
-  if (seq === loadSeq) {
+  if (seq === loadSeq && !quiet) {
     renderActions();
     renderInsights(false);
   }

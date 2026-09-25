@@ -25,8 +25,7 @@ import {
   ShopifyScopeStatus,
 } from './shopify_health.types';
 import { ADMIN_SCOPES, isScopeGranted } from './shopify-scopes';
-
-const SHOPIFY_API_VERSION = '2024-01';
+import { shopifyApiVersion } from '../../providers/shopify/admin-client';
 const REQUEST_TIMEOUT_MS = 10000;
 
 interface ScopeProbe {
@@ -100,7 +99,7 @@ async function probeShopify(
     // Token travels in the header only — never in the URL, never logged.
     const url = path.startsWith('/')
       ? `https://${shopDomain}${path}`
-      : `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/${path}`;
+      : `https://${shopDomain}/admin/api/${shopifyApiVersion()}/${path}`;
     const res = await fetch(url, {
       headers: {
         'X-Shopify-Access-Token': adminToken,

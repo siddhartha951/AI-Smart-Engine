@@ -24,6 +24,10 @@ export interface ConversionFunnelData {
   total_visitors: number;
   stages: FunnelStage[];
   overall_conversion_rate: number;
+  /** Real Shopify orders in the same period (all channels), when orders are synced */
+  store_orders: { orders: number; revenue: number } | null;
+  /** True once the Shopify checkout pixel has sent an event (purchases are then tracked per shopper) */
+  checkout_tracking: boolean;
 }
 
 export interface ProductPerformanceMetric {
@@ -117,6 +121,18 @@ export class AnalyticsRepository {
           icon = '⭐';
           badgeColor = '#10b981';
           break;
+        case 'product_view':
+          label = 'Product Viewed';
+          detail = payload.title ? `Viewed "${payload.title}"` : 'Viewed a product page';
+          icon = '👁️';
+          badgeColor = '#0ea5e9';
+          break;
+        case 'checkout_started':
+          label = 'Checkout Started';
+          detail = payload.total_price ? `Checkout for ${payload.currency || ''} ${payload.total_price}` : 'Shopper started checkout';
+          icon = '💳';
+          badgeColor = '#f59e0b';
+          break;
         case 'product_click':
           label = 'Product Clicked';
           detail = payload.title ? `Clicked "${payload.title}"` : 'Clicked recommended product';
@@ -180,8 +196,9 @@ export class AnalyticsRepository {
       `SELECT
          COUNT(DISTINCT visitor_id) AS total_visitors,
          COUNT(DISTINCT CASE WHEN type IN ('widget_opened', 'chat_started') THEN visitor_id END) AS chat_visitors,
-         COUNT(DISTINCT CASE WHEN type = 'product_click' THEN visitor_id END) AS engaged_visitors,
+         COUNT(DISTINCT CASE WHEN type IN ('product_click', 'product_view') THEN visitor_id END) AS engaged_visitors,
          COUNT(DISTINCT CASE WHEN type = 'add_to_cart' THEN visitor_id END) AS cart_visitors,
+         COUNT(DISTINCT CASE WHEN type = 'checkout_started' THEN visitor_id END) AS checkout_visitors,
          COUNT(DISTINCT CASE WHEN type = 'purchase_completed' THEN visitor_id END) AS purchase_visitors
        FROM events
        WHERE store_id = $1 ${timeFilter}`,
@@ -203,12 +220,40 @@ export class AnalyticsRepository {
     const engaged = parseInt(counts.engaged_visitors || '0', 10);
     const carts = parseInt(counts.cart_visitors || '0', 10);
     const purchases = parseInt(counts.purchase_visitors || '0', 10);
+    const checkouts = parseInt(counts.checkout_visitors || '0', 10);
+
+    // Checkout is only visible once the Shopify pixel is installed; before that the stage is left out
+    const pixelRes = await this.db.query(
+      `SELECT 1 FROM events WHERE store_id = $1 AND payload->>'source' = 'shopify_pixel' LIMIT 1`,
+      [storeId]
+    );
+    const checkoutTracking = pixelRes.rows.length > 0;
+
+    let storeOrders: ConversionFunnelData['store_orders'] = null;
+    try {
+      const ordersRes = await this.db.query(
+        `SELECT COUNT(*) AS orders, COALESCE(SUM(total_price - total_refunded), 0) AS revenue, MAX(created_at_shop) AS latest
+         FROM shopify_orders WHERE store_id = $1 AND cancelled_at IS NULL AND is_test = false
+         ${cutoff ? 'AND created_at_shop >= $2' : ''}`,
+        params
+      );
+      const anyOrders = await this.db.query('SELECT 1 FROM shopify_orders WHERE store_id = $1 LIMIT 1', [storeId]);
+      if (anyOrders.rows.length > 0) {
+        storeOrders = {
+          orders: parseInt(ordersRes.rows[0]?.orders || '0', 10),
+          revenue: Math.round(parseFloat(ordersRes.rows[0]?.revenue || '0') * 100) / 100,
+        };
+      }
+    } catch {
+      storeOrders = null; // table missing before migration 040
+    }
 
     const rawStages = [
       { stage: 'Store Visitors', count: actualTotal },
       { stage: 'AI Chats Initiated', count: chats },
       { stage: 'Products Explored', count: engaged },
       { stage: 'Added to Cart', count: carts },
+      ...(checkoutTracking ? [{ stage: 'Checkout Started', count: checkouts }] : []),
       { stage: 'Completed Purchases', count: purchases },
     ];
 
@@ -234,6 +279,8 @@ export class AnalyticsRepository {
       total_visitors: actualTotal,
       stages,
       overall_conversion_rate: overallConvRate,
+      store_orders: storeOrders,
+      checkout_tracking: checkoutTracking,
     };
   }
 

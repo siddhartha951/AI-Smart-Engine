@@ -2079,3 +2079,29 @@ header h2,
 .recs-prev-row em { font-style: normal; font-size: 10.5px; color: var(--color-text-secondary); }
 .recs-prev-thumb { width: 40px; height: 40px; border-radius: 7px; background: var(--color-surface-muted); flex-shrink: 0; }
 .recs-prev-add { font-size: 11px; font-weight: 700; padding: 6px 9px; border-radius: 7px; background: var(--color-accent); color: var(--color-text-on-accent); }
+
+/* ===== Ask AI: 👍 / 👎 and Teach AI under answers ===== */
+.agent-feedback { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--color-text-muted); white-space: normal; }
+.agent-feedback-btn { min-height: 30px; min-width: 32px; padding: 0 8px; border: 1px solid var(--color-border-default, #e5e7eb); border-radius: 999px; background: #fff; cursor: pointer; font-size: 12px; }
+.agent-feedback-btn[aria-pressed="true"] { background: var(--color-accent-soft); border-color: var(--color-accent); }
+.agent-teach-form { display: grid; gap: 6px; margin-top: 8px; white-space: normal; }
+.agent-teach-form label { font-size: 12px; color: var(--color-text-secondary); }
+.agent-teach-form textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border-default, #e5e7eb); border-radius: 8px; font: inherit; font-size: 13px; }
+.agent-teach-status { font-size: 12px; color: var(--color-text-secondary); margin: 0; }
+
+/* ===== My Agent → Learning (js/learning.js) ===== */
+.learn-panel { margin-top: 24px; }
+.learn-stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; font-size: 13px; color: var(--color-text-secondary); }
+.learn-stats strong { color: var(--color-text-primary); }
+.learn-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.learn-tab { min-height: 34px; padding: 0 12px; border: 1px solid var(--color-border-default, #e5e7eb); border-radius: 999px; background: #fff; cursor: pointer; font-size: 13px; }
+.learn-tab.active { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--color-accent); font-weight: 600; }
+.learn-list { display: grid; gap: 10px; }
+.learn-item { padding: 12px; border: 1px solid var(--color-border-default, #e5e7eb); border-radius: 10px; display: grid; gap: 6px; font-size: 13px; }
+.learn-item-q { font-weight: 600; color: var(--color-text-primary); }
+.learn-item-meta { font-size: 12px; color: var(--color-text-muted); }
+.learn-item-bot { font-size: 12px; color: var(--color-text-secondary); border-left: 3px solid var(--color-border-default, #e5e7eb); padding-left: 8px; }
+.learn-item textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border-default, #e5e7eb); border-radius: 8px; font: inherit; font-size: 13px; }
+.learn-item-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.learn-note-form { display: grid; gap: 8px; margin-top: 12px; padding: 12px; border: 1px dashed var(--color-border-default, #e5e7eb); border-radius: 10px; }
+.learn-note-form input, .learn-note-form textarea, .learn-note-form select { width: 100%; box-sizing: border-box; }

@@ -1,9 +1,12 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
-import { initHome, loadHome } from './home.js?v=2.13.0';
+import { initHome, loadHome } from './home.js?v=2.15.0';
 import { HUBS, initHubs, isHub, hubOf, hubTabFeature, hubFeatureKeys, pickHubTab, rememberHubTab, syncHubTabs } from './hubs.js?v=2.14.0';
 import { initHelpdesk, loadHelpdesk } from './helpdesk.js?v=2.14.0';
+import { initShopifyData, loadShopifyData } from './shopify-data.js?v=2.15.0';
+import { initGoalBrief, loadGoalBrief } from './growth-brief.js?v=2.15.0';
+import { initLearning, loadLearning } from './learning.js?v=2.15.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -409,6 +412,37 @@ function setupEventListeners() {
     storageSet(LAYOUT_KEY, next);
     applyLayout(next);
     showToast(next === 'classic' ? 'Classic view on. Switch back any time from the sidebar.' : 'New view on.');
+  });
+
+  // Settings → Shopify connection → Permissions & data (scopes, data feeds, keys, pixel)
+  initShopifyData({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    escapeHtml,
+    showToast,
+    loadErrorText: LOAD_ERROR_TEXT,
+    openReconnect: () => openShopifyReconnectModal(),
+    onHealthChecked: () => loadShopifyHealth(),
+    openShopifyConnection: () => openNavTarget('shopify-connection'),
+  });
+
+  // My Agent → Teach your AI (questions to answer, approved answers, notes)
+  initLearning({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    escapeHtml,
+    showToast,
+  });
+
+  // Growth Copilot → AI plan for the Primary Goal
+  initGoalBrief({
+    getStoreId: () => state.activeStoreId,
+    getToken: () => state.token,
+    escapeHtml,
+    openAction: (key) => {
+      const btn = document.querySelector(`[data-action-key="${CSS.escape(key)}"]`);
+      if (btn) btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
   });
 
   // Settings → Helpdesk (built-in inbox or the store's Freshdesk)
@@ -1686,6 +1720,7 @@ async function loadSectionData(section) {
           document.getElementById('agent-knowledge-base').value = data.assistant.knowledge_base || '';
         }
         loadKnowledgeDocs();
+        loadLearning();
 
         // Populate Quick Action Pills
         try {
@@ -1861,6 +1896,7 @@ async function loadSectionData(section) {
       }
       loadProductsTable();
       loadShopifyHealth();
+      loadShopifyData(false);
     }
     else if (section === 'email-automation') {
       if (data.settings) {
@@ -2110,7 +2146,7 @@ async function loadLiveShoppersPill() {
 async function loadLiveAnalytics(isBackground = false) {
   if (!state.activeStoreId) return;
   try {
-    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/analytics/live`, {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/analytics/live?tz=${new Date().getTimezoneOffset()}`, {
       headers: { 'Authorization': `Bearer ${state.token}` }
     });
     const { success, data } = await res.json();
@@ -2118,6 +2154,7 @@ async function loadLiveAnalytics(isBackground = false) {
 
     const shoppers = data.active_shoppers || 0;
     animateValue('live-active-shoppers-count', shoppers);
+    renderStoreToday(data.store_today);
     const pill = document.getElementById('sidebar-live-count');
     const mobPill = document.getElementById('mobile-live-count');
     if (pill) pill.textContent = shoppers;
@@ -2137,6 +2174,22 @@ async function loadLiveAnalytics(isBackground = false) {
   } catch (err) {
     if (!isBackground) console.error('Failed to load live analytics:', err);
   }
+}
+
+// Real Shopify orders placed today (all channels), next to the live storefront activity
+function renderStoreToday(today) {
+  const countEl = document.getElementById('live-store-orders');
+  const subEl = document.getElementById('live-store-revenue');
+  if (!countEl || !subEl) return;
+  if (!today) {
+    countEl.textContent = '--';
+    subEl.innerHTML = 'Orders not synced yet · <a href="#" data-open-shopify-data>check Shopify connection</a>';
+    return;
+  }
+  countEl.textContent = Number(today.orders || 0).toLocaleString();
+  const money = `${getCurrencySymbol(today.currency || state.activeStoreCurrency)}${Number(today.revenue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  const last = today.last_order_at ? ` · last order ${formatRelativeTime(new Date(today.last_order_at))}` : '';
+  subEl.textContent = `${money}${last}`;
 }
 
 function renderLiveActivityFeed(feed) {
@@ -2207,6 +2260,20 @@ async function loadConversionFunnel(days = 7) {
 
     const convEl = document.getElementById('live-overall-conversion');
     if (convEl) convEl.textContent = `${data.overall_conversion_rate}%`;
+
+    // Say where purchases come from, and how to see checkout for every shopper
+    const note = document.getElementById('funnel-tracking-note');
+    if (note) {
+      const parts = [];
+      if (data.store_orders) {
+        parts.push(`Shopify recorded ${Number(data.store_orders.orders).toLocaleString()} orders in this period (all channels).`);
+      }
+      if (!data.checkout_tracking) {
+        parts.push('Checkout and purchase steps appear per shopper once the Shopify checkout pixel is added: <a href="#" data-open-shopify-data>Settings → Shopify connection</a>.');
+      }
+      note.innerHTML = parts.join(' ');
+      note.classList.toggle('hidden', parts.length === 0);
+    }
 
     const stages = data.stages || [];
     if (!container) return;
@@ -4560,12 +4627,17 @@ async function loadGrowthCopilotData() {
 
       if (oppEl) oppEl.textContent = `+${sym}${Number(o.estimated_growth_opportunity || 0).toFixed(2)}`;
       if (revEl) revEl.textContent = `${sym}${Number(o.total_revenue || 0).toFixed(2)}`;
+      const revLabel = document.getElementById('copilot-revenue-label');
+      if (revLabel) revLabel.textContent = o.revenue_source === 'shopify_30d' ? 'Revenue (last 30 days)' : 'Attributed Revenue';
       if (ordersEl) ordersEl.textContent = `${o.total_orders || 0} orders (AOV: ${sym}${Number(o.average_order_value || 0).toFixed(2)})`;
       if (roasEl) roasEl.textContent = `${Number(o.blended_roas || 0).toFixed(2)}x`;
       if (spendEl) spendEl.textContent = `on ${sym}${Number(o.total_ad_spend || 0).toFixed(2)} spend`;
       if (convEl) convEl.textContent = `${Number(o.conversion_rate || 0).toFixed(1)}%`;
       if (aiRevEl) aiRevEl.textContent = `${sym}${Number(o.ai_assisted_revenue || 0).toFixed(2)}`;
     }
+
+    // AI plan for the goal (loads on its own; never blocks the actions list)
+    loadGoalBrief(false);
 
     // 2. Merchant Goal
     if (goalRes.ok) {
@@ -4608,8 +4680,15 @@ async function loadGrowthCopilotData() {
               ? `<span style="font-size: 11px; padding: 3px 8px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">+${actSym}${Number(action.estimated_opportunity).toFixed(2)} Potential</span>`
               : '';
 
+            const meta = action.metadata || {};
+            const goalTag = meta.matches_goal
+              ? '<span style="font-size: 10.5px; padding: 2px 7px; border-radius: 4px; background: rgba(99, 102, 241, 0.12); color: #6366f1;">Fits your goal</span>'
+              : '';
+            const provenTag = meta.proven_before
+              ? '<span style="font-size: 10.5px; padding: 2px 7px; border-radius: 4px; background: rgba(16, 185, 129, 0.12); color: #059669;">Worked before</span>'
+              : '';
             return `
-              <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); gap: 16px; flex-wrap: wrap;">
+              <div data-action-key="${escapeHtml(action.action_key)}" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); gap: 16px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 260px;">
                   <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                     <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: ${colors.bg}; color: ${colors.text}; border: 1px solid ${colors.border};">
@@ -4617,6 +4696,8 @@ async function loadGrowthCopilotData() {
                     </span>
                     <strong style="color: var(--text-main); font-size: 14px;">${escapeHtml(action.title)}</strong>
                     ${oppBadge}
+                    ${goalTag}
+                    ${provenTag}
                   </div>
                   <p style="margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.4;">${escapeHtml(action.reason)}</p>
                 </div>
@@ -4935,7 +5016,9 @@ async function fetchStoreFeatures() {
       const a = li.querySelector('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
-      const featKeys = isHub(target) ? hubFeatureKeys(target) : (NAV_FEATURE_MAP[target] ? [NAV_FEATURE_MAP[target]] : []);
+      // A hub with any always-open tab (e.g. Settings → Shopify connection) is never locked
+      const hubAlwaysOpen = isHub(target) && HUBS[target].some(t => !t.feature);
+      const featKeys = hubAlwaysOpen ? [] : isHub(target) ? hubFeatureKeys(target) : (NAV_FEATURE_MAP[target] ? [NAV_FEATURE_MAP[target]] : []);
       const featKey = featKeys[0];
       const locked = featKeys.length > 0 && featKeys.every(k => state.features[k] === false);
       li.style.display = '';
@@ -6308,6 +6391,7 @@ const AI_AGENT_API_BASE = () => `/api/v1/dashboard/${state.activeStoreId}/ai-age
 
 const aiAgentState = {
   history: [], // {role, content} — sent back to the server each turn
+  answers: [], // {question, answer} per rendered answer, for 👍/👎 and "Teach AI"
   busy: false,
   listenersBound: false,
 };
@@ -6343,8 +6427,65 @@ function agentAddUserMessage(text) {
   aiAgentState.history.push({ role: 'user', content: text });
 }
 
+// 👍 / 👎 and "Teach AI" under every answer: a 👎 or a correction becomes something Ask AI learns
+function agentFeedbackHtml(index) {
+  return `<div class="agent-feedback" data-agent-answer="${index}">
+      <span>Helpful?</span>
+      <button type="button" class="agent-feedback-btn" data-agent-rate="1" aria-label="Helpful">👍</button>
+      <button type="button" class="agent-feedback-btn" data-agent-rate="-1" aria-label="Not helpful">👎</button>
+      <button type="button" class="agent-feedback-btn agent-teach-btn" data-agent-teach>Teach AI</button>
+    </div>
+    <form class="agent-teach-form hidden" data-agent-teach-form>
+      <label>What should Ask AI know or do differently? It will remember this for your store.</label>
+      <textarea rows="2" maxlength="2000" placeholder="e.g. Our COD orders are confirmed by phone before shipping, so do not count them as lost."></textarea>
+      <div><button type="submit" class="btn btn-primary btn-sm">Save</button> <span class="agent-teach-status"></span></div>
+    </form>`.replace(/\n\s*/g, ''); // answers render with pre-wrap: no stray blank lines
+}
+
+function agentAnswerPair(index) {
+  const answer = aiAgentState.answers[index] || {};
+  return { question: answer.question || '', answer: answer.answer || '' };
+}
+
+async function agentSendFeedback(el, rating) {
+  const wrap = el.closest('[data-agent-answer]');
+  if (!wrap || wrap.dataset.rated) return;
+  wrap.dataset.rated = '1';
+  wrap.querySelectorAll('[data-agent-rate]').forEach((b) => { b.disabled = true; b.setAttribute('aria-pressed', String(b === el)); });
+  const pair = agentAnswerPair(Number(wrap.getAttribute('data-agent-answer')));
+  try {
+    await fetch(`/api/v1/dashboard/${state.activeStoreId}/learning/feedback`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, question: pair.question.slice(0, 2000), answer: pair.answer.slice(0, 8000) }),
+    });
+    showToast(rating > 0 ? 'Thanks for the feedback' : 'Noted. Use "Teach AI" to tell it the right answer.');
+  } catch (_) { /* feedback is best effort */ }
+}
+
+async function agentSaveTeaching(form) {
+  const text = (form.querySelector('textarea')?.value || '').trim();
+  const status = form.querySelector('.agent-teach-status');
+  if (text.length < 2) { if (status) status.textContent = 'Write what it should know first.'; return; }
+  const wrap = form.previousElementSibling;
+  const pair = agentAnswerPair(Number(wrap?.getAttribute('data-agent-answer')));
+  try {
+    const res = await fetch(`/api/v1/dashboard/${state.activeStoreId}/learning/notes`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ surface: 'merchant', question: pair.question.slice(0, 1000), answer: text }),
+    });
+    if (!res.ok) throw new Error('save failed');
+    form.innerHTML = '<p class="agent-teach-status">Saved. Ask AI will use this from now on.</p>';
+  } catch (_) {
+    if (status) status.textContent = 'Could not save. Please try again.';
+  }
+}
+
 function agentAddAssistantMessage(text) {
-  agentAddMessage('assistant', escapeHtml(text));
+  const question = [...aiAgentState.history].reverse().find((m) => m.role === 'user')?.content || '';
+  const index = aiAgentState.answers.push({ question, answer: text }) - 1;
+  agentAddMessage('assistant', `${escapeHtml(text)}${agentFeedbackHtml(index)}`);
   aiAgentState.history.push({ role: 'assistant', content: text });
   // Keep history bounded (server also caps at 20).
   if (aiAgentState.history.length > 20) {
@@ -6444,6 +6585,20 @@ async function agentUploadDocument(file) {
 function bindAiAgentListeners() {
   if (aiAgentState.listenersBound) return;
   aiAgentState.listenersBound = true;
+  const agentBox = document.getElementById('ai-agent-messages');
+  agentBox?.addEventListener('click', (e) => {
+    const rate = e.target.closest('[data-agent-rate]');
+    if (rate) { agentSendFeedback(rate, Number(rate.getAttribute('data-agent-rate'))); return; }
+    const teach = e.target.closest('[data-agent-teach]');
+    if (teach) {
+      const form = teach.closest('[data-agent-answer]')?.nextElementSibling;
+      if (form) { form.classList.toggle('hidden'); form.querySelector('textarea')?.focus(); }
+    }
+  });
+  agentBox?.addEventListener('submit', (e) => {
+    const form = e.target.closest('[data-agent-teach-form]');
+    if (form) { e.preventDefault(); agentSaveTeaching(form); }
+  });
   document.getElementById('btn-agent-send')?.addEventListener('click', agentSendMessage);
   document.getElementById('ai-agent-input')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -13,7 +13,11 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { getEnvConfig } from '../../config/env';
 import { logger } from '../../utils/logger';
-import { TenantIsolationError } from '../../utils/errors';
+import { AppError, TenantIsolationError } from '../../utils/errors';
+import { getDatabaseClient } from '../../database/client';
+import { BudgetGuard } from '../../providers/ai';
+import { learningContext } from '../learning/learning.service';
+import { SyncStateRepository } from '../shopify_data/sync-state.repository';
 import { runAgentChat, isAgentConfigured, AGENT_MAX_OUTPUT_TOKENS } from './ai_agent.llm';
 import { executeAgentTool } from './ai_agent.tools';
 import {
@@ -47,6 +51,36 @@ HARD RULES:
   "final_verdict": "your overall verdict in 2-4 sentences",
   "recommended_actions": ["specific next action 1", ...]
 }`;
+
+/** Facts the merchant taught Ask AI, and how fresh the store data is. Never fails the chat. */
+async function agentContext(storeId: string, message: string): Promise<string> {
+  const db = getDatabaseClient();
+  const parts: string[] = [];
+  try {
+    const taught = await learningContext(db, storeId, 'merchant', message, 12);
+    if (taught) parts.push(taught);
+  } catch {
+    // learning tables missing before migration 040
+  }
+  try {
+    const orders = await new SyncStateRepository(db).get(storeId, 'orders');
+    if (orders?.status === 'blocked') {
+      parts.push(`DATA NOTE: Shopify orders are blocked (the token is missing ${orders.blocked_scope}). Say so if the merchant asks about sales, and tell them to fix it in Settings → Shopify connection.`);
+    } else if (orders?.last_success_at) {
+      parts.push(`DATA NOTE: Shopify orders synced ${orders.records_synced} orders; last sync ${orders.last_success_at}.`);
+    }
+  } catch {
+    // sync state missing: tools report the gap themselves
+  }
+  return parts.join('\n\n');
+}
+
+export class AiBudgetReachedError extends AppError {
+  constructor() {
+    super('This store has used its AI budget for this month. Ask your administrator to raise it, or try again next month.', 403, 'BUDGET_EXCEEDED');
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
 
 export interface ServiceDeps {
   llmRunner?: typeof runAgentChat;
@@ -132,13 +166,23 @@ export class AiAgentService {
     if (!isAgentConfigured()) {
       throw new AgentNotConfiguredError();
     }
+    // Ask AI spends the store's AI budget like every other AI feature
+    const budget = new BudgetGuard(getDatabaseClient());
+    if (await budget.isBudgetExceeded(storeId).catch(() => false)) {
+      throw new AiBudgetReachedError();
+    }
     const runner = this.deps.llmRunner || runAgentChat;
-    return runner({
+    const result = await runner({
       storeId,
       message: req.message,
       history: req.history || [],
       toolExecutor: executeAgentTool,
+      extraContext: await agentContext(storeId, req.message),
     });
+    await budget
+      .recordUsage(storeId, null, result.model, result.usage.input_tokens, result.usage.output_tokens, result.usage.estimated_cost_usd)
+      .catch(() => logger.warn('Could not record Ask AI usage', { storeId }));
+    return result;
   }
 
   /** Structured verdict for an already-parsed document. */

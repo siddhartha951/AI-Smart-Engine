@@ -8,9 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../common/css/design-system.css">
-  <link rel="stylesheet" href="css/styles.css?v=2.11.0">
+  <link rel="stylesheet" href="css/styles.css?v=2.15.0">
   <link rel="stylesheet" href="css/plan-billing.css?v=2.14.0">
-  <link rel="stylesheet" href="css/home.css?v=2.13.0">
+  <link rel="stylesheet" href="css/home.css?v=2.15.0">
+  <link rel="stylesheet" href="css/shopify-data.css?v=2.15.0">
   <!-- GSAP & ScrollTrigger Animation Engine -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
@@ -395,7 +396,7 @@
               <span>Model-based estimate</span>
             </div>
             <div class="stat-card">
-              <h3>Attributed Revenue</h3>
+              <h3 id="copilot-revenue-label">Attributed Revenue</h3>
               <p id="copilot-revenue">--</p>
               <span id="copilot-orders">-- orders</span>
             </div>
@@ -414,6 +415,18 @@
               <p id="copilot-ai-revenue">--</p>
               <span>influenced by AI</span>
             </div>
+          </div>
+
+          <!-- AI plan for the merchant's Primary Goal (js/growth-brief.js) -->
+          <div id="copilot-goal-brief" class="panel copilot-brief" style="margin-bottom: 24px;">
+            <div class="panel-header-clean">
+              <div>
+                <h3 style="font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin: 0;">Your plan for this goal</h3>
+                <p style="font-size: 13px; color: var(--color-text-secondary); margin: 4px 0 0 0;">AI reads your real Shopify orders, funnel, ads and recovery data and picks the moves that matter most for your Primary Goal.</p>
+              </div>
+              <button type="button" id="copilot-brief-refresh" class="btn btn-secondary btn-sm">Re-analyse</button>
+            </div>
+            <div id="copilot-brief-body" class="copilot-brief-body">Loading your plan…</div>
           </div>
 
           <!-- Today's High-Priority Growth Actions -->
@@ -632,6 +645,13 @@
                   <strong class="mini-stat-val" id="live-overall-conversion">0%</strong>
                 </div>
               </div>
+              <div class="mini-stat-card panel">
+                <div>
+                  <span class="mini-stat-label">Shopify Orders Today</span>
+                  <strong class="mini-stat-val" id="live-store-orders">--</strong>
+                  <span class="mini-stat-sub" id="live-store-revenue" style="display:block;font-size:12px;color:var(--color-text-muted);margin-top:2px;">Syncing orders…</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -647,6 +667,7 @@
                 <span class="badge badge--neutral" id="funnel-visitors-count">0 Visitors</span>
               </div>
               
+              <p id="funnel-tracking-note" class="hidden" style="font-size:12px;color:var(--color-text-secondary);margin:0 0 10px;"></p>
               <div id="funnel-stages-list" class="funnel-stages-list">
                 <!-- Dynamically populated with GSAP animated bars -->
                 <div class="funnel-loading">Loading conversion funnel telemetry...</div>
@@ -1187,6 +1208,34 @@
               <button type="submit" id="btn-save-agent" class="btn btn-primary">Save Agent Settings</button>
             </div>
           </form>
+
+          <!-- Learning: questions the assistants could not answer + answers the merchant approves (js/learning.js) -->
+          <div id="learning-panel" class="panel learn-panel">
+            <div class="panel-header-clean">
+              <div>
+                <h3 style="font-size: 16px; font-weight: 600; margin: 0;">Teach your AI</h3>
+                <p class="section-subtitle" style="margin-top: 4px;">Questions your assistant could not answer, and answers shoppers or you marked 👎. Write the right answer once and the AI uses it from then on. Nothing is used until you approve it.</p>
+              </div>
+              <button type="button" id="learn-refresh" class="btn btn-secondary btn-sm">Refresh</button>
+            </div>
+            <div id="learn-stats" class="learn-stats"></div>
+            <div class="learn-tabs" role="tablist">
+              <button type="button" class="learn-tab active" data-learn-tab="open">To teach</button>
+              <button type="button" class="learn-tab" data-learn-tab="approved">Approved answers</button>
+            </div>
+            <div id="learn-list" class="learn-list"><p class="section-subtitle">Loading…</p></div>
+            <form id="learn-note-form" class="learn-note-form">
+              <strong style="font-size: 13px;">Add something the AI should know</strong>
+              <label for="learn-note-surface" style="font-size: 12px;">For</label>
+              <select id="learn-note-surface" class="form-control form-control-sm">
+                <option value="shopper">Storefront assistant (answers shoppers)</option>
+                <option value="merchant">Ask AI (your business analyst)</option>
+              </select>
+              <input type="text" id="learn-note-question" class="form-control form-control-sm" maxlength="1000" placeholder="Question (optional), e.g. Do you ship to Dubai?">
+              <textarea id="learn-note-answer" class="form-control" rows="2" maxlength="2000" placeholder="Answer / fact, e.g. Yes, we ship to the UAE in 5 to 7 working days."></textarea>
+              <div><button type="submit" class="btn btn-primary btn-sm">Save</button> <span id="learn-note-status" class="form-hint"></span></div>
+            </form>
+          </div>
         </section>
 
         <!-- 2.5 Leads & Opt-ins Section -->
@@ -1618,7 +1667,8 @@
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Last Product Sync: <span id="shopify-last-sync" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px;">Credentials Configured: <span id="shopify-creds" style="font-weight: 500; color: var(--color-text-primary);">--</span></p>
             <p style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px;">Connection Health: <span id="shopify-health-badge" class="badge badge--neutral">Not checked</span> <span id="shopify-health-checked-at" style="font-size: 12px; color: var(--color-text-muted);"></span> <button id="btn-recheck-shopify-health" class="btn btn-secondary btn-sm" style="margin-left: 8px;">Re-check</button></p>
-            <div id="shopify-health-panel" style="margin-top: 12px;"></div>
+            <!-- Superseded by the Permissions & data panel below; kept for the health badge and banner -->
+            <div id="shopify-health-panel" class="hidden" style="margin-top: 12px;"></div>
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
               <label for="store-currency-select" style="font-size: 13px; font-weight: 600; color: var(--color-text-primary); margin: 0;">Store Currency:</label>
               <select id="store-currency-select" class="form-select form-select-sm" style="width: 140px;">
@@ -1638,9 +1688,71 @@
             <button id="test-connection-btn" class="btn btn-secondary btn-sm">Test Connection</button>
             <button id="sync-products-btn" class="btn btn-primary btn-sm">Sync Products</button>
             <button id="btn-audit-catalogue" class="btn btn-secondary btn-sm">AI Catalogue Audit</button>
-            <button id="btn-shopify-reconnect" class="btn btn-secondary btn-sm">Update Token</button>
+            <button id="btn-shopify-reconnect" class="btn btn-secondary btn-sm">Update Access Token</button>
             <button id="btn-shopify-disconnect" class="btn btn-ghost btn-sm" style="color: var(--color-danger);">Disconnect</button>
             <button class="btn btn-ghost btn-sm" onclick="window.location.href='mailto:support@platform.com'">Request Admin Support</button>
+          </div>
+
+          <!-- Permissions & data: what reaches the dashboard / AI and what a missing scope blocks (js/shopify-data.js) -->
+          <div id="shopify-data-panel" class="panel sd-panel">
+            <div class="sd-head">
+              <div>
+                <h3 class="sd-title">Permissions &amp; data</h3>
+                <p class="section-subtitle">Which Shopify data reaches your dashboard and AI, and exactly what a missing permission stops.</p>
+              </div>
+              <div class="sd-head-actions">
+                <button type="button" id="sd-recheck" class="btn btn-secondary btn-sm">Re-check permissions</button>
+                <button type="button" id="sd-update-token" class="btn btn-primary btn-sm">Update access token</button>
+              </div>
+            </div>
+            <div id="sd-summary" class="sd-summary">Loading your Shopify data status…</div>
+
+            <h4 class="sd-subtitle">Your data</h4>
+            <div id="sd-feeds" class="sd-feeds"></div>
+            <div id="sd-fix" class="callout-box sd-fix hidden"></div>
+
+            <h4 class="sd-subtitle">Shopify permissions (scopes)</h4>
+            <div class="sd-table-wrap">
+              <table class="data-table sd-scopes">
+                <thead><tr><th>Permission</th><th>Needed</th><th>Status</th><th>What it unlocks</th></tr></thead>
+                <tbody id="sd-scopes-body"><tr><td colspan="4">Loading…</td></tr></tbody>
+              </table>
+            </div>
+
+            <h4 class="sd-subtitle">Live data feeds</h4>
+            <div id="sd-syncs" class="sd-syncs"></div>
+            <div id="sd-pixel" class="sd-pixel hidden">
+              <h4 class="sd-subtitle" style="margin-top:0;">Checkout pixel code</h4>
+              <ol class="sd-steps">
+                <li>Shopify admin → <strong>Settings → Customer events</strong> → <strong>Add custom pixel</strong>, name it "AI Smart Engine".</li>
+                <li>Delete the sample code, paste the code below, then <strong>Save</strong> and <strong>Connect</strong>.</li>
+                <li>Place a test order or view a product; this card turns green within a minute.</li>
+              </ol>
+              <pre id="sd-pixel-code" class="sd-code"></pre>
+              <button type="button" id="sd-copy-pixel" class="btn btn-secondary btn-sm">Copy code</button>
+            </div>
+
+            <h4 class="sd-subtitle">Keys</h4>
+            <div class="sd-keys">
+              <form id="sd-secret-form" class="sd-key" autocomplete="off">
+                <label for="sd-secret">API secret key <span id="sd-secret-saved" class="badge badge--neutral">Not saved</span></label>
+                <p class="hd-help">Lets new orders arrive instantly by webhook. Shopify admin → your custom app → API credentials → API secret key.</p>
+                <div class="sd-key-row">
+                  <input type="password" id="sd-secret" class="form-control form-control-sm" autocomplete="off" placeholder="Paste the API secret key">
+                  <button type="submit" class="btn btn-secondary btn-sm">Save secret</button>
+                </div>
+                <p id="sd-secret-status" class="hd-message"></p>
+              </form>
+              <form id="sd-storefront-form" class="sd-key" autocomplete="off">
+                <label for="sd-storefront">Storefront API access token <span id="sd-storefront-saved" class="badge badge--neutral">Not saved</span></label>
+                <p class="hd-help">Optional. Gives the chat live stock and prices. Same custom app → API credentials → Storefront API access token.</p>
+                <div class="sd-key-row">
+                  <input type="password" id="sd-storefront" class="form-control form-control-sm" autocomplete="off" placeholder="Paste the Storefront API access token">
+                  <button type="submit" class="btn btn-secondary btn-sm">Save token</button>
+                </div>
+                <p id="sd-storefront-status" class="hd-message"></p>
+              </form>
+            </div>
           </div>
 
           <!-- AI Catalogue Audit Summary Banner -->
@@ -3400,6 +3512,6 @@
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
   <script src="../common/js/shopify-scopes.js"></script>
-  <script type="module" src="js/app.js?v=2.14.0"></script>
+  <script type="module" src="js/app.js?v=2.15.0"></script>
 </body>
 </html>

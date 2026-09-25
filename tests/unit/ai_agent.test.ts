@@ -21,10 +21,14 @@ describe('Merchant AI Agent — grounding contract', () => {
     expect(AGENT_SYSTEM_PROMPT).toMatch(/NEVER invent/i);
   });
 
-  it('exposes exactly the five expected tools', () => {
+  it('exposes exactly the expected tools (Meta/attribution + whole-store Shopify tools)', () => {
     const names = AGENT_TOOLS.map((t) => t.name).sort();
     expect(names).toEqual(
-      ['get_ad_creatives', 'get_attribution_summary', 'get_meta_performance', 'get_shopify_summary', 'get_today_overview'].sort()
+      [
+        'get_ad_creatives', 'get_attribution_summary', 'get_meta_performance', 'get_shopify_summary', 'get_today_overview',
+        'get_sales_trend', 'search_orders', 'get_order_details', 'get_product_performance', 'get_customer_insights',
+        'get_discount_performance', 'get_payments_summary', 'get_inventory_alerts', 'get_funnel_summary', 'get_growth_actions',
+      ].sort()
     );
   });
 

@@ -11,6 +11,9 @@ import {
 import { TenantIsolationError, ValidationError } from '../../utils/errors';
 import { getAiProvider } from '../../providers/ai';
 import { logger } from '../../utils/logger';
+import { storeOrderTelemetry } from '../shopify_data/order-analytics';
+import { prioritizeForGoal, storeOrderRules } from './growth-store-rules';
+import { measureDueOutcomes, provenActionTypes, recordCompletionBaseline } from './growth-outcomes';
 
 export class GrowthService {
   private db: IDatabaseClient;
@@ -25,10 +28,30 @@ export class GrowthService {
   // 1. Growth Overview
   // ==========================================
 
+  /**
+   * Module telemetry plus, when Shopify orders are synced, the real last-30-day sales
+   * (orders, revenue, AOV) instead of the attribution-ledger totals.
+   */
+  async loadTelemetry(storeId: string): Promise<any> {
+    const telemetry: any = await this.repo.getRawTelemetry(storeId);
+    const store = await storeOrderTelemetry(this.db, storeId).catch((err) => {
+      logger.warn(`Store order telemetry unavailable for ${storeId}: ${err?.message || err}`);
+      return null;
+    });
+    if (store) {
+      telemetry.storeOrders = store;
+      telemetry.totalOrders = store.totals.orders;
+      telemetry.totalRevenue = store.totals.revenue;
+      telemetry.avgOrderValue = store.totals.average_order_value;
+      if (store.currency) telemetry.currency = telemetry.currency || store.currency;
+    }
+    return telemetry;
+  }
+
   async getOverview(storeId: string): Promise<GrowthOverview> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
 
-    const telemetry = await this.repo.getRawTelemetry(storeId);
+    const telemetry = await this.loadTelemetry(storeId);
     const actions = await this.detectAndSyncOpportunities(storeId, telemetry);
 
     // Sum estimated opportunity across active pending actions
@@ -41,6 +64,7 @@ export class GrowthService {
       : 0;
 
     return {
+      revenue_source: telemetry.storeOrders ? 'shopify_30d' : 'attribution',
       total_revenue: telemetry.totalRevenue,
       total_orders: telemetry.totalOrders,
       average_order_value: parseFloat(telemetry.avgOrderValue.toFixed(2)),
@@ -76,7 +100,7 @@ export class GrowthService {
   async detectAndSyncOpportunities(storeId: string, telemetryOverride?: any): Promise<GrowthAction[]> {
     if (!storeId) throw new TenantIsolationError('store_id is required');
 
-    const telemetry = telemetryOverride || await this.repo.getRawTelemetry(storeId);
+    const telemetry = telemetryOverride || await this.loadTelemetry(storeId);
     const goal = await this.repo.getGrowthGoal(storeId);
     const primaryGoal = goal.primary_goal || 'increase_revenue';
 
@@ -276,36 +300,35 @@ export class GrowthService {
       });
     }
 
-    // ----------------------------------------------------
-    // Apply Dynamic Goal-Based Prioritization
-    // ----------------------------------------------------
-    const prioritized = rawOpportunities.map(opp => {
-      let finalPriority = opp.priority;
-
-      if (primaryGoal === 'improve_roas' && (opp.action_key.includes('campaign') || opp.action_type === 'VIEW_CAMPAIGN')) {
-        finalPriority = 'critical';
-      } else if (primaryGoal === 'recover_abandoned_carts' && (opp.action_type === 'OPEN_CART_RECOVERY' || opp.action_type === 'OPEN_WHATSAPP_RECOVERY')) {
-        finalPriority = 'critical';
-      } else if (primaryGoal === 'increase_repeat_purchases' && opp.action_type === 'OPEN_REORDER') {
-        finalPriority = 'critical';
-      } else if (primaryGoal === 'improve_ai_conversion' && opp.action_key.includes('ai')) {
-        finalPriority = 'critical';
-      } else if (primaryGoal === 'improve_conversion' && (opp.action_key.includes('conversion') || opp.action_type === 'REVIEW_PRODUCT')) {
-        finalPriority = 'high';
-      }
-
-      return {
-        ...opp,
-        priority: finalPriority,
-      };
-    });
-
-    // Upsert into growth_actions
-    for (const opp of prioritized) {
-      await this.repo.upsertAction(storeId, opp);
+    // Rules on the store's real Shopify orders (sales trend, stock, repeat buyers, discounts, refunds)
+    if (telemetry.storeOrders) {
+      rawOpportunities.push(...storeOrderRules(telemetry.storeOrders));
     }
 
-    return this.repo.getActions(storeId);
+    // Goal-based ranking; action types that worked before (measured outcomes) rank higher
+    await measureDueOutcomes(this.db, storeId).catch(() => 0);
+    const proven = await provenActionTypes(this.db, storeId);
+    const prioritized = prioritizeForGoal(rawOpportunities, primaryGoal, proven);
+
+    // Upsert into growth_actions
+    const detected = new Set<string>();
+    for (const opp of prioritized) {
+      await this.repo.upsertAction(storeId, opp);
+      detected.add(`${opp.action_key}|${opp.target_id || ''}`);
+    }
+    await this.db.query(
+      `UPDATE growth_actions SET last_detected_at = NOW() WHERE store_id = $1 AND action_key = ANY($2::text[])`,
+      [storeId, [...new Set(prioritized.map((o) => o.action_key))]]
+    ).catch(() => undefined);
+
+    // A pending action whose rule has not fired for a day is out of date: it is not shown any more
+    const actions = await this.repo.getActions(storeId);
+    const staleBefore = Date.now() - 24 * 60 * 60 * 1000;
+    return actions.filter((a: any) =>
+      a.status !== 'pending'
+      || detected.has(`${a.action_key}|${a.target_id || ''}`)
+      || new Date(a.updated_at || a.created_at || 0).getTime() >= staleBefore
+    );
   }
 
   // ==========================================
@@ -330,6 +353,12 @@ export class GrowthService {
     const updated = await this.repo.updateActionStatus(storeId, actionId, status, userId, notes);
     if (!updated) {
       throw new ValidationError(`Action ${actionId} not found`);
+    }
+    // Remember the sales before the action, so the result can be measured a week later
+    if (status === 'completed') {
+      await recordCompletionBaseline(this.db, storeId, actionId).catch((err) =>
+        logger.warn(`Could not record growth baseline for ${actionId}: ${err?.message || err}`)
+      );
     }
     return updated;
   }

@@ -40,6 +40,29 @@ export const STOREFRONT_SCOPES: string[] = [
   'unauthenticated_read_content',
 ];
 
+/**
+ * What each piece of store data needs. Settings uses this to say exactly which data is
+ * stopped by which missing permission ("Orders & revenue: blocked, needs read_orders").
+ * `needs` must all be granted; `improves` only makes the data more complete.
+ */
+export interface DataFeedRequirement {
+  key: string;
+  label: string;
+  used_by: string;
+  needs: string[];
+  improves: string[];
+}
+
+export const DATA_FEEDS: DataFeedRequirement[] = [
+  { key: 'orders', label: 'Orders & revenue', used_by: 'Home, Growth Copilot, Live Pulse, Ask AI', needs: ['read_orders'], improves: ['read_all_orders'] },
+  { key: 'order_tracking', label: 'Order tracking in chat', used_by: 'Storefront assistant ("Where is my order?")', needs: ['read_orders'], improves: ['read_fulfillments'] },
+  { key: 'products', label: 'Products & catalog', used_by: 'Assistant recommendations, catalog sync', needs: ['read_products'], improves: ['read_inventory'] },
+  { key: 'customers', label: 'Customers', used_by: 'Ask AI customer insights, repeat buyers', needs: ['read_customers'], improves: [] },
+  { key: 'discounts', label: 'Coupons & discounts', used_by: 'Ask AI coupon performance', needs: ['read_discounts'], improves: ['read_price_rules'] },
+  { key: 'inventory', label: 'Inventory', used_by: 'Stock answers, low-stock alerts', needs: ['read_inventory'], improves: ['read_locations'] },
+  { key: 'history', label: 'Order history older than 60 days', used_by: 'Long-term trends', needs: ['read_all_orders'], improves: [] },
+];
+
 /** A write scope implies its read scope (e.g. write_orders grants read_orders). */
 export function isScopeGranted(scope: string, granted: Set<string>): boolean {
   if (granted.has(scope)) return true;

@@ -290,3 +290,18 @@ body[data-layout="new"] .toast { bottom: 88px; }
 }
 /* Room under the last row so the floating Ask AI button never covers it */
 body[data-layout="new"] .dashboard-content { padding-bottom: 96px; }
+
+/* ===== Growth Copilot → Your plan for this goal (js/growth-brief.js) ===== */
+.copilot-brief-body { margin-top: var(--space-3, 12px); font-size: 13px; color: var(--color-text-secondary); }
+.copilot-brief-headline { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--color-text-primary); }
+.copilot-brief-summary { margin: 0 0 12px; line-height: 1.5; }
+.copilot-brief-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.copilot-brief-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--color-border-default); border-radius: var(--radius-md, 8px); }
+.copilot-brief-item strong { display: block; margin-bottom: 4px; font-size: 14px; color: var(--color-text-primary); }
+.copilot-brief-item p { margin: 2px 0; line-height: 1.45; }
+.copilot-brief-rank { flex: 0 0 26px; height: 26px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: var(--color-accent-soft); color: var(--color-accent); }
+.copilot-brief-label { font-weight: 600; color: var(--color-text-primary); }
+.copilot-brief-impact { color: var(--color-success); font-weight: 600; }
+.copilot-brief-watch, .copilot-brief-results { margin-top: 12px; }
+.copilot-brief-watch ul, .copilot-brief-results ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+.copilot-brief-note { margin: 10px 0 0; font-size: 12px; color: var(--color-text-muted); }
