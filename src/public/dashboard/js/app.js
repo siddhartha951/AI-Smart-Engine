@@ -1,8 +1,8 @@
 import { initEmailSenderPanel, loadEmailSenderPanel } from './email-sender.js?v=2.9.0';
 import { initKnowledgeDocs, loadKnowledgeDocs } from './knowledge-docs.js?v=2.9.0';
 import { initPlanBilling, loadPlanBilling, getPlanSummary, planNameFor, renderSidebarPlan } from './plan-billing.js?v=2.10.0';
-import { initHome, loadHome } from './home.js?v=2.12.0';
-import { initAdsHub, isAdsTab, adsTabFeature, adsFeatureKeys, pickAdsTab, rememberAdsTab, syncAdsTabs, ADS_TABS } from './ads-hub.js?v=2.12.0';
+import { initHome, loadHome } from './home.js?v=2.13.0';
+import { HUBS, initHubs, isHub, hubOf, hubTabFeature, hubFeatureKeys, pickHubTab, rememberHubTab, syncHubTabs } from './hubs.js?v=2.13.0';
 
 // ---- Safe storage ----
 // localStorage access can throw a SecurityError in some browser contexts
@@ -369,15 +369,34 @@ function setupEventListeners() {
     planNameFor: (key) => planNameFor(state.planSummary, key),
     getCurrency: () => state.activeStoreCurrency,
     setCurrency: (currency) => { if (currency) state.activeStoreCurrency = currency; },
+    runAudit: () => {
+      if (state.features && state.features.ai_store_analysis === false) {
+        const plan = planNameFor(state.planSummary, 'ai_store_analysis');
+        showToast(plan ? `The AI store audit is available on the ${plan} plan.` : FEATURE_DISABLED_MESSAGE, !plan);
+        openNavTarget('plan-billing');
+        return;
+      }
+      openStoreAuditModal();
+    },
   });
 
-  // Ads hub: one "Ads" item with sub-tabs in the new view
-  initAdsHub({
+  // Hubs: Ads, Marketing and Settings each group several pages behind one item (new view)
+  initHubs({
     escapeHtml,
     isNewLayout: () => currentLayout() === 'new',
     isFeatureOn: (key) => !state.features || state.features[key] !== false,
     planNameFor: (key) => planNameFor(state.planSummary, key),
-    openTab: (target) => openAdsHub(target),
+    openTab: (target) => openHub(hubOf(target), target),
+  });
+
+  // Floating Ask AI (new view)
+  document.getElementById('ask-ai-fab')?.addEventListener('click', () => {
+    if (state.features && state.features.ai_agent_chat === false) {
+      showLockedFeature('ai-agent');
+      return;
+    }
+    openNavTarget('ai-agent');
+    setTimeout(() => document.getElementById('ai-agent-input')?.focus(), 150);
   });
 
   // New view (Home) or classic view (Growth Copilot + Overview), remembered per browser
@@ -416,9 +435,9 @@ function setupEventListeners() {
       const a = e.target.closest('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
-      // New view: the Ads item (and any ad page) opens inside the Ads hub
-      if (target === 'ads' || (currentLayout() === 'new' && isAdsTab(target))) {
-        openAdsHub(target === 'ads' ? null : target);
+      // New view: a hub item (and any page inside a hub) opens inside that hub
+      if (isHub(target) || (currentLayout() === 'new' && hubOf(target))) {
+        openHub(isHub(target) ? target : hubOf(target), isHub(target) ? null : target);
         closeMobileSidebar();
         return;
       }
@@ -1458,7 +1477,8 @@ function showSection(sectionName) {
     }
   }
 
-  syncAdsTabs(sectionName);
+  syncHubTabs(sectionName);
+  document.getElementById('ask-ai-fab')?.classList.toggle('is-current', sectionName === 'ai-agent');
 
   // Manage live telemetry polling
   if (sectionName === 'live-analytics') {
@@ -1484,8 +1504,8 @@ async function loadSectionData(section) {
       return;
     }
 
-    if (section === 'ads') {
-      section = currentAdsTab() || pickAdsTab(null) || 'meta-ads';
+    if (isHub(section)) {
+      section = currentHubTab(section) || pickHubTab(section, null) || HUBS[section][0].target;
     }
 
     if (section === 'growth-copilot') {
@@ -4652,8 +4672,8 @@ window.executeGrowthAction = async function(actionId, targetModule, _targetId) {
   } catch (_) {}
 
   targetModule = resolveLayoutTarget(targetModule);
-  if (currentLayout() === 'new' && isAdsTab(targetModule)) {
-    openAdsHub(targetModule);
+  if (currentLayout() === 'new' && hubOf(targetModule)) {
+    openHub(hubOf(targetModule), targetModule);
     return;
   }
   const navLink = document.querySelector(`.nav-links a[data-target="${targetModule}"]`);
@@ -4790,12 +4810,13 @@ function applyLayout(layout) {
   if (btn) btn.textContent = layout === 'classic' ? 'Switch to new view' : 'Switch to classic view';
   const active = document.querySelector('.nav-links a.active');
   const activeTarget = active ? active.getAttribute('data-target') : null;
-  const openAd = currentAdsTab();
-  syncAdsTabs(openAd);
-  if (state.token && state.activeStoreId && openAd) {
-    if (layout === 'new' && activeTarget !== 'ads') { openAdsHub(openAd); return; }
-    if (layout === 'classic' && activeTarget === 'ads') {
-      document.querySelector(`.nav-links a[data-target="${openAd}"]`)?.click();
+  // Stay on the same page when it sits inside a hub (new view) or has its own item (classic)
+  const openPage = currentHubTab();
+  syncHubTabs(openPage);
+  if (state.token && state.activeStoreId && openPage) {
+    if (layout === 'new' && activeTarget !== hubOf(openPage)) { openHub(hubOf(openPage), openPage); return; }
+    if (layout === 'classic' && isHub(activeTarget)) {
+      document.querySelector(`.nav-links a[data-target="${openPage}"]`)?.click();
       return;
     }
   }
@@ -4816,37 +4837,42 @@ function applyLayout(layout) {
 // Opens a sidebar tab by its data-target, respecting locks and the current layout
 function openNavTarget(target) {
   const resolved = resolveLayoutTarget(target);
-  if (currentLayout() === 'new' && isAdsTab(resolved)) {
-    openAdsHub(resolved);
+  if (currentLayout() === 'new' && hubOf(resolved)) {
+    openHub(hubOf(resolved), resolved);
     return;
   }
   const link = document.querySelector(`.nav-links a[data-target="${resolved}"]`);
   if (link) link.click();
 }
 
-// The ad page currently on screen, if any
-function currentAdsTab() {
-  const tab = ADS_TABS.find(t => sections[t.target] && sections[t.target].classList.contains('active'));
-  return tab ? tab.target : null;
+// The hub page currently on screen (optionally only within one hub), if any
+function currentHubTab(hub) {
+  const hubs = hub ? [hub] : Object.keys(HUBS);
+  for (const h of hubs) {
+    const tab = HUBS[h].find(t => sections[t.target] && sections[t.target].classList.contains('active'));
+    if (tab) return tab.target;
+  }
+  return null;
 }
 
-// Opens an ad page inside the Ads hub (new view); locked tabs explain which plan unlocks them
-function openAdsHub(requested) {
-  const target = pickAdsTab(requested);
+// Opens a page inside its hub (new view); locked tabs explain which plan unlocks them
+function openHub(hub, requested) {
+  if (!isHub(hub)) return;
+  const target = pickHubTab(hub, requested);
   if (!target) {
-    showLockedFeature('meta-ads');
+    showLockedFeature(HUBS[hub][0].target);
     return;
   }
-  const feature = adsTabFeature(target);
-  if (state.features && state.features[feature] === false) {
+  const feature = hubTabFeature(target);
+  if (feature && state.features && state.features[feature] === false) {
     showLockedFeature(target);
     return;
   }
   if (!showSection(target)) return;
   document.querySelectorAll('.nav-links a').forEach(l => l.classList.remove('active'));
-  const hubLink = document.querySelector(`.nav-links a[data-target="${currentLayout() === 'new' ? 'ads' : target}"]`);
+  const hubLink = document.querySelector(`.nav-links a[data-target="${currentLayout() === 'new' ? hub : target}"]`);
   if (hubLink) hubLink.classList.add('active');
-  rememberAdsTab(target);
+  rememberHubTab(target);
   loadSectionData(target);
 }
 
@@ -4886,7 +4912,7 @@ async function fetchStoreFeatures() {
       const a = li.querySelector('a');
       if (!a) return;
       const target = a.getAttribute('data-target');
-      const featKeys = target === 'ads' ? adsFeatureKeys() : (NAV_FEATURE_MAP[target] ? [NAV_FEATURE_MAP[target]] : []);
+      const featKeys = isHub(target) ? hubFeatureKeys(target) : (NAV_FEATURE_MAP[target] ? [NAV_FEATURE_MAP[target]] : []);
       const featKey = featKeys[0];
       const locked = featKeys.length > 0 && featKeys.every(k => state.features[k] === false);
       li.style.display = '';
@@ -4904,7 +4930,13 @@ async function fetchStoreFeatures() {
     });
 
     applyEscalationPanelState();
-    syncAdsTabs(currentAdsTab());
+    syncHubTabs(currentHubTab());
+    const fabLock = document.getElementById('ask-ai-fab-lock');
+    if (fabLock) {
+      const off = state.features.ai_agent_chat === false;
+      fabLock.hidden = !off;
+      fabLock.textContent = off ? (planNameFor(planSummary, 'ai_agent_chat') || 'Locked') : '';
+    }
 
     // If the active tab is locked, move to the first tab the store can use
     const activeLink = document.querySelector('.nav-links a.active');
@@ -4980,8 +5012,8 @@ window.navigateToModule = function(moduleName) {
     'growth': 'growth-copilot',
   };
   const target = resolveLayoutTarget(targetMap[moduleName] || moduleName);
-  if (currentLayout() === 'new' && isAdsTab(target)) {
-    openAdsHub(target);
+  if (currentLayout() === 'new' && hubOf(target)) {
+    openHub(hubOf(target), target);
     return;
   }
   const link = document.querySelector(`.nav-links a[data-target="${target}"]`);
