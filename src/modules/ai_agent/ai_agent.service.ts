@@ -18,6 +18,7 @@ import { getDatabaseClient } from '../../database/client';
 import { BudgetGuard } from '../../providers/ai';
 import { learningContext } from '../learning/learning.service';
 import { SyncStateRepository } from '../shopify_data/sync-state.repository';
+import { resolveStoreOffset } from '../shopify_data/store-time';
 import { runAgentChat, isAgentConfigured, AGENT_MAX_OUTPUT_TOKENS } from './ai_agent.llm';
 import { executeAgentTool } from './ai_agent.tools';
 import {
@@ -56,6 +57,17 @@ HARD RULES:
 async function agentContext(storeId: string, message: string): Promise<string> {
   const db = getDatabaseClient();
   const parts: string[] = [];
+  // The model does not know today's date: without this it invents ranges ("Sep 2023")
+  try {
+    const { offset, timezone } = await resolveStoreOffset(db, storeId, 0);
+    const today = new Date(Date.now() - offset * 60000).toISOString().slice(0, 10);
+    parts.push(
+      `TODAY is ${today} (store timezone: ${timezone || 'UTC'}). For "last N days" use the tools' "days" parameter; ` +
+      'when you pass since/until dates, count back from TODAY. Always state the exact date range of the numbers you report.'
+    );
+  } catch {
+    // date context is a help, never a blocker
+  }
   try {
     const taught = await learningContext(db, storeId, 'merchant', message, 12);
     if (taught) parts.push(taught);
@@ -67,7 +79,11 @@ async function agentContext(storeId: string, message: string): Promise<string> {
     if (orders?.status === 'blocked') {
       parts.push(`DATA NOTE: Shopify orders are blocked (the token is missing ${orders.blocked_scope}). Say so if the merchant asks about sales, and tell them to fix it in Settings → Shopify connection.`);
     } else if (orders?.last_success_at) {
-      parts.push(`DATA NOTE: Shopify orders synced ${orders.records_synced} orders; last sync ${orders.last_success_at}.`);
+      const before = orders.details?.history_before;
+      const importing = before && before !== 'done'
+        ? ` Older order history is still importing (complete back to ${String(before).slice(0, 10)}); if a tool returns a data_note, mention it.`
+        : '';
+      parts.push(`DATA NOTE: Shopify orders synced ${orders.records_synced} orders; last sync ${orders.last_success_at}.${importing}`);
     }
   } catch {
     // sync state missing: tools report the gap themselves

@@ -98,10 +98,35 @@ function renderKpis(d) {
         + (d.import_note ? `<br><span class="home-kpi-import">${esc(d.import_note)}</span>` : ''),
       delta(k.revenue)),
     kpiCard('orders', 'Orders', esc(number(k.orders.value)), `Avg. order ${esc(money(k.average_order_value.value, c))}`, delta(k.orders)),
-    kpiCard('conversion_rate', 'Conversion rate', `${Number(k.conversion_rate.value).toFixed(1)}%`, `${esc(number(d.activity.visitors.value))} visitors`, delta(k.conversion_rate)),
+    d.revenue_source === 'shopify' && !d.conversion_tracking
+      ? kpiCard('conversion_rate', 'Conversion rate', '<span class="home-kpi-empty">Needs checkout pixel</span>',
+          `Shopify orders happen at checkout, which only the checkout pixel sees. <button type="button" class="home-link" data-open-shopify-data>Add the pixel</button>`,
+          '', 'home-kpi--empty')
+      : kpiCard('conversion_rate', 'Conversion rate', `${Number(k.conversion_rate.value).toFixed(1)}%`, `${esc(number(d.activity.visitors.value))} visitors`, delta(k.conversion_rate)),
     kpiCard('ai_assisted_revenue', 'AI-assisted sales', esc(money(k.ai_assisted_revenue.value, c)), 'Helped by your AI assistant', delta(k.ai_assisted_revenue)),
     roasCard,
   ].join('');
+}
+
+// "Syncing Shopify orders…" while the history imports, or a quiet "Synced" line once done
+function renderSyncBanner(d) {
+  const el = document.getElementById('home-sync-banner');
+  if (!el) return;
+  const s = d.sync;
+  if (!s) { el.hidden = true; return; }
+  const when = s.last_sync_at ? new Date(s.last_sync_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+  if (s.error) {
+    el.dataset.tone = 'danger';
+    el.innerHTML = `<strong>Shopify sync needs attention:</strong> ${esc(s.error)} <button type="button" class="home-link" data-open-shopify-data>Open Shopify connection</button>`;
+  } else if (s.importing) {
+    el.dataset.tone = 'info';
+    const back = s.complete_back_to ? ` · complete back to ${esc(new Date(s.complete_back_to).toLocaleDateString())}` : '';
+    el.innerHTML = `<span class="home-sync-spinner" aria-hidden="true"></span><strong>Syncing Shopify orders…</strong> ${esc(number(s.orders_synced))} imported${back}. Today's numbers are live; older periods and comparisons fill in as the import continues.`;
+  } else {
+    el.dataset.tone = 'ok';
+    el.innerHTML = `✓ Synced with Shopify${when ? ` · last update ${esc(when)}` : ''} · ${esc(number(s.orders_synced))} orders`;
+  }
+  el.hidden = false;
 }
 
 function renderActivity(d) {
@@ -130,8 +155,8 @@ function renderCompare(d) {
   const k = d.kpis;
   const c = d.currency;
   const rows = [
-    ['Revenue', money(k.revenue.value, c), money(k.revenue.previous, c), k.revenue],
-    ['Orders', number(k.orders.value), number(k.orders.previous), k.orders],
+    ['Revenue', money(k.revenue.value, c), d.previous_incomplete ? 'Importing…' : money(k.revenue.previous, c), k.revenue],
+    ['Orders', number(k.orders.value), d.previous_incomplete ? 'Importing…' : number(k.orders.previous), k.orders],
     ['Conversion rate', `${k.conversion_rate.value.toFixed(1)}%`, `${k.conversion_rate.previous.toFixed(1)}%`, k.conversion_rate],
     ['AI-assisted sales', money(k.ai_assisted_revenue.value, c), money(k.ai_assisted_revenue.previous, c), k.ai_assisted_revenue],
     ['Ad spend', money(k.ad_spend.value, c), money(k.ad_spend.previous, c), k.ad_spend],
@@ -260,6 +285,7 @@ export async function loadHome(opts = {}) {
       badge.textContent = data.agent_active ? 'Assistant live' : 'Assistant paused';
       badge.dataset.tone = data.agent_active ? 'success' : 'warning';
     }
+    renderSyncBanner(data);
     renderKpis(data);
     renderActivity(data);
     renderCompare(data);

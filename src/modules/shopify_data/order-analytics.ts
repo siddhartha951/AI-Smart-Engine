@@ -5,6 +5,7 @@
  */
 import { IDatabaseClient } from '../../database/client';
 import { ShopifyOrdersRepository, StoredOrder } from './orders.repository';
+import { covers, mirrorCoverage } from './mirror-coverage';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -163,19 +164,26 @@ export async function loadRecentOrders(db: IDatabaseClient, storeId: string, day
   const repo = new ShopifyOrdersRepository(db);
   const total = await repo.count(storeId).catch(() => 0);
   if (!total) return { available: false, orders: [] as StoredOrder[] };
-  const orders = await repo.listInWindow(storeId, new Date(now.getTime() - days * DAY), now);
-  return { available: true, orders };
+  const orders = await repo.listInWindow(storeId, new Date(now.getTime() - days * DAY), now, ROW_LIMIT);
+  // Very large windows are cut at ROW_LIMIT orders (newest first); totals should use windowSummary
+  return { available: true, orders, truncated: orders.length >= ROW_LIMIT };
 }
+
+const ROW_LIMIT = 60000;
 
 /** Everything the Growth Copilot rules read from real orders (last 30 days vs the 7-day trend). */
 export async function storeOrderTelemetry(db: IDatabaseClient, storeId: string, now = new Date()) {
   const { available, orders } = await loadRecentOrders(db, storeId, 30, now);
   if (!available) return null;
-  const last7 = orders.filter((o) => new Date(o.created_at_shop).getTime() >= now.getTime() - 7 * DAY);
-  const prev7 = orders.filter((o) => {
-    const t = new Date(o.created_at_shop).getTime();
-    return t < now.getTime() - 7 * DAY && t >= now.getTime() - 14 * DAY;
-  });
+  const repo = new ShopifyOrdersRepository(db);
+  const at = (days: number) => new Date(now.getTime() - days * DAY);
+  // Exact totals from the database (no row limit), for big stores too
+  const [totals, last7, prev7, coverage] = await Promise.all([
+    repo.windowSummary(storeId, at(30), now),
+    repo.windowSummary(storeId, at(7), now),
+    repo.windowSummary(storeId, at(14), at(7)),
+    mirrorCoverage(db, storeId),
+  ]);
   const products = productPerformance(orders);
 
   // Best sellers that are out of stock right now (products table is refreshed by Catalog Sync)
@@ -187,9 +195,12 @@ export async function storeOrderTelemetry(db: IDatabaseClient, storeId: string, 
 
   return {
     window_days: 30,
-    totals: salesTotals(orders),
-    last7: salesTotals(last7),
-    prev7: salesTotals(prev7),
+    totals,
+    last7,
+    prev7,
+    /** Week-on-week comparisons only mean something once both weeks are fully imported */
+    complete_14d: covers(coverage, at(14).toISOString()),
+    complete_30d: covers(coverage, at(30).toISOString()),
     customers: customerInsights(orders),
     top_products: products.slice(0, 5),
     sold_out_bestsellers: soldOut.slice(0, 3),

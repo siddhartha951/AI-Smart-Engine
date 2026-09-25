@@ -21,6 +21,7 @@ import {
 } from '../shopify_data/order-analytics';
 import { adminGraphql, getAdminCredentials, graphqlAccessDenied } from '../../providers/shopify/admin-client';
 import { fetchOrderCardById } from '../order_assist/order-lookup.service';
+import { coverageNote } from '../shopify_data/mirror-coverage';
 import { AgentToolResult } from './ai_agent.types';
 
 export type StoreToolName =
@@ -115,28 +116,50 @@ async function ordersUnavailable(storeId: string): Promise<AgentToolResult> {
 }
 
 async function withOrders(storeId: string, periodDays: number) {
-  return loadRecentOrders(getDatabaseClient(), storeId, periodDays);
+  const db = getDatabaseClient();
+  const loaded = await loadRecentOrders(db, storeId, periodDays);
+  // Say so when the period is not fully imported yet, so the AI never presents partial totals as final
+  const note = loaded.available
+    ? await coverageNote(db, storeId, new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()).catch(() => null)
+    : null;
+  const truncated = 'truncated' in loaded && loaded.truncated;
+  return { ...loaded, data_note: note || (truncated ? 'Only the newest 60,000 orders of this period were analysed.' : null) };
 }
+
+const withNote = (note: string | null | undefined) => (note ? { data_note: note } : {});
 
 async function salesTrend(storeId: string, args: Args): Promise<AgentToolResult> {
   const d = days(args);
-  const { available, orders } = await withOrders(storeId, d * 2);
-  if (!available) return ordersUnavailable(storeId);
-  const cut = Date.now() - d * 24 * 60 * 60 * 1000;
-  const current = orders.filter((o) => new Date(o.created_at_shop).getTime() >= cut);
-  const previous = orders.filter((o) => new Date(o.created_at_shop).getTime() < cut);
-  const cur = salesTotals(current);
-  const prev = salesTotals(previous);
+  const db = getDatabaseClient();
+  const repo = new ShopifyOrdersRepository(db);
+  if (!(await repo.count(storeId))) return ordersUnavailable(storeId);
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const now = new Date();
+  const cutDate = new Date(now.getTime() - d * DAY_MS);
+  const prevFrom = new Date(now.getTime() - 2 * d * DAY_MS);
+  // Exact totals from the database (no row limit); rows are only loaded for the daily chart
+  const [cur, prev, currentNote, previousNote] = await Promise.all([
+    repo.windowSummary(storeId, cutDate, now),
+    repo.windowSummary(storeId, prevFrom, cutDate),
+    coverageNote(db, storeId, cutDate.toISOString()).catch(() => null),
+    coverageNote(db, storeId, prevFrom.toISOString()).catch(() => null),
+  ]);
+  const current = d <= 31 ? await repo.listInWindow(storeId, cutDate, now) : [];
   const change = (a: number, b: number) => (b > 0 ? Math.round(((a - b) / b) * 1000) / 10 : null);
   return {
     ok: true,
     data: {
       period_days: d,
+      from: cutDate.toISOString(),
+      to: now.toISOString(),
       currency: current.find((o) => o.currency)?.currency || null,
       totals: cur,
-      previous_period: prev,
-      change_pct: { revenue: change(cur.revenue, prev.revenue), orders: change(cur.orders, prev.orders), aov: change(cur.average_order_value, prev.average_order_value) },
+      previous_period: previousNote ? { note: `Not comparable yet: ${previousNote}` } : prev,
+      change_pct: previousNote
+        ? null
+        : { revenue: change(cur.revenue, prev.revenue), orders: change(cur.orders, prev.orders), aov: change(cur.average_order_value, prev.average_order_value) },
       daily: d <= 31 ? dailySeries(current, d) : undefined,
+      ...withNote(currentNote),
     },
   };
 }
@@ -215,7 +238,7 @@ async function productStock(storeId: string): Promise<Map<string, boolean>> {
 async function productPerformanceTool(storeId: string, args: Args): Promise<AgentToolResult> {
   const d = days(args);
   const limit = Math.max(3, Math.min(parseInt(String(args.limit || 10), 10) || 10, 25));
-  const { available, orders } = await withOrders(storeId, d);
+  const { available, orders, data_note } = await withOrders(storeId, d);
   if (!available) return ordersUnavailable(storeId);
   const perf = productPerformance(orders);
   const stock = await productStock(storeId);
@@ -234,15 +257,16 @@ async function productPerformanceTool(storeId: string, args: Args): Promise<Agen
       lowest_sellers: perf.slice(-Math.min(limit, Math.max(0, perf.length - limit))).reverse().map(withStock),
       in_stock_not_sold: notSelling,
       products_sold: perf.length,
+      ...withNote(data_note),
     },
   };
 }
 
 async function customerTool(storeId: string, args: Args): Promise<AgentToolResult> {
   const d = days(args, 90);
-  const { available, orders } = await withOrders(storeId, d);
+  const { available, orders, data_note } = await withOrders(storeId, d);
   if (!available) return ordersUnavailable(storeId);
-  return { ok: true, data: { period_days: d, ...customerInsights(orders) } };
+  return { ok: true, data: { period_days: d, ...customerInsights(orders), ...withNote(data_note) } };
 }
 
 async function liveDiscountCodes(storeId: string): Promise<{ codes?: Array<{ title: string; status: string; codes: string[]; ends_at: string | null }>; note?: string }> {
@@ -266,17 +290,17 @@ async function liveDiscountCodes(storeId: string): Promise<{ codes?: Array<{ tit
 
 async function discountTool(storeId: string, args: Args): Promise<AgentToolResult> {
   const d = days(args);
-  const { available, orders } = await withOrders(storeId, d);
+  const { available, orders, data_note } = await withOrders(storeId, d);
   if (!available) return ordersUnavailable(storeId);
   const live = await liveDiscountCodes(storeId).catch(() => ({ note: 'Could not read discount codes from Shopify right now.' }));
-  return { ok: true, data: { period_days: d, usage: discountPerformance(orders), shopify_discount_codes: live } };
+  return { ok: true, data: { period_days: d, usage: discountPerformance(orders), shopify_discount_codes: live, ...withNote(data_note) } };
 }
 
 async function paymentsTool(storeId: string, args: Args): Promise<AgentToolResult> {
   const d = days(args);
-  const { available, orders } = await withOrders(storeId, d);
+  const { available, orders, data_note } = await withOrders(storeId, d);
   if (!available) return ordersUnavailable(storeId);
-  return { ok: true, data: { period_days: d, ...paymentSummary(orders) } };
+  return { ok: true, data: { period_days: d, ...paymentSummary(orders), ...withNote(data_note) } };
 }
 
 async function inventoryTool(storeId: string): Promise<AgentToolResult> {
