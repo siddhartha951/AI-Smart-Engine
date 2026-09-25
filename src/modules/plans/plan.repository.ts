@@ -8,6 +8,7 @@ import {
   StoreSubscription,
   SubscriptionStatus,
   normalizeFeatureList,
+  withAlwaysIncluded,
 } from './plan.types';
 
 export interface PlanPatch {
@@ -67,7 +68,7 @@ function mapPlan(row: any): Plan {
     price_usd_monthly: toNumber(row.price_usd_monthly),
     ai_budget_usd: toNumber(row.ai_budget_usd),
     knowledge_doc_limit: toNumber(row.knowledge_doc_limit),
-    features: normalizeFeatureList(row.features),
+    features: withAlwaysIncluded(normalizeFeatureList(row.features)),
     sort_order: Number(row.sort_order) || 0,
     is_active: row.is_active !== false,
   };
@@ -131,7 +132,7 @@ export class PlanRepository {
       ...before,
       ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)),
     } as Plan;
-    next.features = normalizeFeatureList(next.features);
+    next.features = withAlwaysIncluded(normalizeFeatureList(next.features));
 
     await this.db.query(
       `UPDATE plans SET

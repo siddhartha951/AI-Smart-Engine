@@ -99,6 +99,13 @@ export class FakeShopifyAdapter implements IShopifyCatalogAdapter {
     return results;
   }
 
+  async listCatalog(storeId: string, limit = 500): Promise<ShopifyProduct[]> {
+    if (!this.products[storeId]) {
+      throw new TenantIsolationError(`FakeShopifyAdapter: Store ${storeId} not found`);
+    }
+    return this.products[storeId].filter(p => p.in_stock && p.price > 0 && p.is_active !== false).slice(0, limit);
+  }
+
   async getProductDetails(storeId: string, productId: string): Promise<ShopifyProduct | null> {
     const storeProducts = this.products[storeId];
     if (!storeProducts) {

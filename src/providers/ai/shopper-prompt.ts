@@ -10,8 +10,18 @@ function stripHtml(text: string): string {
   return (text || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+const DESCRIPTION_CHARS = { focus: 1500, detailed: 400, brief: 140 };
+
+function descriptionLimit(index: number, context: AiRequestContext): number {
+  const tiers = context.catalogDetail;
+  if (!tiers) return DESCRIPTION_CHARS.detailed;
+  if (index < tiers.focus) return DESCRIPTION_CHARS.focus;
+  if (index < tiers.detailed) return DESCRIPTION_CHARS.detailed;
+  return DESCRIPTION_CHARS.brief;
+}
+
 export function buildCatalogSummary(context: AiRequestContext) {
-  return (context.catalogSubset || []).map(p => ({
+  return (context.catalogSubset || []).map((p, index) => ({
     id: p.id,
     title: p.title,
     price: p.price,
@@ -21,7 +31,7 @@ export function buildCatalogSummary(context: AiRequestContext) {
     ...(p.is_bestseller ? { is_bestseller: true } : {}),
     ...(p.sales_rank && p.sales_rank < 999 ? { sales_rank: p.sales_rank } : {}),
     tags: (p.tags || []).slice(0, 8),
-    description: stripHtml(p.description || '').slice(0, 400),
+    description: stripHtml(p.description || '').slice(0, descriptionLimit(index, context)),
     ...(p.variants && p.variants.length > 1 ? { variants: describeVariantsForAi(p.variants, p.currency || 'INR') } : {}),
   }));
 }
@@ -76,6 +86,8 @@ ${askFirst
     ? `   - ASK BEFORE SHOWING PRODUCTS (merchant setting): even when the need is clear, first answer helpfully, then ask exactly: "Would you like me to show a few options that fit?" Do not pass any product ids in that reply. Show products only after the shopper says yes, or when they explicitly ask to see products ("show me", "recommend", "which should I buy", "best sellers", "link").`
     : `   - Recommend only after the shopper has described their need well enough (the concern plus who/what it is for), answered your question, or explicitly asked to see products ("show me", "recommend", "which should I buy", "best sellers").`}
    - Then recommend the ONE best match, or at most ${maxRecs} if the shopper wants options or a comparison. Every card must directly match the stated need; never add loosely related items or bestsellers as filler.
+   - A question about ONE specific product (its ingredients, usage, dosage, price or suitability): answer about that product only, and show at most that one product. Never add other products, bundles or bestsellers to such an answer.
+   - If the catalog has separate versions for different users (for example dog and cat, puppy and adult, men and women) and the shopper has not said which one they need, ask that one short question first, then answer or recommend.
    - Policy, order, greeting or follow-up questions about a product → no new product cards unless the shopper asks for one.
    - Never repeat products you already recommended earlier in the chat unless the shopper asks about them.
    - Only use products from the catalog below. Never invent products, prices, discounts or stock.
@@ -95,7 +107,7 @@ ${allowedTopicsLine(s.allowed_topics)}
 ## Output
 ${outputRules}
 
-## Available catalog (JSON)
+## Available catalog (JSON, most relevant to this conversation first)
 ${JSON.stringify(buildCatalogSummary(context))}
 `.trim();
 }

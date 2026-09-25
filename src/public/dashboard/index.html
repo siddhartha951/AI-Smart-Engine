@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../common/css/design-system.css">
   <link rel="stylesheet" href="css/styles.css?v=2.11.0">
-  <link rel="stylesheet" href="css/plan-billing.css?v=2.11.0">
+  <link rel="stylesheet" href="css/plan-billing.css?v=2.14.0">
   <link rel="stylesheet" href="css/home.css?v=2.13.0">
   <!-- GSAP & ScrollTrigger Animation Engine -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -255,6 +255,14 @@
             </a>
           </li>
           <li class="nav-group-label" role="presentation" data-layout-only="classic">Settings</li>
+          <li data-layout-only="classic">
+            <a href="#" data-target="helpdesk-settings">
+              <span class="nav-icon" aria-hidden="true">
+                <svg class="nav-svg" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+              </span>
+              Helpdesk
+            </a>
+          </li>
           <li data-layout-only="classic">
             <a href="#" data-target="plan-billing">
               <span class="nav-icon" aria-hidden="true">
@@ -2874,6 +2882,70 @@
           </div>
         </section>
 
+        <!-- Settings: Helpdesk (where support tickets go) -->
+        <section id="helpdesk-settings" class="content-section hidden">
+          <header class="section-header-flex">
+            <div>
+              <h2>Helpdesk</h2>
+              <p class="section-subtitle">Choose where support tickets from the chat assistant go.</p>
+            </div>
+          </header>
+
+          <p id="hd-tickets-off" class="hd-notice hidden">Support tickets are not enabled for your store, so no tickets are created yet. Ask Novatech Digital to switch them on.</p>
+
+          <div class="panel">
+            <h3 class="hd-heading">Ticket destination</h3>
+            <div class="hd-modes" role="radiogroup" aria-label="Ticket destination">
+              <label class="hd-mode">
+                <input type="radio" name="hd-provider" value="built_in" checked>
+                <span class="hd-mode-body">
+                  <strong>AI Smart Engine inbox</strong>
+                  <span>Tickets appear in Support Tickets. Your replies are emailed to the shopper from the dashboard.</span>
+                </span>
+              </label>
+              <label class="hd-mode">
+                <input type="radio" name="hd-provider" value="freshdesk">
+                <span class="hd-mode-body">
+                  <strong>Freshdesk</strong>
+                  <span>Each ticket is created in your Freshdesk with the full chat history. Replies you send in Freshdesk reach the shopper's email, and their replies come back to the same ticket.</span>
+                </span>
+              </label>
+            </div>
+
+            <div id="hd-freshdesk-fields" class="hd-fields hidden">
+              <div class="form-group">
+                <label for="hd-domain">Freshdesk domain</label>
+                <input type="text" id="hd-domain" class="form-control" placeholder="yourcompany.freshdesk.com" autocomplete="off" spellcheck="false" maxlength="255">
+              </div>
+              <div class="form-group">
+                <label for="hd-api-key">API key</label>
+                <input type="password" id="hd-api-key" class="form-control" placeholder="Paste your Freshdesk API key" autocomplete="new-password" maxlength="200">
+                <p class="hd-help">In Freshdesk: your profile picture &rarr; Profile settings &rarr; View API key. It is stored encrypted and never shown again.</p>
+              </div>
+              <p class="hd-help">Set your support email in Freshdesk (Admin &rarr; Email) so replies go out from your own address.</p>
+            </div>
+
+            <div class="hd-actions">
+              <span id="hd-status" class="hd-status" data-tone="neutral">Not connected</span>
+              <button type="button" id="hd-test" class="btn btn-secondary btn-sm hidden">Test connection</button>
+              <button type="button" id="hd-disconnect" class="btn btn-ghost btn-sm hidden">Disconnect Freshdesk</button>
+              <button type="button" id="hd-save" class="btn btn-primary btn-sm">Save</button>
+            </div>
+            <p id="hd-message" class="hd-message" role="status" aria-live="polite"></p>
+          </div>
+
+          <div class="panel hidden" id="hd-sync-panel">
+            <h3 class="hd-heading">Tickets sent to Freshdesk</h3>
+            <p class="hd-sync-line">
+              Sent: <strong id="hd-synced">0</strong> &middot;
+              Waiting: <strong id="hd-pending">0</strong> &middot;
+              Failed: <strong id="hd-failed">0</strong>
+            </p>
+            <p class="hd-help">A ticket that could not reach Freshdesk is never lost: the shopper got our email and the ticket waits here.</p>
+            <button type="button" id="hd-retry" class="btn btn-secondary btn-sm hidden">Send failed tickets again</button>
+          </div>
+        </section>
+
         <!-- Settings: Plan & billing -->
         <section id="plan-billing" class="content-section hidden">
           <header class="section-header-flex">
@@ -3328,6 +3400,6 @@
   </script>
   <script type="module" src="js/three-bg.js?v=2.2.2"></script>
   <script src="../common/js/shopify-scopes.js"></script>
-  <script type="module" src="js/app.js?v=2.13.0"></script>
+  <script type="module" src="js/app.js?v=2.14.0"></script>
 </body>
 </html>

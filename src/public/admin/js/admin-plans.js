@@ -6,6 +6,7 @@ const planUi = {
   currency: 'INR',
   plans: [],
   sections: [],
+  alwaysIncluded: [], // features every plan includes (switched per store instead)
   store: null, // { storeId, container, view, pendingPlanId }
 };
 
@@ -47,6 +48,7 @@ window.loadPlansPage = async function () {
     const res = await apiFetch('/api/v1/admin/plans');
     planUi.plans = res.data.plans || [];
     planUi.sections = res.data.sections || [];
+    planUi.alwaysIncluded = res.data.always_included || [];
     renderPlanCards();
     renderPlanMatrix();
   } catch (err) {
@@ -120,8 +122,8 @@ function openPlanEditor(planId) {
       <legend>${escAttr(section.name)}</legend>
       ${section.features.map((f) => `
         <label class="checkbox-row">
-          <input type="checkbox" name="plan-feature" value="${escAttr(f.key)}" ${plan.features.includes(f.key) ? 'checked' : ''}>
-          ${escAttr(f.label)}
+          <input type="checkbox" name="plan-feature" value="${escAttr(f.key)}" ${plan.features.includes(f.key) ? 'checked' : ''} ${planUi.alwaysIncluded.includes(f.key) ? 'disabled' : ''}>
+          ${escAttr(f.label)}${planUi.alwaysIncluded.includes(f.key) ? ' <span class="plan-card-stores">(every plan; switch it per store)</span>' : ''}
         </label>`).join('')}
     </fieldset>`).join('');
   toggleModal('plan-edit-modal', true);

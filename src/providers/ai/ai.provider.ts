@@ -22,6 +22,12 @@ export interface AiRequestContext {
   storeId: string;
   sessionId: string;
   catalogSubset: ShopifyProduct[];
+  /**
+   * catalogSubset is ordered most relevant first. The first `detailed` products keep a normal
+   * description, the first `focus` a long one (the product a question is about); the rest a
+   * short one. Absent = every product gets the normal description (previous behaviour).
+   */
+  catalogDetail?: { detailed: number; focus: number };
   storePolicies: {
     delivery_policy: string;
     returns_policy: string;

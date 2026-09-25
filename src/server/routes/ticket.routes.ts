@@ -9,6 +9,7 @@ import { triageTicket, computeSlaDueAt } from '../../modules/support_tickets/tic
 import { enforceStoreAccess } from '../middlewares/auth.middleware';
 import { getDatabaseClient } from '../../database/client';
 import { logger } from '../../utils/logger';
+import { deliverSupportTicket } from '../../modules/helpdesk/freshdesk-sync.service';
 
 export const ticketDashboardRouter = Router({ mergeParams: true });
 export const ticketWidgetRouter = Router();
@@ -197,11 +198,11 @@ ticketWidgetRouter.post('/tickets', async (req: Request, res: Response, next) =>
 
     logger.info(`New support ticket created from storefront widget: ${ticket.id} (${ticket.customer_email}) [${triage.category}/${triage.priority} via ${triage.source}]`);
 
-    // Customer receipt and merchant alert are independent; neither failure blocks ticket creation
-    await Promise.all([
-      service.sendTicketReceiptEmail(storeId, ticket),
-      service.sendMerchantTicketAlert(storeId, ticket),
-    ]);
+    // Freshdesk (when the store connected it) or the built-in receipt + merchant alert.
+    // The ticket is already saved here, so a delivery failure never loses it.
+    await deliverSupportTicket(storeId, ticket, service).catch((deliveryErr) => {
+      logger.warn('Support ticket delivery failed', { storeId, ticketId: ticket.id, reason: deliveryErr?.message });
+    });
 
     res.status(201).json({
       success: true,

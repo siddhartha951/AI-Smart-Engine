@@ -116,6 +116,40 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     }
   }
 
+  /**
+   * The whole buyable catalogue from the synced products table (active, in stock, priced),
+   * bestsellers first. Falls back to a live search when the store has not synced yet.
+   */
+  async listCatalog(storeId: string, limit = 500): Promise<ShopifyProduct[]> {
+    const db = getDatabaseClient();
+    const res = await db.query(
+      `SELECT * FROM products
+       WHERE store_id = $1 AND in_stock = true AND price > 0 AND COALESCE(is_active, true) = true
+       ORDER BY is_bestseller DESC, (CASE WHEN sales_rank < 999 THEN sales_rank ELSE 9999 END) ASC, title ASC
+       LIMIT $2`,
+      [storeId, Math.max(1, Math.min(limit, 2000))]
+    );
+    if (res.rows.length === 0) return this.searchProducts(storeId, {});
+    return res.rows.map((r: any) => ({
+      id: r.shopify_id || r.id,
+      variant_id: r.variant_id || '',
+      title: r.title,
+      handle: r.handle,
+      description: r.description || '',
+      tags: r.tags || [],
+      is_bestseller: r.is_bestseller || false,
+      sales_rank: r.sales_rank || 999,
+      price: parseFloat(r.price || '0'),
+      compare_at_price: parseFloat(r.compare_at_price || '0'),
+      currency: r.currency || 'INR',
+      in_stock: r.in_stock,
+      category: r.category,
+      image_url: r.image_url,
+      product_url: r.product_url,
+      ...variantFields(r),
+    }));
+  }
+
   async searchProducts(storeId: string, query: ProductSearchQuery): Promise<ShopifyProduct[]> {
     try {
       const db = getDatabaseClient();
@@ -402,9 +436,9 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
             const compositeId = `${storeId}_${rawId}`;
             await db.query(`
               INSERT INTO products (
-                id, store_id, shopify_id, variant_id, title, handle, description, tags, is_bestseller, sales_rank, price, compare_at_price, currency, in_stock, category, image_url, product_url, variants, variant_options, synced_at, updated_at
+                id, store_id, shopify_id, variant_id, title, handle, description, tags, is_bestseller, sales_rank, price, compare_at_price, currency, in_stock, category, image_url, product_url, variants, variant_options, is_active, synced_at, updated_at
               ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19::jsonb, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19::jsonb, $20, NOW(), NOW()
               )
               ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
@@ -422,6 +456,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
                 product_url = EXCLUDED.product_url,
                 variants = EXCLUDED.variants,
                 variant_options = EXCLUDED.variant_options,
+                is_active = EXCLUDED.is_active,
                 synced_at = NOW(),
                 updated_at = NOW()
             `, [
@@ -444,6 +479,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
               p.product_url || '',
               JSON.stringify(p.variants || []),
               JSON.stringify(p.options || []),
+              p.is_active !== false,
             ]);
           }
         } catch (dbErr) {
@@ -589,6 +625,8 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           product_url: `https://${shopDomain}/products/${node.handle || numericId}`,
           variants,
           options,
+          // Drafts and archived products are kept in the table but never offered to shoppers
+          is_active: !node.status || node.status === 'ACTIVE',
         });
       }
 
@@ -668,6 +706,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         product_url: `https://${shopDomain}/products/${p.handle || p.id}`,
         variants,
         options,
+        is_active: !p.status || p.status === 'active',
       });
     }
 

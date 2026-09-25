@@ -16,6 +16,7 @@ export const FeatureKey = {
   AI_AGENT_CHAT: 'ai_agent_chat',
   AI_STORE_ANALYSIS: 'ai_store_analysis',
   SUPPORT_TICKETS: 'support_tickets',
+  FRESHDESK: 'freshdesk',
 } as const;
 
 export type FeatureKey = (typeof FeatureKey)[keyof typeof FeatureKey];
@@ -46,6 +47,7 @@ export const ALL_FEATURE_KEYS: FeatureKey[] = [
   'ai_agent_chat',
   'ai_store_analysis',
   'support_tickets',
+  'freshdesk',
 ];
 
 export const FEATURE_CATALOG: Record<FeatureKey, FeatureMetadata> = {
@@ -168,6 +170,14 @@ export const FEATURE_CATALOG: Record<FeatureKey, FeatureMetadata> = {
     description: 'Customer helpdesk tickets and human escalation with AI-generated replies.',
     // Admin must switch it on for new stores; migration 036 keeps it on for existing stores.
     // When off, the widget falls back to "Contact only" (shows the store's support contact).
+    defaultEnabled: false,
+  },
+  freshdesk: {
+    key: 'freshdesk',
+    name: 'Freshdesk Integration',
+    category: 'core',
+    description: 'Sends support tickets with the full chat history to the store\'s own Freshdesk; Freshdesk replies reach the shopper by email.',
+    // Included in every plan, but the admin decides per store; stores without a plan start off
     defaultEnabled: false,
   },
 };

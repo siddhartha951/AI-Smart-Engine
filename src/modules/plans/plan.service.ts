@@ -10,6 +10,7 @@ import {
   Plan,
   StoreSubscription,
   cheapestPlanWith,
+  ALWAYS_INCLUDED_FEATURES,
   planListPrice,
 } from './plan.types';
 
@@ -67,7 +68,8 @@ export async function buildStorePlanView(db: IDatabaseClient, storeId: string): 
       const enabled = features[key] === true;
       if (enabled) enabledCount += 1;
       const inPlan = plan ? plan.features.includes(key) : null;
-      const cheapest = cheapestPlanWith(key, allPlans);
+      // Features in every plan are switched per store by the admin: no plan would unlock them
+      const cheapest = ALWAYS_INCLUDED_FEATURES.includes(key) ? null : cheapestPlanWith(key, allPlans);
       return {
         key,
         label: FEATURE_LABELS[key],
