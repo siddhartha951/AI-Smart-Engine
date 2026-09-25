@@ -172,6 +172,53 @@
     return /^(https?:)?\/\//i.test(url) || (url.startsWith('/') && !url.startsWith('//')) ? url : fallback;
   }
 
+  // Order card for a verified order ("Where is my order?"). Everything is escaped; links are http(s) only.
+  const ORDER_STATUS_TONE = {
+    delivered: 'good', shipped: 'good', partly_shipped: 'info', processing: 'info',
+    payment_pending: 'warn', cancelled: 'bad', refunded: 'bad',
+  };
+
+  function orderMoney(amount, currency) {
+    const cur = String(currency || '').toUpperCase();
+    try {
+      return new Intl.NumberFormat(cur === 'INR' ? 'en-IN' : undefined, { style: 'currency', currency: cur || 'INR' }).format(Number(amount) || 0);
+    } catch (_) {
+      return `${cur} ${(Number(amount) || 0).toFixed(2)}`;
+    }
+  }
+
+  function renderOrderCard(order, primaryColor) {
+    if (!order || typeof order !== 'object') return '';
+    const tone = ORDER_STATUS_TONE[order.status] || 'info';
+    const placed = order.placed_at ? new Date(order.placed_at) : null;
+    const placedText = placed && !isNaN(placed.getTime())
+      ? placed.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    const items = (Array.isArray(order.items) ? order.items : []).slice(0, 6).map((it) =>
+      `<li>${escapeHtml(String(it.quantity || 1))} × ${escapeHtml(it.title || 'Item')}${it.variant ? ` <span class="order-muted">(${escapeHtml(it.variant)})</span>` : ''}</li>`
+    ).join('');
+    const tracking = (Array.isArray(order.tracking) ? order.tracking : []).slice(0, 3).map((t) => {
+      const bits = [t.company, t.number].filter(Boolean).map(escapeHtml).join(' · ');
+      const status = t.status ? ` <span class="order-muted">(${escapeHtml(String(t.status).replace(/_/g, ' '))})</span>` : '';
+      const link = t.url ? ` <a class="chat-link" href="${escapeAttr(safeUrl(t.url))}" target="_blank" rel="noopener noreferrer">Track shipment</a>` : '';
+      return `<div class="order-track">🚚 ${bits || 'Shipped'}${status}${link}</div>`;
+    }).join('');
+    const statusLink = order.order_status_url
+      ? `<a class="order-status-link" href="${escapeAttr(safeUrl(order.order_status_url))}" target="_blank" rel="noopener noreferrer" style="color: ${escapeAttr(primaryColor)};">View order status →</a>`
+      : '';
+    return `
+      <div class="order-card">
+        <div class="order-card-head">
+          <strong>Order ${escapeHtml(order.name || '')}</strong>
+          <span class="order-status order-status--${tone}">${escapeHtml(order.status_label || '')}</span>
+        </div>
+        <div class="order-muted">${placedText ? `Placed ${escapeHtml(placedText)} · ` : ''}${escapeHtml(orderMoney(order.total, order.currency))}${order.ship_to_city ? ` · to ${escapeHtml(order.ship_to_city)}` : ''}</div>
+        ${items ? `<ul class="order-items">${items}</ul>` : ''}
+        ${tracking || (order.status === 'processing' ? '<div class="order-track order-muted">Not shipped yet: tracking appears here once it ships.</div>' : '')}
+        ${statusLink}
+      </div>`;
+  }
+
   function formatChatContent(rawText) {
     if (!rawText) return '';
 
@@ -832,6 +879,11 @@
           recommendations: json.success ? json.data.recommendations : [],
           productOffer: Boolean(json.success && json.data?.product_offer),
           displayStyle: json.success ? json.data?.display_style : undefined,
+          // Verified order ("Where is my order?") shown as a card under the reply
+          order: json.success ? json.data?.order || null : null,
+          // Real replies can be rated 👍 / 👎 (errors and local cards cannot)
+          rateable: Boolean(json.success),
+          question: text,
         };
 
         this.setState({ messages: updatedMessages }, 'reply');
@@ -866,6 +918,26 @@
         };
         this.setState({ messages: updatedMessages });
       }
+    }
+
+    async rateMessage(idx, rating) {
+      const m = this.state.messages[idx];
+      if (!m || m.role !== 'assistant' || m.feedback || (rating !== 1 && rating !== -1)) return;
+      const messages = [...this.state.messages];
+      messages[idx] = { ...m, feedback: rating === 1 ? 'up' : 'down' };
+      this.setState({ messages }, 'preserve');
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/widget/chat/feedback`, {
+          method: 'POST',
+          headers: this.getHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            session_id: this.sessionId,
+            rating,
+            question: String(m.question || '').slice(0, 2000),
+            answer: String(m.content || '').slice(0, 8000),
+          }),
+        });
+      } catch (_) { /* feedback is best effort */ }
     }
 
     async loadChatHistory(sessionId) {
@@ -1785,6 +1857,21 @@
         .scroll-more-pill.hidden { display: none; }
 
         .product-offer-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .order-card { margin-top: 10px; padding: 12px; border: 1.5px solid #e2e8f0; border-radius: 12px; background: #ffffff; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #1e293b; }
+        .order-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .order-card-head strong { font-size: 13.5px; }
+        .order-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+        .order-status--good { background: #dcfce7; color: #166534; }
+        .order-status--info { background: #e0e7ff; color: #3730a3; }
+        .order-status--warn { background: #fef3c7; color: #92400e; }
+        .order-status--bad { background: #fee2e2; color: #991b1b; }
+        .order-muted { color: #64748b; }
+        .order-items { margin: 2px 0; padding-left: 18px; display: grid; gap: 2px; }
+        .order-track { line-height: 1.45; }
+        .order-status-link { font-weight: 700; text-decoration: none; margin-top: 2px; }
+        .msg-feedback { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 11px; color: #94a3b8; }
+        .btn-msg-feedback { min-width: 30px; min-height: 30px; border: 1px solid #e2e8f0; border-radius: 999px; background: #ffffff; cursor: pointer; font-size: 13px; line-height: 1; }
+        .btn-msg-feedback[aria-pressed="true"] { border-color: #94a3b8; background: #f1f5f9; }
         .btn-product-offer {
           min-height: 40px; padding: 0 16px; border-radius: 999px; border: none;
           font-size: 13px; font-weight: 700; cursor: pointer;
@@ -3115,6 +3202,13 @@
           }
 
           const recParts = recs.length > 0 ? this.renderRecommendations(recs, mIdx, m) : { inBubble: '', below: '' };
+          const orderHtml = m.role === 'assistant' && m.order ? renderOrderCard(m.order, primaryColor) : '';
+          const feedbackHtml = m.role === 'assistant' && m.rateable && !m.isLoading
+            ? `<div class="msg-feedback">${m.feedback ? (m.feedback === 'up' ? 'Thanks for the feedback' : 'Thanks, we will improve this answer') : 'Helpful?'}
+                 <button type="button" class="btn-msg-feedback" data-msg-idx="${mIdx}" data-rating="1" aria-label="Helpful" aria-pressed="${m.feedback === 'up'}" ${m.feedback ? 'disabled' : ''}>👍</button>
+                 <button type="button" class="btn-msg-feedback" data-msg-idx="${mIdx}" data-rating="-1" aria-label="Not helpful" aria-pressed="${m.feedback === 'down'}" ${m.feedback ? 'disabled' : ''}>👎</button>
+               </div>`
+            : '';
           const offerHtml = m.role === 'assistant' && m.productOffer && !m.productOfferAnswered
             ? `<div class="product-offer-actions">
                  <button type="button" class="btn-product-offer" data-msg-idx="${mIdx}" data-answer="yes" style="background: ${primaryColor}; color: ${secondaryColor};">Yes, show me</button>
@@ -3175,9 +3269,11 @@
             <div class="msg-block ${m.role}">
               <div class="msg ${m.role}">
                 <div class="msg-text">${formatChatContent(displayText)}</div>
+                ${orderHtml}
                 ${recParts.inBubble}
                 ${offerHtml}
                 ${ticketCardHtml}
+                ${feedbackHtml}
               </div>
               ${recParts.below}
             </div>
@@ -3435,6 +3531,14 @@
           e.preventDefault();
           const key = btn.getAttribute('data-rec-key');
           this.setState({ expandedRecs: { ...(this.state.expandedRecs || {}), [key]: true } }, 'preserve');
+        });
+      });
+
+      // 👍 / 👎 on a reply (a 👎 sends the question to the store owner to teach the assistant)
+      this.shadowRoot.querySelectorAll('.btn-msg-feedback').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.rateMessage(parseInt(btn.getAttribute('data-msg-idx'), 10), parseInt(btn.getAttribute('data-rating'), 10));
         });
       });
 

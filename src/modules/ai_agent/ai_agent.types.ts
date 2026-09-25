@@ -5,12 +5,15 @@
  * (Shopify + Meta Ads) via tool calls. It never invents metrics.
  */
 
+import type { StoreToolName } from './ai_agent.store-tools';
+
 export type AgentToolName =
   | 'get_today_overview'
   | 'get_meta_performance'
   | 'get_shopify_summary'
   | 'get_ad_creatives'
-  | 'get_attribution_summary';
+  | 'get_attribution_summary'
+  | StoreToolName;
 
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant';

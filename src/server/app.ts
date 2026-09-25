@@ -43,6 +43,9 @@ import whatsappWebhookRoutes from './routes/whatsapp-webhook.routes';
 import { reorderClickRouter } from './routes/replenishment.routes';
 import { publicAttributionRouter } from './routes/attribution.routes';
 import { ticketWidgetRouter } from './routes/ticket.routes';
+import { pixelRouter } from './routes/pixel.routes';
+import { OrderTurn, resolveOrderTurn } from '../modules/order_assist/order-assist';
+import { learningContext, noteShopperAnswer } from '../modules/learning/learning.service';
 
 /** quick_action_pills is JSONB; some drivers/rows return it as a JSON string */
 function parsePills(raw: unknown): any[] {
@@ -375,6 +378,31 @@ export function createApp(deps: AppDependencies = {}): Express {
           });
         }
 
+        // Order tracking: ask for the order number + email/phone, verify, then answer from the real order
+        const orderTurn: OrderTurn = await resolveOrderTurn({
+          db,
+          storeId,
+          sessionId: session_id,
+          message,
+          supportContact: settings?.support_contact || '',
+        }).catch((orderErr) => {
+          console.warn(`[WidgetChat] Order lookup failed for store ${storeId}:`, orderErr?.message || orderErr);
+          return { kind: 'none' } as OrderTurn;
+        });
+        if (orderTurn.kind === 'reply') {
+          await chatRepo.addMessage(storeId, session_id, 'assistant', orderTurn.text, 0, 0, 0);
+          return res.json({
+            success: true,
+            data: {
+              message: orderTurn.text,
+              recommendations: [],
+              order: orderTurn.order || null,
+              should_escalate_ticket: false,
+              escalation: { level: 'none', mode: normalizeEscalationMode((settings as any)?.escalation_mode), reasons: [] },
+            },
+          });
+        }
+
         // Intelligent keyword and intent extraction with stop-word removal
         const stopWords = new Set([
           'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at',
@@ -445,12 +473,17 @@ export function createApp(deps: AppDependencies = {}): Express {
         const recSettings = normalizeRecommendationSettings(settings);
 
         // The product a question is about pulls in the knowledge passages that name it (e.g. its ingredients)
-        const knowledgeContext = await buildKnowledgeContext(
+        const retrievedKnowledge = await buildKnowledgeContext(
           storeId,
           (settings as any)?.knowledge_base || '',
           [...recentUserTurns, ...selection.focusTitles].join('\n'),
           db
         );
+        // Answers the merchant approved from past chats, and the shopper's verified order
+        const learned = await learningContext(db, storeId, 'shopper', message).catch(() => '');
+        const knowledgeContext = [retrievedKnowledge, learned, orderTurn.kind === 'context' ? orderTurn.context : '']
+          .filter(Boolean)
+          .join('\n\n');
 
         // Query AI Provider
         const aiProvider = getAiProvider();
@@ -527,6 +560,10 @@ export function createApp(deps: AppDependencies = {}): Express {
         if (/^\s*(hi+|hello+|hey+|hola|namaste|good\s+(morning|afternoon|evening))[\s!.,?]*$/i.test(message)) {
           targetProductIds = [];
         }
+        // An order-status answer shows the order card, not product cards
+        if (orderTurn.kind === 'context' && orderTurn.order) {
+          targetProductIds = [];
+        }
 
         // Merchant's "Ask first" rule: no products until the shopper asks for them or says yes
         const previousAssistantMessage = history.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '';
@@ -598,11 +635,15 @@ export function createApp(deps: AppDependencies = {}): Express {
           .replace(/\n{3,}/g, '\n\n')
           .trim();
 
+        // "Not sure" answers become questions for the merchant to teach (My Agent → Learning)
+        noteShopperAnswer(db, storeId, message, cleanMessage).catch(() => undefined);
+
         res.json({
           success: true,
           data: {
             message: cleanMessage,
             recommendations,
+            order: orderTurn.kind === 'context' ? orderTurn.order : null,
             // Ask-first: show "Yes, show me / No thanks" under this reply
             product_offer: policy.productOffer,
             display_style: recSettings.displayStyle,
@@ -720,6 +761,8 @@ export function createApp(deps: AppDependencies = {}): Express {
     res.json({ success: true, data: { admin: ADMIN_SCOPES, storefront: STOREFRONT_SCOPES } });
   });
   app.use('/api/v1/shopify', shopifyRoutes);
+  // Shopify custom pixel (checkout + product views the widget cannot see)
+  app.use('/api/v1/pixel', pixelRouter);
   app.use('/api/v1/webhooks/resend', resendWebhookRoutes);
   app.use('/api/v1/webhooks/whatsapp', whatsappWebhookRoutes);
   app.use('/api/v1/reorder', reorderClickRouter);

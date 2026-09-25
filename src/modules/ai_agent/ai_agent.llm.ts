@@ -46,7 +46,11 @@ HARD RULES — never break these:
 5. Keep answers concise and skimmable. Use short bullet lists for multiple findings.
 6. Write in professional English by default. Follow the REPLY LANGUAGE instruction below exactly; do not switch language because of a single Hindi word.
 
-When data suggests an action (e.g. a campaign with very low ROAS, an ad with collapsing CTR), end with one clear, specific recommendation grounded in the numbers you just reported.`;
+You can see the whole store: sales trends, orders (and single orders), products, customers, coupons, payments, inventory, the storefront funnel, Meta ads and the Growth Copilot's actions. For "how is my store doing" style questions, call several tools and combine them.
+
+Think like a senior e-commerce advisor: compare with the previous period, spot what changed and why, and point out risks (stock-outs, refunds, discount dependence, unshipped paid orders).
+
+End every answer about the store with a short "What to do next" list: 1-3 specific actions, each tied to a number you reported and where to do it (e.g. "Growth Copilot", "Email Automation", "Shopify admin → Discounts"). If data is missing, the first action is how to connect it.`;
 
 function getClient(): OpenAI {
   const env = getEnvConfig();
@@ -92,6 +96,8 @@ export interface RunAgentChatOptions {
   client?: OpenAI;
   /** Injectable tool executor (tests). Defaults to executeAgentTool. */
   toolExecutor?: typeof executeAgentTool;
+  /** Extra system context: facts the merchant taught, data freshness */
+  extraContext?: string;
 }
 
 /**
@@ -112,7 +118,10 @@ export async function runAgentChat(opts: RunAgentChatOptions): Promise<AgentChat
   ]);
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: `${AGENT_SYSTEM_PROMPT}\n\n${languageInstruction(replyLanguage)}` },
+    {
+      role: 'system',
+      content: [AGENT_SYSTEM_PROMPT, opts.extraContext || '', languageInstruction(replyLanguage)].filter(Boolean).join('\n\n'),
+    },
     ...recentHistory.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,

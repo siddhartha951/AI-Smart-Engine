@@ -24,7 +24,7 @@ const envSchema = z.object({
   AI_MONTHLY_BUDGET_STOP_USD: z.coerce.number().default(14.0),
 
   SHOPIFY_ADAPTER_MODE: z.enum(['fake', 'real']).default('fake'),
-  SHOPIFY_API_VERSION: z.string().default('2024-01'),
+  SHOPIFY_API_VERSION: z.string().default('2025-10'),
   SHOPIFY_CLIENT_SECRET: z.string().default('test_shopify_secret_change_in_production'),
 
   EMAIL_PROVIDER_MODE: z.enum(['fake', 'resend', 'postmark']).default('fake'),

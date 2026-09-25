@@ -89,6 +89,8 @@ export interface MetaInsightOptions {
   since?: string;
   until?: string;
   limit?: number;
+  /** 1 = one row per day (used by the daily ad spend sync) */
+  timeIncrement?: 1;
 }
 
 export interface MetaActionValue {
@@ -447,6 +449,7 @@ export class MetaAdsClient {
     } else {
       params.date_preset = opts.datePreset || 'last_30d';
     }
+    if (opts.timeIncrement) params.time_increment = String(opts.timeIncrement);
 
     const body = await this.metaGet<{ data?: Array<Record<string, unknown>> }>(
       `/act_${cleanId}/insights`,

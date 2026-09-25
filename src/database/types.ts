@@ -612,6 +612,8 @@ export interface GrowthActionHistory {
 }
 
 export interface GrowthOverview {
+  /** shopify_30d = the store's real Shopify orders in the last 30 days; attribution = tracked orders */
+  revenue_source?: 'shopify_30d' | 'attribution';
   total_revenue: number;
   total_orders: number;
   average_order_value: number;

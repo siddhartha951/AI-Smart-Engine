@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { getEnvConfig } from '../config/env';
 import { logger } from '../utils/logger';
 import { Migrator } from '../database/migrator';
+import { ShopifyDataScheduler } from '../modules/shopify_data/data-scheduler';
 
 async function startServer(): Promise<void> {
   try {
@@ -26,9 +27,14 @@ async function startServer(): Promise<void> {
       });
     });
 
+    // Real Shopify orders, Meta spend and webhooks kept fresh for every store
+    const dataScheduler = ShopifyDataScheduler.shouldRun() ? new ShopifyDataScheduler() : null;
+    dataScheduler?.start();
+
     // Graceful shutdown handling for container platforms (e.g. Railway)
     const shutdown = (signal: string) => {
       logger.info(`Received ${signal}. Shutting down HTTP server gracefully...`);
+      dataScheduler?.stop();
       server.close(() => {
         logger.info('HTTP server closed. Exiting process.');
         process.exit(0);

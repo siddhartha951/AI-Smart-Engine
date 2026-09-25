@@ -28,9 +28,15 @@ import { normalizeEscalationMode, normalizeEscalationSensitivity } from '../../m
 import { normalizeRecommendationSettings } from '../../modules/chat/recommendation-policy';
 import { PlanRepository } from '../../modules/plans/plan.repository';
 import { buildStorePlanView } from '../../modules/plans/plan.service';
-import { HOME_RANGES, HomeRange, getHomeMetrics, normalizeTzOffset } from '../../modules/home/home-metrics';
+import { HOME_RANGES, HomeRange, getHomeMetrics, normalizeTzOffset, resolveWindows } from '../../modules/home/home-metrics';
+import { ShopifyOrdersRepository } from '../../modules/shopify_data/orders.repository';
 import { helpdeskRouter } from './helpdesk.routes';
 import { isFreshdeskActive } from '../../modules/helpdesk/freshdesk-sync.service';
+import { shopifyDataRouter } from './shopify-data.routes';
+import { learningRouter } from './learning.routes';
+import { ensureWebhooks } from '../../modules/shopify_data/webhooks.service';
+import { syncStoreOrders } from '../../modules/shopify_data/orders-sync.service';
+import { ShopifyDataScheduler } from '../../modules/shopify_data/data-scheduler';
 
 const router = Router();
 
@@ -669,7 +675,15 @@ router.post('/:storeId/shopify/reconnect', enforceStoreAccess, async (req: Reque
       logger.warn('Shopify health auto-check failed after reconnect', { storeId });
     }
 
-    res.json({ success: true, data: { reconnected: true, health } });
+    // A new token may carry new permissions: re-register webhooks and pull orders right away
+    let webhooks = null;
+    if (ShopifyDataScheduler.shouldRun()) {
+      const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
+      webhooks = await ensureWebhooks(storeId, { baseUrl: `${proto}://${req.get('host')}` }).catch(() => null);
+      syncStoreOrders(storeId, { maxPages: 4 }).catch(() => undefined);
+    }
+
+    res.json({ success: true, data: { reconnected: true, health, webhooks } });
   } catch (err) {
     next(err);
   }
@@ -1041,11 +1055,15 @@ router.get('/:storeId/analytics/live', enforceStoreAccess, enforceFeature(Featur
     const db = getDatabaseClient();
     const analyticsRepo = new AnalyticsRepository(db);
 
-    const [activeShoppers, feed, storeRes] = await Promise.all([
+    // "Today" starts at the merchant's local midnight (browser offset, as on Home)
+    const { current: today } = resolveWindows('today', normalizeTzOffset(req.query.tz));
+    const [activeShoppers, feed, storeRes, todayOrders] = await Promise.all([
       analyticsRepo.getActiveShoppersCount(storeId, 5),
       analyticsRepo.getLiveActivityFeed(storeId, 30),
-      db.query('SELECT live_tracking_enabled FROM stores WHERE id = $1', [storeId]),
+      db.query('SELECT live_tracking_enabled, currency FROM stores WHERE id = $1', [storeId]),
+      new ShopifyOrdersRepository(db).windowTotals(storeId, today.from, today.to).catch(() => null),
     ]);
+    const mirrored = todayOrders ? await new ShopifyOrdersRepository(db).latest(storeId).catch(() => null) : null;
 
     const isTrackingEnabled = storeRes.rows[0]?.live_tracking_enabled !== false;
 
@@ -1055,6 +1073,16 @@ router.get('/:storeId/analytics/live', enforceStoreAccess, enforceFeature(Featur
         active_shoppers: activeShoppers,
         feed,
         live_tracking_enabled: isTrackingEnabled,
+        // Real Shopify orders placed today (null until orders are synced)
+        store_today: mirrored
+          ? {
+              orders: todayOrders!.orders,
+              revenue: Math.round(todayOrders!.revenue * 100) / 100,
+              currency: storeRes.rows[0]?.currency || 'INR',
+              last_order_at: mirrored.created_at,
+              last_order_name: mirrored.name,
+            }
+          : null,
       },
     });
   } catch (err) {
@@ -1663,6 +1691,12 @@ router.use('/:storeId/ai-agent', enforceStoreAccess, enforceFeature(FeatureKey.A
 // 16. Customer Support Tickets & Human Escalation Desk
 router.use('/:storeId/tickets', enforceStoreAccess, enforceFeature(FeatureKey.SUPPORT_TICKETS), ticketDashboardRouter);
 router.use('/:storeId/helpdesk', enforceStoreAccess, enforceFeature(FeatureKey.FRESHDESK), helpdeskRouter);
+
+// 17. Settings → Shopify connection: permissions, data feeds, secrets, checkout pixel
+router.use('/:storeId/shopify-data', enforceStoreAccess, shopifyDataRouter);
+
+// 18. My Agent → Learning: questions to teach, 👍/👎, merchant-approved answers
+router.use('/:storeId/learning', enforceStoreAccess, learningRouter);
 
 export default router;
 

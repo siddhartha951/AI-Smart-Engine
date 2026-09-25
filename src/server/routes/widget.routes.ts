@@ -4,6 +4,7 @@ import { EventRepository } from '../../modules/events/event.repository';
 import { createStoreAuthMiddleware } from '../middlewares/store-auth.middleware';
 import { validateStoreOrigin } from '../middlewares/cors.middleware';
 import { z } from 'zod';
+import { recordFeedback } from '../../modules/learning/learning.service';
 
 const router = Router();
 
@@ -54,6 +55,42 @@ router.get('/bootstrap', (req, res, next) => createStoreAuthMiddleware()(req, re
   }
 });
 
+// 👍 / 👎 on an assistant reply: a 👎 puts the question on the merchant's "To teach" list
+const FeedbackSchema = z.object({
+  widget_key: z.string().min(1).optional(),
+  session_id: z.string().uuid(),
+  rating: z.union([z.literal(1), z.literal(-1)]),
+  question: z.string().max(2000).optional(),
+  answer: z.string().max(8000).optional(),
+});
+
+router.post('/chat/feedback', (req, res, next) => createStoreAuthMiddleware()(req, res, next), validateStoreOrigin, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const parsed = FeedbackSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: 'Invalid feedback' });
+      return;
+    }
+    const storeId = req.storeId!;
+    const db = getDatabaseClient();
+    const session = await db.query('SELECT id FROM chat_sessions WHERE store_id = $1 AND id = $2', [storeId, parsed.data.session_id]);
+    if (session.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Session not found' });
+      return;
+    }
+    await recordFeedback(db, storeId, {
+      surface: 'shopper',
+      rating: parsed.data.rating,
+      question: parsed.data.question,
+      answer: parsed.data.answer,
+      sessionId: parsed.data.session_id,
+    });
+    res.status(201).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const EventSchema = z.object({
   widget_key: z.string().min(1),
   session_id: z.string().optional(),
@@ -69,7 +106,9 @@ const EventSchema = z.object({
     'email_submitted',
     'marketing_opted_in',
     'recommendation_shown',
-    'heartbeat'
+    'heartbeat',
+    'product_view',
+    'checkout_started'
   ]),
   payload: z.record(z.string(), z.any()).optional()
 });

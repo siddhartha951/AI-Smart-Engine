@@ -31,7 +31,8 @@ export interface HomeMetrics {
   currency: string;
   window: { from: string; to: string };
   previous_window: { from: string; to: string };
-  revenue_source: 'orders' | 'storefront_events';
+  /** shopify = the store's real Shopify orders (synced); orders = attribution ledger; storefront_events = widget events */
+  revenue_source: 'shopify' | 'orders' | 'storefront_events';
   kpis: {
     revenue: Metric;
     orders: Metric;
@@ -132,7 +133,16 @@ async function windowTotals(
   const between = (col: string) => `${col} >= $2::timestamptz AND ${col} <= $3::timestamptz`;
 
   const ordersQuery =
-    source === 'orders'
+    source === 'shopify'
+      ? db.query(
+          `SELECT COUNT(*) AS orders,
+                  COALESCE(SUM(total_price - total_refunded), 0) AS revenue,
+                  0 AS ai_revenue
+           FROM shopify_orders
+           WHERE store_id = $1 AND cancelled_at IS NULL AND is_test = false AND ${between('created_at_shop')}`,
+          range
+        )
+      : source === 'orders'
       ? db.query(
           `SELECT COUNT(*) AS orders,
                   COALESCE(SUM(order_revenue), 0) AS revenue,
@@ -173,12 +183,23 @@ async function windowTotals(
 
   const o = orders.rows[0] || {};
   const f = funnel.rows[0] || {};
+  // Shopify totals are complete; AI-assisted revenue still comes from the attribution ledger
+  let aiRevenue = Number(o.ai_revenue || 0);
+  if (source === 'shopify') {
+    const ai = await db.query(
+      `SELECT COALESCE(SUM(order_revenue), 0) AS n FROM order_attributions
+       WHERE store_id = $1 AND is_ai_assisted = true AND ${between('COALESCE(order_created_at, created_at)')}`,
+      range
+    );
+    aiRevenue = Number(ai.rows[0]?.n || 0);
+  }
   return {
     revenue: Number(o.revenue || 0),
     orders: Number(o.orders || 0),
-    aiRevenue: Number(o.ai_revenue || 0),
+    aiRevenue,
     visitors: Number(f.visitors || 0),
-    purchasers: Number(f.purchasers || 0),
+    // With Shopify orders, conversion = orders / tracked visitors (capped at 100% below)
+    purchasers: source === 'shopify' ? Number(o.orders || 0) : Number(f.purchasers || 0),
     spend: Number(spend.rows[0]?.n || 0),
     chats,
     leads,
@@ -198,22 +219,24 @@ export async function getHomeMetrics(
 ): Promise<HomeMetrics> {
   const { current, previous } = resolveWindows(range, tzOffsetMinutes, now);
 
-  const [storeRes, attributionCount, spendHistory, assistant] = await Promise.all([
+  const [storeRes, shopifyOrderCount, attributionCount, spendHistory, assistant] = await Promise.all([
     db.query('SELECT currency FROM stores WHERE id = $1', [storeId]),
+    count(db, 'SELECT COUNT(*) AS n FROM shopify_orders WHERE store_id = $1', [storeId]).catch(() => 0),
     count(db, 'SELECT COUNT(*) AS n FROM order_attributions WHERE store_id = $1', [storeId]),
     count(db, 'SELECT COUNT(*) AS n FROM ad_spend WHERE store_id = $1', [storeId]),
     db.query('SELECT is_active FROM assistant_settings WHERE store_id = $1', [storeId]),
   ]);
 
   // One revenue source per store (never mixed between windows), matching the Growth Copilot
-  const source: HomeMetrics['revenue_source'] = attributionCount > 0 ? 'orders' : 'storefront_events';
+  const source: HomeMetrics['revenue_source'] =
+    shopifyOrderCount > 0 ? 'shopify' : attributionCount > 0 ? 'orders' : 'storefront_events';
   const [cur, prev] = await Promise.all([
     windowTotals(db, storeId, current, source),
     windowTotals(db, storeId, previous, source),
   ]);
 
   const aov = (t: WindowTotals) => (t.orders > 0 ? t.revenue / t.orders : 0);
-  const conv = (t: WindowTotals) => (t.visitors > 0 ? (t.purchasers / t.visitors) * 100 : 0);
+  const conv = (t: WindowTotals) => (t.visitors > 0 ? Math.min(100, (t.purchasers / t.visitors) * 100) : 0);
   const roas = (t: WindowTotals) => (t.spend > 0 ? round(t.revenue / t.spend) : null);
   const curRoas = roas(cur);
   const prevRoas = roas(prev);

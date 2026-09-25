@@ -86,8 +86,12 @@ export class WebhookService {
 
       if (!visitorId) return;
 
-      // Record purchase event with UTM and session tracking
-      await this.eventRepo.recordEvent(
+      // Record purchase event with UTM and session tracking (once: the checkout pixel may have recorded it already)
+      const alreadyRecorded = await db.query(
+        `SELECT 1 FROM events WHERE store_id = $1 AND type = 'purchase_completed' AND payload->>'order_id' = $2 LIMIT 1`,
+        [storeId, String(orderData.id)]
+      );
+      if (alreadyRecorded.rows.length === 0) await this.eventRepo.recordEvent(
         storeId, 
         visitorId, 
         'purchase_completed', 

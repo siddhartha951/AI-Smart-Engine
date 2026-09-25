@@ -4,6 +4,7 @@ import { getDatabaseClient } from '../../database/client';
 import { decryptString } from '../../utils/crypto';
 import { TenantIsolationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import { shopifyApiVersion } from './admin-client';
 import { defaultVariant, parseVariantColumns, variantsFromAdminGraphql, variantsFromAdminRest, variantsFromStorefront } from './variants';
 
 export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
@@ -60,7 +61,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     try {
       const { adminToken, shopDomain } = await this.getCredentials(storeId);
       
-      const response = await fetch(`https://${shopDomain}/admin/api/2024-01/shop.json`, {
+      const response = await fetch(`https://${shopDomain}/admin/api/${shopifyApiVersion()}/shop.json`, {
         headers: {
           'X-Shopify-Access-Token': adminToken,
           'Content-Type': 'application/json',
@@ -80,39 +81,16 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
   }
 
   async registerWebhooks(storeId: string): Promise<void> {
-    try {
-      const { adminToken, shopDomain } = await this.getCredentials(storeId);
-      const appUrl = process.env.BASE_URL || process.env.APP_URL || 'https://example.com';
-      
-      const webhooks = [
-        { topic: 'orders/create', address: `${appUrl}/api/v1/shopify/webhooks/orders` },
-        { topic: 'products/update', address: `${appUrl}/api/v1/shopify/webhooks/products` }
-      ];
-
-      for (const hook of webhooks) {
-        const response = await fetch(`https://${shopDomain}/admin/api/2024-01/webhooks.json`, {
-          method: 'POST',
-          headers: {
-            'X-Shopify-Access-Token': adminToken,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            webhook: {
-              topic: hook.topic,
-              address: hook.address,
-              format: 'json'
-            }
-          })
-        });
-
-        if (response.status === 401 || response.status === 403) {
-          await this.handleInvalidCredentials(storeId);
-          throw new Error('Unauthorized to register webhooks. Check credentials.');
-        }
-      }
-    } catch (err) {
-      logger.error(`Error registering Shopify webhooks for ${storeId}:`, err);
-      throw err;
+    // Idempotent, records its result for Settings, and never pauses the assistant over a
+    // missing webhook permission (only a rejected token counts as invalid credentials)
+    const { ensureWebhooks } = await import('../../modules/shopify_data/webhooks.service');
+    const result = await ensureWebhooks(storeId);
+    if (result.status === 'error' && result.message === 'Token rejected') {
+      await this.handleInvalidCredentials(storeId);
+      throw new Error('Unauthorized to register webhooks. Check credentials.');
+    }
+    if (result.status !== 'ok') {
+      logger.warn(`Shopify webhooks for ${storeId}: ${result.status} ${result.message || JSON.stringify(result.topics)}`);
     }
   }
 
@@ -283,7 +261,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         }
       `;
 
-      const response = await fetch(`https://${shopDomain}/api/2024-01/graphql.json`, {
+      const response = await fetch(`https://${shopDomain}/api/${shopifyApiVersion()}/graphql.json`, {
         method: 'POST',
         headers: {
           'X-Shopify-Storefront-Access-Token': storefrontToken,
@@ -366,7 +344,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
           }
         }
       `;
-      const response = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
+      const response = await fetch(`https://${shopDomain}/admin/api/${shopifyApiVersion()}/graphql.json`, {
         method: 'POST',
         headers: {
           'X-Shopify-Access-Token': adminToken,
@@ -557,7 +535,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         }
       `;
 
-      const response = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
+      const response = await fetch(`https://${shopDomain}/admin/api/${shopifyApiVersion()}/graphql.json`, {
         method: 'POST',
         headers: {
           'X-Shopify-Access-Token': adminToken,
@@ -642,7 +620,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
     let shopCurrency = 'INR';
 
     try {
-      const shopRes = await fetch(`https://${shopDomain}/admin/api/2024-01/shop.json`, {
+      const shopRes = await fetch(`https://${shopDomain}/admin/api/${shopifyApiVersion()}/shop.json`, {
         headers: {
           'X-Shopify-Access-Token': adminToken,
           'Content-Type': 'application/json',
@@ -654,7 +632,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
       }
     } catch (_) {}
 
-    const response = await fetch(`https://${shopDomain}/admin/api/2024-01/products.json?limit=250`, {
+    const response = await fetch(`https://${shopDomain}/admin/api/${shopifyApiVersion()}/products.json?limit=250`, {
       headers: {
         'X-Shopify-Access-Token': adminToken,
         'Content-Type': 'application/json',
@@ -768,7 +746,7 @@ export class LiveShopifyAdapter implements IShopifyCatalogAdapter {
         }
       `;
 
-      const response = await fetch(`https://${shopDomain}/api/2024-01/graphql.json`, {
+      const response = await fetch(`https://${shopDomain}/api/${shopifyApiVersion()}/graphql.json`, {
         method: 'POST',
         headers: {
           'X-Shopify-Storefront-Access-Token': storefrontToken,

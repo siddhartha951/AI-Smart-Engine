@@ -3,6 +3,7 @@ import { GrowthService } from '../../modules/growth/growth.service';
 import { AiAnalysisService } from '../../modules/ai/ai-analysis.service';
 import { getDatabaseClient } from '../../database/client';
 import { ValidationError } from '../../utils/errors';
+import { getGoalBrief } from '../../modules/growth/growth-brief';
 
 export const growthRouter = Router({ mergeParams: true });
 
@@ -48,6 +49,17 @@ growthRouter.post('/actions/:id/status', async (req: Request, res: Response, nex
     const service = getService();
     const updated = await service.updateActionStatus(storeId, actionId, status, (req as any).user?.id, notes);
     res.json({ success: true, data: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 3b. AI brief: the three moves that best serve the merchant's Primary Goal (cached, budget-guarded)
+growthRouter.get('/goal-brief', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const storeId = req.params.storeId as string;
+    const brief = await getGoalBrief(storeId, { refresh: req.query.refresh === '1' });
+    res.json({ success: true, data: brief });
   } catch (err) {
     next(err);
   }

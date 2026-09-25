@@ -9,6 +9,7 @@ import { getDatabaseClient } from '../../database/client';
 import { decryptString } from '../../utils/crypto';
 import { TenantIsolationError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import { shopifyApiVersion } from '../../providers/shopify/admin-client';
 
 export interface ShopifyOrderSummary {
   id: string;
@@ -28,7 +29,6 @@ export interface FetchOrdersOptions {
   financialStatus?: string;
 }
 
-const SHOPIFY_API_VERSION = '2024-01';
 const REQUEST_TIMEOUT_MS = 20000;
 
 async function getAdminCredentials(storeId: string): Promise<{ adminToken: string; shopDomain: string }> {
@@ -86,7 +86,7 @@ export async function fetchShopifyOrders(
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(
-      `https://${creds.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json?${params.toString()}`,
+      `https://${creds.shopDomain}/admin/api/${shopifyApiVersion()}/orders.json?${params.toString()}`,
       {
         headers: {
           'X-Shopify-Access-Token': creds.adminToken,

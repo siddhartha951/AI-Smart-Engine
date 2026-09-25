@@ -14,6 +14,7 @@ import { TenantIsolationError } from '../../utils/errors';
 import { EntitlementRepository } from '../entitlements/entitlement.repository';
 import { FeatureKey } from '../entitlements/entitlement.types';
 import { logger } from '../../utils/logger';
+import { STORE_EXECUTORS, STORE_TOOLS } from './ai_agent.store-tools';
 
 export interface ToolDefinition {
   name: AgentToolName;
@@ -91,6 +92,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       additionalProperties: false,
     },
   },
+  // Whole-store tools over the synced Shopify orders (sales, orders, products, customers, coupons, payments...)
+  ...STORE_TOOLS,
 ];
 
 type ToolArgs = Record<string, unknown>;
@@ -327,6 +330,7 @@ const EXECUTORS: Record<AgentToolName, (storeId: string, args: ToolArgs) => Prom
   get_shopify_summary: getShopifySummary,
   get_ad_creatives: getAdCreatives,
   get_attribution_summary: getAttributionSummary,
+  ...STORE_EXECUTORS,
 };
 
 /** Feature each tool reads from; tools without an entry use core Shopify data only. */
@@ -334,6 +338,8 @@ export const TOOL_FEATURES: Partial<Record<AgentToolName, FeatureKey>> = {
   get_meta_performance: FeatureKey.META_ADS,
   get_ad_creatives: FeatureKey.ADS_EXPLORER,
   get_attribution_summary: FeatureKey.AD_INTELLIGENCE,
+  get_funnel_summary: FeatureKey.FUNNEL,
+  get_growth_actions: FeatureKey.GROWTH_COPILOT,
 };
 
 const FEATURE_DISABLED_NOTE =
